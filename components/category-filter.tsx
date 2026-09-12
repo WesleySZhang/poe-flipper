@@ -113,8 +113,7 @@ export function CategoryFilter({
             <div>
               <p className="text-xs font-medium">Meta items</p>
               <p className="text-xs text-muted-foreground">
-                Disclaimer: these values are league-meta dependent - which uniques and skill gems are in demand
-                shifts with skill/build reworks each league in a way historical growth ratios can&apos;t predict.
+                Disclaimer: these values are league-meta dependent.
               </p>
             </div>
             <BulkActions categories={uniques} onSelectAll={onSelectAll} onDeselectAll={onDeselectAll} />
