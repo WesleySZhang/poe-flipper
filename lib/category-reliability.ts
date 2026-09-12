@@ -27,10 +27,10 @@ export const RELIABLE_CATEGORIES: ReadonlySet<string> = new Set([
   "DivinationCard",
   "Essence",
   "Fossil",
+  "Fragment",
   "Invitation",
   "Oil",
   "Omen",
-  "Scarab",
   "Tattoo",
 ]);
 
@@ -38,16 +38,16 @@ export function isReliableCategory(category: string): boolean {
   return RELIABLE_CATEGORIES.has(category);
 }
 
-// Unique items (and skill gems, which price similarly around build/meta popularity rather than
-// pure supply/demand fundamentals) form their own tier between "reliable" and "unreliable" - shown
-// in the UI as the "Meta items" group: their historical price data isn't sparse/noisy the way,
-// say, base types are, but GGG frequently reworks skills/builds between leagues, so which of these
-// are actually in demand shifts with the league's meta in a way the historical growth ratio can't
-// see coming. Kept as their own middle group rather than folded into either bucket, so the UI can
-// call that caveat out specifically instead of implying either "trust this" or "sparse data".
-// Order matters here - it's the display order in the UI (Unique Jewel and Unique Flask first,
-// since they're enabled by default; see isDefaultEnabledCategory below).
+// Unique items and skill gems price around build/meta popularity rather than pure supply/demand
+// fundamentals, and scarabs price around which league mechanics/strategies are popular that league
+// - all three shift with the league's meta in a way the historical growth ratio can't see coming.
+// Grouped together as their own tier between "reliable" and "unreliable" - shown in the UI as the
+// "Meta items" group - so the UI can call that caveat out specifically instead of implying either
+// "trust this" or "sparse data". Order matters here - it's the display order in the UI (Scarab,
+// Unique Jewel and Unique Flask first, since they're enabled by default; see
+// isDefaultEnabledCategory below).
 export const UNIQUE_CATEGORIES_ORDERED: string[] = [
+  "Scarab",
   "UniqueJewel",
   "UniqueFlask",
   "UniqueAccessory",
@@ -63,9 +63,9 @@ export function isUniqueCategory(category: string): boolean {
   return UNIQUE_CATEGORIES.has(category);
 }
 
-// Unique Jewel and Unique Flask are the two "uniques" categories enabled by default - the rest of
-// the uniques/skill-gem group starts off, same as the unreliable group.
-const DEFAULT_ENABLED_UNIQUE_CATEGORIES: ReadonlySet<string> = new Set(["UniqueJewel", "UniqueFlask"]);
+// Scarab, Unique Jewel and Unique Flask are enabled by default - the rest of the meta-items group
+// starts off, same as the unreliable group.
+const DEFAULT_ENABLED_UNIQUE_CATEGORIES: ReadonlySet<string> = new Set(["Scarab", "UniqueJewel", "UniqueFlask"]);
 
 export function isDefaultEnabledCategory(category: string): boolean {
   return isReliableCategory(category) || DEFAULT_ENABLED_UNIQUE_CATEGORIES.has(category);
