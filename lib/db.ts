@@ -9,8 +9,13 @@ declare global {
 }
 
 async function createConnection(): Promise<DuckDBConnection> {
-  // fromCache avoids attaching the same file twice if this module is re-evaluated.
-  const instance = await DuckDBInstance.fromCache(DB_PATH);
+  // The app only ever reads this file - all writes happen offline via `npm run db:ingest`, which
+  // opens its own separate connection - so open read-only. This is required on Vercel (its
+  // deployed function filesystem is read-only outside /tmp; the default read-write open mode fails
+  // there with "Read-only file system" since DuckDB needs write access to take its file lock), and
+  // as a bonus, read-only connections don't take that lock at all, so this also lets a local script
+  // (e.g. the backtest) run against the file at the same time as the dev server without conflict.
+  const instance = await DuckDBInstance.fromCache(DB_PATH, { access_mode: "READ_ONLY" });
   return instance.connect();
 }
 
