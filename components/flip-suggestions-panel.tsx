@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CategoryFilter } from "@/components/category-filter";
@@ -80,7 +80,15 @@ export function FlipSuggestionsPanel() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <div>
-          <CardTitle>Flip suggestions</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            Flip suggestions
+            {isPending && (
+              <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                Loading...
+              </span>
+            )}
+          </CardTitle>
           <CardDescription>
             Projected from day {currentDay} to day {currentDay + durationDays} of {CURRENT_LEAGUE}
           </CardDescription>
@@ -114,7 +122,12 @@ export function FlipSuggestionsPanel() {
           onSelectAll={selectAllCategories}
           onDeselectAll={deselectAllCategories}
         />
-        {isPending && <Skeleton className="h-48 w-full" />}
+        {isPending && (
+          <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Loader2 className="size-6 animate-spin" />
+            <p className="text-sm">Loading flip suggestions...</p>
+          </div>
+        )}
         {!isPending && suggestions.length === 0 && (
           <p className="text-sm text-muted-foreground">No historical matches found for current live prices yet.</p>
         )}
