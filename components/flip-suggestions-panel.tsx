@@ -7,12 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { Pagination } from "@/components/pagination";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
+import { formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
 
@@ -29,6 +31,7 @@ export function FlipSuggestionsPanel() {
     () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
   );
   const [page, setPage] = useState(0);
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [isPending, startTransition] = useTransition();
 
   const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
@@ -93,19 +96,30 @@ export function FlipSuggestionsPanel() {
             Projected from day {currentDay} to day {currentDay + durationDays} of {CURRENT_LEAGUE}
           </CardDescription>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="durationDays">Project forward (days)</Label>
-          <Input
-            id="durationDays"
-            type="number"
-            min={1}
-            value={durationDays}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              setDurationDays(Number.isFinite(value) && value > 0 ? Math.floor(value) : 1);
-            }}
-            className="w-28"
-          />
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="durationDays">Project forward (days)</Label>
+            <Input
+              id="durationDays"
+              type="number"
+              min={1}
+              value={durationDays}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setDurationDays(Number.isFinite(value) && value > 0 ? Math.floor(value) : 1);
+              }}
+              className="w-28"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Prices in</Label>
+            <Tabs value={priceUnit} onValueChange={(value) => setPriceUnit(value as PriceUnit)}>
+              <TabsList>
+                <TabsTrigger value="chaos">Chaos</TabsTrigger>
+                <TabsTrigger value="divine">Divine</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -140,8 +154,8 @@ export function FlipSuggestionsPanel() {
               <TableRow>
                 <TableHead>Item</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead className="text-right">Current (c)</TableHead>
-                <TableHead className="text-right">Predicted (c)</TableHead>
+                <TableHead className="text-right">Current ({priceUnitLabel(priceUnit)})</TableHead>
+                <TableHead className="text-right">Predicted ({priceUnitLabel(priceUnit)})</TableHead>
                 <TableHead className="text-right">Change</TableHead>
               </TableRow>
             </TableHeader>
@@ -152,8 +166,12 @@ export function FlipSuggestionsPanel() {
                   <TableCell>
                     <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
                   </TableCell>
-                  <TableCell className="text-right">{s.currentChaosValue.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">{s.predictedChaosValue.toFixed(1)}</TableCell>
+                  <TableCell className="text-right">
+                    {formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatPriceValue(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
+                  </TableCell>
                   <TableCell className="text-right">{Math.round((s.avgGrowthRatio - 1) * 100)}%</TableCell>
                 </TableRow>
               ))}

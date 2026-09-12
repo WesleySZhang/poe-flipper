@@ -7,11 +7,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { Pagination } from "@/components/pagination";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
+import { formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 import type { MirageSimulationRow } from "@/lib/mirage-simulator";
 
 async function fetchMirageSimulation(currentDay: number, durationDays: number): Promise<MirageSimulationRow[]> {
@@ -31,6 +33,7 @@ export function MirageSimulatorPanel() {
   );
   const [page, setPage] = useState(0);
   const [nowChaosRange, setNowChaosRange] = useState<NumericRange>({});
+  const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -98,8 +101,8 @@ export function MirageSimulatorPanel() {
             )}
           </CardTitle>
           <CardDescription>
-            Pretends you&apos;re on day {currentDay} of Mirage and checks the model&apos;s day-{targetDay} prediction
-            against what actually happened - Mirage is always held out of training.
+            Simulates Day-{currentDay} of Mirage and predicts Day-{targetDay} prices
+            against actual prices
           </CardDescription>
         </div>
         <div className="flex flex-wrap items-end gap-4">
@@ -131,6 +134,15 @@ export function MirageSimulatorPanel() {
               }}
               className="w-28"
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Prices in</Label>
+            <Tabs value={priceUnit} onValueChange={(value) => setPriceUnit(value as PriceUnit)}>
+              <TabsList>
+                <TabsTrigger value="chaos">Chaos</TabsTrigger>
+                <TabsTrigger value="divine">Divine</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
         </div>
       </CardHeader>
@@ -173,12 +185,12 @@ export function MirageSimulatorPanel() {
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">
                   <div className="flex items-center justify-end gap-1">
-                    Now (c)
+                    Now ({priceUnitLabel(priceUnit)})
                     <NumericRangeFilter label="Now (c)" range={nowChaosRange} onChange={changeNowChaosRange} />
                   </div>
                 </TableHead>
-                <TableHead className="text-right">Predicted (c)</TableHead>
-                <TableHead className="text-right">Actual future (c)</TableHead>
+                <TableHead className="text-right">Predicted ({priceUnitLabel(priceUnit)})</TableHead>
+                <TableHead className="text-right">Actual future ({priceUnitLabel(priceUnit)})</TableHead>
                 <TableHead className="text-right">Predicted x</TableHead>
                 <TableHead className="text-right">Actual x</TableHead>
               </TableRow>
@@ -190,9 +202,15 @@ export function MirageSimulatorPanel() {
                   <TableCell>
                     <Badge variant="secondary">{humanizeCategoryName(r.filterCategory)}</Badge>
                   </TableCell>
-                  <TableCell className="text-right">{r.actualNowChaos.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">{r.predictedChaosValue.toFixed(1)}</TableCell>
-                  <TableCell className="text-right">{r.actualFutureChaos.toFixed(1)}</TableCell>
+                  <TableCell className="text-right">
+                    {formatPriceValue(r.actualNowChaos, r.actualNowDivine, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatPriceValue(r.predictedChaosValue, r.predictedDivineValue, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatPriceValue(r.actualFutureChaos, r.actualFutureDivine, priceUnit)}
+                  </TableCell>
                   <TableCell className="text-right">{r.predictedRatio.toFixed(2)}x</TableCell>
                   <TableCell className="text-right">{r.actualRatio.toFixed(2)}x</TableCell>
                 </TableRow>
