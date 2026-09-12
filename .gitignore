@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# duckdb (regenerated via `npm run db:ingest`)
+/db/*.duckdb
+/db/*.duckdb.wal
