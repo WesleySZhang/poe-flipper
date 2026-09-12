@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PoE Trade Assistant",
+  title: "PoE Flipper",
   description: "Unofficial Path of Exile net worth and flip suggestion assistant.",
 };
 

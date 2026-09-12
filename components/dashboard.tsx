@@ -1,29 +1,25 @@
-"use client";
-
-import { useState } from "react";
-import { LoginCard } from "@/components/login-card";
-import { NetWorthPanel } from "@/components/net-worth-panel";
+import Link from "next/link";
 import { FlipSuggestionsPanel } from "@/components/flip-suggestions-panel";
-import type { SessionState } from "@/app/actions/login";
 
-export function Dashboard({ initialSession }: { initialSession: SessionState }) {
-  const [session, setSession] = useState<SessionState>(initialSession);
-
+export function Dashboard() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
-      <header>
-        <h1 className="text-2xl font-semibold">PoE Trade Assistant</h1>
-        <p className="text-sm text-muted-foreground">
-          Unofficial tool - not affiliated with or endorsed by Grinding Gear Games.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-sans text-2xl font-semibold">PoE Flipper</h1>
+          <p className="text-sm text-muted-foreground">
+            Unofficial tool - not affiliated with or endorsed by Grinding Gear Games.
+          </p>
+        </div>
+        <Link
+          href="/mirage-simulator"
+          className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          Mirage league simulator
+        </Link>
       </header>
 
-      <LoginCard session={session} onSessionChange={setSession} />
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <NetWorthPanel key={`networth-${session.accountName ?? "guest"}`} session={session} />
-        <FlipSuggestionsPanel key={`flip-${session.accountName ?? "guest"}`} session={session} />
-      </div>
+      <FlipSuggestionsPanel />
     </div>
   );
 }

@@ -12,6 +12,12 @@ const DATA_DIR = process.env.POE_DATA_DIR
 
 const DB_PATH = path.join(process.cwd(), "db", "history.duckdb");
 
+// Restricting to the last handful of leagues trades away data volume for data quality - older
+// leagues' price history is noisier/less complete, and league-recency weighting (see
+// league-recency.ts) already discounts old leagues heavily, so keeping them around was mostly
+// just adding stale signal the model had to average away.
+const INCLUDED_LEAGUES = ["Mirage", "Keepers", "Mercenaries", "Settlers", "Phrecia 2.0"];
+
 async function main() {
   if (!fs.existsSync(DATA_DIR)) {
     throw new Error(
@@ -22,9 +28,16 @@ async function main() {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
   // Each league folder has "<League>.currency.csv" and "<League>.items.csv".
-  const csvFiles = await glob("*/*.{currency,items}.csv", { cwd: DATA_DIR, absolute: true });
-  if (csvFiles.length === 0) {
+  const allCsvFiles = await glob("*/*.{currency,items}.csv", { cwd: DATA_DIR, absolute: true });
+  if (allCsvFiles.length === 0) {
     throw new Error(`No CSV files found under ${DATA_DIR}`);
+  }
+  const csvFiles = allCsvFiles.filter((file) => INCLUDED_LEAGUES.includes(path.basename(path.dirname(file))));
+  const missingLeagues = INCLUDED_LEAGUES.filter(
+    (league) => !csvFiles.some((file) => path.basename(path.dirname(file)) === league)
+  );
+  if (missingLeagues.length > 0) {
+    throw new Error(`No CSV files found for league(s): ${missingLeagues.join(", ")} under ${DATA_DIR}`);
   }
 
   const instance = await DuckDBInstance.create(DB_PATH);
@@ -60,6 +73,9 @@ async function main() {
       )
     `);
 
+    // Leftover from the removed net-worth-tracking feature - drop it if an older DB still has it.
+    await connection.run("DROP TABLE IF EXISTS networth_snapshots");
+
     for (const file of csvFiles) {
       const isItems = file.endsWith(".items.csv");
       const escapedPath = file.replace(/'/g, "''");
@@ -78,17 +94,6 @@ async function main() {
       }
       console.log(`Ingested ${path.basename(file)} (${isItems ? "item" : "currency"})`);
     }
-
-    // Populated at runtime by the net-worth "refresh" action; created here so the app can rely on it existing.
-    await connection.run(`
-      CREATE TABLE IF NOT EXISTS networth_snapshots (
-        snapshot_at TIMESTAMP,
-        account_name VARCHAR,
-        league VARCHAR,
-        total_chaos DOUBLE,
-        total_divine DOUBLE
-      )
-    `);
 
     const currencyCounts = await connection.runAndReadAll(
       "SELECT league, COUNT(*) AS rows FROM currency_history GROUP BY league ORDER BY league"

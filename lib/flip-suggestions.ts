@@ -1,113 +1,54 @@
 import "server-only";
-import { getDb } from "./db";
-import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey } from "./poe-ninja";
+import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey, formatItemDisplayName } from "./poe-ninja";
+import { getCurrencyGrowthRatios, getItemGrowthRatios, type GrowthRatioRow } from "./growth-ratios";
 
 export interface FlipSuggestion {
   name: string;
   category: "currency" | "item";
+  /** What the category filter groups by: the item's or currency's poe.ninja type bucket (SkillGem, Scarab, Currency, ...). */
+  filterCategory: string;
   currentChaosValue: number;
+  predictedChaosValue: number;
   avgGrowthRatio: number;
   leagueCount: number;
   rationale: string;
 }
 
-interface HistoricalTrend {
-  name: string;
-  variant?: string;
-  avgGrowthRatio: number;
-  leagueCount: number;
-}
-
-// Requires enough same-league data points so a single early/late outlier can't dominate the ratio.
-const MIN_DATA_POINTS_PER_LEAGUE = 5;
-const MIN_LEAGUES_WITH_DATA = 2;
-
-async function getCurrencyTrends(): Promise<HistoricalTrend[]> {
-  const db = await getDb();
-  const reader = await db.runAndReadAll(`
-    WITH bounds AS (
-      SELECT league, get AS name,
-             arg_min(value, date) AS first_value,
-             arg_max(value, date) AS last_value,
-             COUNT(*) AS data_points
-      FROM currency_history
-      WHERE pay = 'Chaos Orb' AND get != 'Chaos Orb' AND confidence != 'Low'
-      GROUP BY league, get
-      HAVING COUNT(*) >= ${MIN_DATA_POINTS_PER_LEAGUE}
-    )
-    SELECT name,
-           AVG(last_value / NULLIF(first_value, 0)) AS avg_growth_ratio,
-           COUNT(*) AS league_count
-    FROM bounds
-    WHERE first_value >= 0.1
-    GROUP BY name
-    HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
-  `);
-  return reader.getRowObjects().map((row) => ({
-    name: String(row.name),
-    avgGrowthRatio: Number(row.avg_growth_ratio),
-    leagueCount: Number(row.league_count),
-  }));
-}
-
-async function getItemTrends(): Promise<HistoricalTrend[]> {
-  const db = await getDb();
-  const reader = await db.runAndReadAll(`
-    WITH daily AS (
-      -- one row per (league, name, variant, date): gems/uniques differ hugely in price by variant
-      SELECT league, name, variant, date, AVG(value) AS value
-      FROM item_history
-      WHERE confidence != 'Low'
-      GROUP BY league, name, variant, date
-    ),
-    bounds AS (
-      SELECT league, name, variant,
-             arg_min(value, date) AS first_value,
-             arg_max(value, date) AS last_value,
-             COUNT(*) AS data_points
-      FROM daily
-      GROUP BY league, name, variant
-      HAVING COUNT(*) >= ${MIN_DATA_POINTS_PER_LEAGUE}
-    )
-    SELECT name, variant,
-           AVG(last_value / NULLIF(first_value, 0)) AS avg_growth_ratio,
-           COUNT(*) AS league_count
-    FROM bounds
-    WHERE first_value >= 0.1
-    GROUP BY name, variant
-    HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
-  `);
-  return reader.getRowObjects().map((row) => ({
-    name: String(row.name),
-    variant: row.variant ? String(row.variant) : undefined,
-    avgGrowthRatio: Number(row.avg_growth_ratio),
-    leagueCount: Number(row.league_count),
-  }));
-}
-
 function buildSuggestion(
-  trend: HistoricalTrend,
+  trend: GrowthRatioRow,
   category: "currency" | "item",
-  currentChaosValue: number
+  filterCategory: string,
+  currentChaosValue: number,
+  durationDays: number
 ): FlipSuggestion {
-  const pctChange = Math.round((trend.avgGrowthRatio - 1) * 100);
+  const pctChange = Math.round((trend.avgRatio - 1) * 100);
   const direction = pctChange >= 0 ? "risen" : "fallen";
-  const displayName = trend.variant ? `${trend.name} (${trend.variant})` : trend.name;
+  const displayName = formatItemDisplayName(trend.name, trend.variant);
   return {
     name: displayName,
     category,
+    filterCategory,
     currentChaosValue,
-    avgGrowthRatio: trend.avgGrowthRatio,
+    predictedChaosValue: currentChaosValue * trend.avgRatio,
+    avgGrowthRatio: trend.avgRatio,
     leagueCount: trend.leagueCount,
-    rationale: `Historically has ${direction} ${Math.abs(pctChange)}% from league start to league end, averaged over ${trend.leagueCount} past leagues.`,
+    rationale: `Historically has ${direction} ${Math.abs(pctChange)}% over the next ${durationDays} days from this point in the league, averaged over ${trend.leagueCount} past leagues.`,
   };
 }
 
-/** Ranks items/currency by historical start-of-league to end-of-league growth, priced at today's live value. */
-export async function getFlipSuggestions(league: string, limit = 15): Promise<FlipSuggestion[]> {
+/**
+ * Ranks items/currency by projected growth from the current league day over the given duration.
+ * Returns every matching row (no top-N cap) - the UI paginates and category-filters client-side,
+ * and capping here would silently hide whole categories whenever one category's ratios dominate.
+ */
+export async function getFlipSuggestions(
+  league: string,
+  currentDay: number,
+  durationDays: number
+): Promise<FlipSuggestion[]> {
   const [currencyTrends, itemTrends, currencyPrices, itemPrices] = await Promise.all([
-    getCurrencyTrends(),
-    getItemTrends(),
+    getCurrencyGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
+    getItemGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
     getAllCurrentCurrencyPrices(league),
     getAllCurrentItemPrices(league),
   ]);
@@ -115,16 +56,26 @@ export async function getFlipSuggestions(league: string, limit = 15): Promise<Fl
   const suggestions: FlipSuggestion[] = [];
 
   for (const trend of currencyTrends) {
-    const currentChaosValue = currencyPrices.get(trend.name);
-    if (currentChaosValue === undefined || currentChaosValue <= 0) continue;
-    suggestions.push(buildSuggestion(trend, "currency", currentChaosValue));
+    const price = currencyPrices.get(trend.name);
+    if (price === undefined || price.chaosValue <= 0) continue;
+    suggestions.push(buildSuggestion(trend, "currency", price.type, price.chaosValue, durationDays));
   }
 
   for (const trend of itemTrends) {
-    const currentChaosValue = itemPrices.get(itemPriceKey(trend.name, trend.variant));
-    if (currentChaosValue === undefined || currentChaosValue <= 0) continue;
-    suggestions.push(buildSuggestion(trend, "item", currentChaosValue));
+    const itemPrice = itemPrices.get(itemPriceKey(trend.name, trend.variant));
+    if (itemPrice !== undefined && itemPrice.chaosValue > 0) {
+      suggestions.push(buildSuggestion(trend, "item", itemPrice.type, itemPrice.chaosValue, durationDays));
+      continue;
+    }
+    // Scarabs/Essences/Fossils/Oils/Omens/Resonators/Tattoos/DeliriumOrbs/DivinationCards are
+    // categorized as items in the ingested history (item_history.type) but poe.ninja has since moved
+    // their live prices onto the currency endpoint (see CURRENCY_OVERVIEW_TYPES) - fall back to the
+    // currency price map, keyed on name only since these never have a variant.
+    const currencyPrice = !trend.variant ? currencyPrices.get(trend.name) : undefined;
+    if (currencyPrice !== undefined && currencyPrice.chaosValue > 0) {
+      suggestions.push(buildSuggestion(trend, "item", currencyPrice.type, currencyPrice.chaosValue, durationDays));
+    }
   }
 
-  return suggestions.sort((a, b) => b.avgGrowthRatio - a.avgGrowthRatio).slice(0, limit);
+  return suggestions.sort((a, b) => b.avgGrowthRatio - a.avgGrowthRatio);
 }
