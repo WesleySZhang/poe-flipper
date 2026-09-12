@@ -40,6 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# duckdb (regenerated via `npm run db:ingest`)
+# duckdb - history.duckdb IS committed (via Git LFS - see .gitattributes) since it's the compact,
+# pre-aggregated data the deployed app reads directly; nothing rebuilds it in production. Only the
+# transient WAL file and any other stray .duckdb file (e.g. a local scratch DB) stay ignored.
 /db/*.duckdb
+!/db/history.duckdb
 /db/*.duckdb.wal

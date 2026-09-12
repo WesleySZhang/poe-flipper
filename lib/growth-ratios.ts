@@ -38,71 +38,11 @@ function leagueWeightsValuesSql(): string {
     .join(", ");
 }
 
-// currency_history/item_history hold every daily price observation for every league ever ingested
-// (hundreds of thousands of rows). Grouping that into one row per (league, name[, variant], day)
-// - the expensive part of every query below - doesn't depend on currentDay/durationDays/excludeLeague,
-// so it's wasteful to redo per call. These TEMP tables materialize it once per process instead; being
-// TEMP (connection-local, not written to history.duckdb), they're always rebuilt fresh from whatever
-// is currently ingested the next time the app or a script starts, so there's no staleness to manage.
-let dayedTablesReady: Promise<void> | null = null;
-
-async function ensureDayedTables(): Promise<void> {
-  if (!dayedTablesReady) {
-    dayedTablesReady = buildDayedTables().catch((err) => {
-      dayedTablesReady = null; // allow a retry on the next call instead of caching the failure forever
-      throw err;
-    });
-  }
-  return dayedTablesReady;
-}
-
-async function buildDayedTables(): Promise<void> {
-  const db = await getDb();
-  await db.run(`
-    CREATE TEMP TABLE IF NOT EXISTS currency_history_dayed AS
-    WITH daily AS (
-      SELECT league, get AS name, date, AVG(value) AS value
-      FROM currency_history
-      WHERE pay = 'Chaos Orb' AND get != 'Chaos Orb' AND confidence = 'High'
-      GROUP BY league, get, date
-    ),
-    league_start AS (
-      SELECT league, MIN(date) AS start_date FROM daily GROUP BY league
-    )
-    SELECT d.league, d.name, d.value, date_diff('day', ls.start_date, d.date) AS day_offset
-    FROM daily d JOIN league_start ls ON d.league = ls.league
-  `);
-  await db.run(`
-    CREATE TEMP TABLE IF NOT EXISTS item_history_dayed AS
-    WITH combined AS (
-      -- A linked item prices completely differently from an unlinked one (a 6-link is a
-      -- different item to trade, not just a variant of the same one) - fold the links bucket
-      -- ("1-4 links"/"5 links"/"6 links") into the variant discriminator so it gets grouped and
-      -- matched separately everywhere downstream, and displays as "Name (6 links)" the same way
-      -- an existing gem/quality variant already does.
-      SELECT
-        league, name, date, type, value,
-        CASE
-          WHEN links IS NOT NULL AND variant IS NOT NULL THEN variant || ', ' || links
-          WHEN links IS NOT NULL THEN links
-          ELSE variant
-        END AS variant
-      FROM item_history
-      WHERE confidence = 'High'
-    ),
-    daily AS (
-      SELECT league, name, variant, date, AVG(value) AS value, ANY_VALUE(type) AS type
-      FROM combined
-      GROUP BY league, name, variant, date
-    ),
-    league_start AS (
-      SELECT league, MIN(date) AS start_date FROM daily GROUP BY league
-    )
-    SELECT d.league, d.name, d.variant, d.value, d.type, date_diff('day', ls.start_date, d.date) AS day_offset
-    FROM daily d JOIN league_start ls ON d.league = ls.league
-  `);
-}
-
+// currency_history_dayed/item_history_dayed (one row per league/name[/variant]/day) are built once,
+// permanently, at ingest time (see scripts/ingest-history.ts) rather than materialized here at
+// query time - the raw per-listing history they're derived from is dropped after ingest, since
+// nothing else needs it, which keeps the shipped database small enough to deploy (see README's
+// deployment section).
 export interface GrowthRatioOptions extends GrowthRatioScenario {
   /** Exclude this league from the training data (e.g. the player's own active league, or a backtest holdout). */
   excludeLeague?: string;
@@ -113,7 +53,6 @@ export interface GrowthRatioOptions extends GrowthRatioScenario {
 export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Promise<GrowthRatioRow[]> {
   const { currentDay, durationDays, excludeLeague, toleranceDays = DEFAULT_TOLERANCE_DAYS } = options;
   const targetDay = currentDay + durationDays;
-  await ensureDayedTables();
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
@@ -169,7 +108,6 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
 export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<GrowthRatioRow[]> {
   const { currentDay, durationDays, excludeLeague, toleranceDays = DEFAULT_TOLERANCE_DAYS } = options;
   const targetDay = currentDay + durationDays;
-  await ensureDayedTables();
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
@@ -240,7 +178,6 @@ export async function getCurrencyGrowthRatiosBatch(
   excludeLeague?: string,
   toleranceDays = DEFAULT_TOLERANCE_DAYS
 ): Promise<GrowthRatioRow[][]> {
-  await ensureDayedTables();
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
@@ -308,7 +245,6 @@ export async function getItemGrowthRatiosBatch(
   excludeLeague?: string,
   toleranceDays = DEFAULT_TOLERANCE_DAYS
 ): Promise<GrowthRatioRow[][]> {
-  await ensureDayedTables();
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
@@ -388,7 +324,6 @@ export async function getActualCurrencyValueAtDay(
   day: number,
   toleranceDays = DEFAULT_TOLERANCE_DAYS
 ): Promise<Map<string, number>> {
-  await ensureDayedTables();
   const db = await getDb();
   const reader = await db.runAndReadAll(
     `
@@ -420,7 +355,6 @@ export async function getActualItemValueAtDay(
   day: number,
   toleranceDays = DEFAULT_TOLERANCE_DAYS
 ): Promise<Map<string, ActualItemValue>> {
-  await ensureDayedTables();
   const db = await getDb();
   const reader = await db.runAndReadAll(
     `

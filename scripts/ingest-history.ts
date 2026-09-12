@@ -26,6 +26,11 @@ async function main() {
   }
 
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  // Start from a clean file every run - this script always fully rebuilds everything from the CSVs
+  // anyway, and dropping tables later (to shrink the shipped DB, see below) doesn't reclaim space
+  // in an existing file without an explicit compaction step, so it's simplest to just not carry one.
+  fs.rmSync(DB_PATH, { force: true });
+  fs.rmSync(`${DB_PATH}.wal`, { force: true });
 
   // Each league folder has "<League>.currency.csv" and "<League>.items.csv".
   const allCsvFiles = await glob("*/*.{currency,items}.csv", { cwd: DATA_DIR, absolute: true });
@@ -40,7 +45,12 @@ async function main() {
     throw new Error(`No CSV files found for league(s): ${missingLeagues.join(", ")} under ${DATA_DIR}`);
   }
 
-  const instance = await DuckDBInstance.create(DB_PATH);
+  // Raw ingestion happens entirely in memory - DuckDB's DROP TABLE doesn't reclaim on-disk space
+  // (there's no VACUUM-equivalent compaction), so building the ~250MB raw tables directly in the
+  // destination file and then dropping them just leaves that space allocated but unused, growing
+  // the file instead of shrinking it. Only the compact, day-aggregated tables ever get written to
+  // DB_PATH (see the ATTACH block below), so the on-disk file reflects only what's actually there.
+  const instance = await DuckDBInstance.create(":memory:");
   const connection = await instance.connect();
 
   try {
@@ -73,9 +83,6 @@ async function main() {
       )
     `);
 
-    // Leftover from the removed net-worth-tracking feature - drop it if an older DB still has it.
-    await connection.run("DROP TABLE IF EXISTS networth_snapshots");
-
     for (const file of csvFiles) {
       const isItems = file.endsWith(".items.csv");
       const escapedPath = file.replace(/'/g, "''");
@@ -104,9 +111,78 @@ async function main() {
       "SELECT league, COUNT(*) AS rows FROM item_history GROUP BY league ORDER BY league"
     );
     console.table(itemCounts.getRowObjects());
+
+    // The app only ever queries one row per (league, name[, variant], day) - never the raw
+    // per-listing history - so that's the only form worth shipping. Building it once here (instead
+    // of materializing it at query time, as a previous version of this app did) means: (1) the
+    // deployed DB is a fraction of the raw ingested size (dropping the raw tables below reclaims
+    // that space, since this is always a freshly-created file - see above), and (2) the app has one
+    // less cold-start cost, since there's no first-query aggregation step left to pay.
+    console.log("Building day-aggregated tables...");
+    await connection.run(`
+      CREATE TABLE currency_history_dayed AS
+      WITH daily AS (
+        SELECT league, get AS name, date, AVG(value) AS value
+        FROM currency_history
+        WHERE pay = 'Chaos Orb' AND get != 'Chaos Orb' AND confidence = 'High'
+        GROUP BY league, get, date
+      ),
+      league_start AS (
+        SELECT league, MIN(date) AS start_date FROM daily GROUP BY league
+      )
+      SELECT d.league, d.name, d.value, date_diff('day', ls.start_date, d.date) AS day_offset
+      FROM daily d JOIN league_start ls ON d.league = ls.league
+    `);
+    await connection.run(`
+      CREATE TABLE item_history_dayed AS
+      WITH combined AS (
+        -- A linked item prices completely differently from an unlinked one (a 6-link is a
+        -- different item to trade, not just a variant of the same one) - fold the links bucket
+        -- ("1-4 links"/"5 links"/"6 links") into the variant discriminator so it gets grouped and
+        -- matched separately everywhere downstream, and displays as "Name (6 links)" the same way
+        -- an existing gem/quality variant already does.
+        SELECT
+          league, name, date, type, value,
+          CASE
+            WHEN links IS NOT NULL AND variant IS NOT NULL THEN variant || ', ' || links
+            WHEN links IS NOT NULL THEN links
+            ELSE variant
+          END AS variant
+        FROM item_history
+        WHERE confidence = 'High'
+      ),
+      daily AS (
+        SELECT league, name, variant, date, AVG(value) AS value, ANY_VALUE(type) AS type
+        FROM combined
+        GROUP BY league, name, variant, date
+      ),
+      league_start AS (
+        SELECT league, MIN(date) AS start_date FROM daily GROUP BY league
+      )
+      SELECT d.league, d.name, d.variant, d.value, d.type, date_diff('day', ls.start_date, d.date) AS day_offset
+      FROM daily d JOIN league_start ls ON d.league = ls.league
+    `);
+
+    const dayedCounts = await connection.runAndReadAll(`
+      SELECT 'currency_history_dayed' AS table_name, COUNT(*) AS rows FROM currency_history_dayed
+      UNION ALL
+      SELECT 'item_history_dayed', COUNT(*) FROM item_history_dayed
+    `);
+    console.table(dayedCounts.getRowObjects());
+
+    // Only the two compact tables above ever touch disk - attach the (freshly created, empty)
+    // destination file and copy just those into it, leaving the raw in-memory tables behind.
+    const escapedDbPath = DB_PATH.replace(/'/g, "''");
+    await connection.run(`ATTACH '${escapedDbPath}' AS out`);
+    await connection.run("CREATE TABLE out.currency_history_dayed AS SELECT * FROM currency_history_dayed");
+    await connection.run("CREATE TABLE out.item_history_dayed AS SELECT * FROM item_history_dayed");
+    await connection.run("DETACH out");
   } finally {
     connection.disconnectSync();
   }
+
+  const { size } = fs.statSync(DB_PATH);
+  console.log(`Final database size: ${(size / 1024 / 1024).toFixed(1)} MB`);
 }
 
 main().catch((err) => {
