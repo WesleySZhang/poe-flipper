@@ -109,7 +109,7 @@ export function CategoryFilter({
         </div>
       )}
       {uniques.length > 0 && (
-        <div className="flex flex-col gap-1.5 rounded-md border p-2.5">
+        <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between gap-2">
             <div>
               <p className="text-xs font-medium">Meta items</p>
@@ -130,7 +130,7 @@ export function CategoryFilter({
             onClick={() => setUnreliableOpen((open) => !open)}
           >
             {unreliableOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-            Less reliable categories (off by default)
+            Etc.
           </button>
           {unreliableOpen && (
             <div className="flex flex-col gap-1.5 pt-1">
