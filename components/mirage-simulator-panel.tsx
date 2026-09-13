@@ -16,7 +16,14 @@ import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/componen
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
-import { activePrice, activeRatio, formatPriceValue, formatRatio, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
+import {
+  activePrice,
+  activeRatio,
+  formatPercentChange,
+  formatPriceValue,
+  priceUnitLabel,
+  type PriceUnit,
+} from "@/lib/price-unit";
 import type { MirageSimulationRow } from "@/lib/mirage-simulator";
 
 async function fetchMirageSimulation(currentDay: number, durationDays: number): Promise<MirageSimulationRow[]> {
@@ -245,8 +252,8 @@ export function MirageSimulatorPanel() {
                   sort={sort}
                   onSort={handleSort}
                 />
-                <SortableHeader label="Predicted x" sortKey="predictedX" sort={sort} onSort={handleSort} />
-                <SortableHeader label="Actual x" sortKey="actualX" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Predicted %" sortKey="predictedX" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Actual %" sortKey="actualX" sort={sort} onSort={handleSort} />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -274,10 +281,10 @@ export function MirageSimulatorPanel() {
                     {formatPriceValue(r.actualFutureChaos, r.actualFutureDivine, priceUnit)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatRatio(r.predictedRatio, r.predictedRatioDivine, priceUnit)}
+                    {formatPercentChange(r.predictedRatio, r.predictedRatioDivine, priceUnit)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatRatio(r.actualRatio, r.actualRatioDivine, priceUnit)}
+                    {formatPercentChange(r.actualRatio, r.actualRatioDivine, priceUnit)}
                   </TableCell>
                 </TableRow>
               ))}
