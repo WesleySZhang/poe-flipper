@@ -38,7 +38,7 @@ export function MirageSimulatorPanel() {
   );
   const [page, setPage] = useState(0);
   const [searchText, setSearchText] = useState("");
-  const [nowChaosRange, setNowChaosRange] = useState<NumericRange>({});
+  const [nowRange, setNowRange] = useState<NumericRange>({});
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "predictedX", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [isPending, startTransition] = useTransition();
@@ -75,12 +75,16 @@ export function MirageSimulatorPanel() {
     [rows, sort, priceUnit]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
-  const visibleRows = sortedRows.filter(
-    (r) =>
+  const visibleRows = sortedRows.filter((r) => {
+    // Undefined only when the row has no divine figure at all - don't exclude on a check we can't
+    // actually evaluate, same philosophy as the sort/format helpers elsewhere in this unit.
+    const activeNow = activePrice(r.actualNowChaos, r.actualNowDivine, priceUnit);
+    return (
       !hiddenCategories.has(r.filterCategory) &&
-      isWithinRange(r.actualNowChaos, nowChaosRange) &&
+      (activeNow === undefined || isWithinRange(activeNow, nowRange)) &&
       r.name.toLowerCase().includes(normalizedSearch)
-  );
+    );
+  });
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
   const pagedRows = visibleRows.slice(pageStart, pageStart + PAGE_SIZE);
@@ -118,8 +122,8 @@ export function MirageSimulatorPanel() {
     setPage(0);
   }
 
-  function changeNowChaosRange(range: NumericRange) {
-    setNowChaosRange(range);
+  function changeNowRange(range: NumericRange) {
+    setNowRange(range);
     setPage(0);
   }
 
@@ -194,10 +198,6 @@ export function MirageSimulatorPanel() {
             predictions can be wildly misleading.
           </p>
         )}
-        <div className="flex flex-wrap items-end gap-4">
-          <SearchInput value={searchText} onChange={changeSearchText} />
-          <NumericRangeFilter label={`now cost (${priceUnitLabel("chaos")})`} onChange={changeNowChaosRange} />
-        </div>
         <CategoryFilter
           categories={ALL_CATEGORIES}
           selected={new Set(ALL_CATEGORIES.filter((c) => !hiddenCategories.has(c)))}
@@ -205,6 +205,10 @@ export function MirageSimulatorPanel() {
           onSelectAll={selectAllCategories}
           onDeselectAll={deselectAllCategories}
         />
+        <div className="flex flex-wrap items-end gap-4">
+          <SearchInput value={searchText} onChange={changeSearchText} />
+          <NumericRangeFilter label={`cost (${priceUnitLabel(priceUnit)})`} onChange={changeNowRange} />
+        </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="size-6 animate-spin" />

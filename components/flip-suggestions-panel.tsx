@@ -45,7 +45,7 @@ export function FlipSuggestionsPanel() {
   );
   const [page, setPage] = useState(0);
   const [searchText, setSearchText] = useState("");
-  const [currentChaosRange, setCurrentChaosRange] = useState<NumericRange>({});
+  const [currentRange, setCurrentRange] = useState<NumericRange>({});
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "change", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [isPending, startTransition] = useTransition();
@@ -79,12 +79,16 @@ export function FlipSuggestionsPanel() {
     [suggestions, sort, priceUnit]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
-  const visibleSuggestions = sortedSuggestions.filter(
-    (s) =>
+  const visibleSuggestions = sortedSuggestions.filter((s) => {
+    // Undefined only when the row has no divine figure at all - don't exclude on a check we can't
+    // actually evaluate, same philosophy as the sort/format helpers elsewhere in this unit.
+    const activeCurrent = activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit);
+    return (
       !hiddenCategories.has(s.filterCategory) &&
-      isWithinRange(s.currentChaosValue, currentChaosRange) &&
+      (activeCurrent === undefined || isWithinRange(activeCurrent, currentRange)) &&
       s.name.toLowerCase().includes(normalizedSearch)
-  );
+    );
+  });
   const pageCount = Math.max(1, Math.ceil(visibleSuggestions.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
   const pagedSuggestions = visibleSuggestions.slice(pageStart, pageStart + PAGE_SIZE);
@@ -122,8 +126,8 @@ export function FlipSuggestionsPanel() {
     setPage(0);
   }
 
-  function changeCurrentChaosRange(range: NumericRange) {
-    setCurrentChaosRange(range);
+  function changeCurrentRange(range: NumericRange) {
+    setCurrentRange(range);
     setPage(0);
   }
 
@@ -182,10 +186,6 @@ export function FlipSuggestionsPanel() {
             predictions can be wildly misleading.
           </p>
         )}
-        <div className="flex flex-wrap items-end gap-4">
-          <SearchInput value={searchText} onChange={changeSearchText} />
-          <NumericRangeFilter label={`current cost (${priceUnitLabel("chaos")})`} onChange={changeCurrentChaosRange} />
-        </div>
         <CategoryFilter
           categories={ALL_CATEGORIES}
           selected={new Set(ALL_CATEGORIES.filter((c) => !hiddenCategories.has(c)))}
@@ -193,6 +193,10 @@ export function FlipSuggestionsPanel() {
           onSelectAll={selectAllCategories}
           onDeselectAll={deselectAllCategories}
         />
+        <div className="flex flex-wrap items-end gap-4">
+          <SearchInput value={searchText} onChange={changeSearchText} />
+          <NumericRangeFilter label={`cost (${priceUnitLabel(priceUnit)})`} onChange={changeCurrentRange} />
+        </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="size-6 animate-spin" />
