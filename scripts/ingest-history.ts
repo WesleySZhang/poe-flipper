@@ -149,6 +149,32 @@ async function main() {
       FROM currency_daily
       ORDER BY league, name, date
     `);
+    const dailyRowObjects = dailyRows.getRowObjects();
+
+    // A currency's very first observation in a league has no preceding anchor at all yet (both
+    // checks above vacuously pass), so a wild first-day Low-confidence value sails straight
+    // through unchecked - e.g. Mirror of Kalandra opened Phrecia 2.0 at 557541c (Low) before
+    // immediately settling around 15-45k the very next few days. Worse, that bad value then
+    // became lastAcceptedValue, wrongly rejecting the genuinely-fine days right after it too (they
+    // looked like implausible drops relative to it). A backward pass giving every row the nearest
+    // UPCOMING reliable value closes that hole: an implausible leading value gets caught against
+    // what the price actually turns out to be shortly after, without needing the forward walk to
+    // have seen a reliable value yet.
+    const nextReliableValues: (number | null)[] = new Array(dailyRowObjects.length);
+    {
+      let groupKey = "";
+      let upcomingReliable: number | null = null;
+      for (let i = dailyRowObjects.length - 1; i >= 0; i--) {
+        const row = dailyRowObjects[i];
+        const key = `${row.league as string} ${row.name as string}`;
+        if (key !== groupKey) {
+          groupKey = key;
+          upcomingReliable = null;
+        }
+        nextReliableValues[i] = upcomingReliable;
+        if (Number(row.is_reliable) === 1) upcomingReliable = row.value as number;
+      }
+    }
 
     await connection.run(`
       CREATE TABLE currency_daily_filtered (league VARCHAR, name VARCHAR, date DATE, value DOUBLE)
@@ -159,9 +185,10 @@ async function main() {
     let lastAcceptedValue: number | null = null;
     let filteredCount = 0;
     let totalCount = 0;
-    for (const row of dailyRows.getRowObjects()) {
+    for (let i = 0; i < dailyRowObjects.length; i++) {
+      const row = dailyRowObjects[i];
       totalCount++;
-      const key = `${row.league as string} ${row.name as string}`;
+      const key = `${row.league as string} ${row.name as string}`;
       if (key !== groupKey) {
         groupKey = key;
         lastReliableValue = null;
@@ -171,7 +198,9 @@ async function main() {
       const isReliable = Number(row.is_reliable) === 1;
       const withinBand = (reference: number | null) =>
         reference === null || (value >= reference / 5 && value <= reference * 5);
-      const accepted = isReliable || (withinBand(lastReliableValue) && withinBand(lastAcceptedValue));
+      const accepted =
+        isReliable ||
+        (withinBand(lastReliableValue) && withinBand(lastAcceptedValue) && withinBand(nextReliableValues[i]));
 
       if (!accepted) {
         filteredCount++;
