@@ -26,22 +26,24 @@ const LEAGUE_RELEASE_DATES: Record<string, string> = {
 export const CURRENT_LEAGUE = "Allflame";
 export const CURRENT_LEAGUE_START_DATE = LEAGUE_RELEASE_DATES[CURRENT_LEAGUE];
 
-// Anchor recency to the most recent *completed* league rather than "today" - Allflame is still
-// active league-to-date, so anchoring there would make every past league's weight drift downward
-// as the active league ages, even though nothing about the historical data changed.
+// Anchor point for the half-life decay below - kept only for scripts/backtest-mirage.ts's
+// weighting-scheme comparison now (see allLeagueRecencyWeightsWithHalfLife), not used by
+// production weighting itself. Anchored to the most recent *completed* league rather than "today"
+// - Allflame is still active league-to-date, so anchoring there would make every past league's
+// weight drift as the active league ages, even though nothing about the historical data changed.
 const RECENCY_ANCHOR = LEAGUE_RELEASE_DATES["Mirage"];
 
-// Weight halves every ~6 months of release-date distance from the anchor league, so the last
-// couple of leagues dominate the average while leagues from a few years back barely register.
-const HALF_LIFE_DAYS = 180;
+// Was the production half-life (weight halving every ~6 months of release-date distance from the
+// anchor league) until a backtest comparison (scripts/backtest-mirage.ts) showed it was actively
+// hurting predictions - see allLeagueRecencyWeights below. Kept only as the "former default" data
+// point in that same comparison, so the two don't drift out of sync as separate magic numbers.
+export const HALF_LIFE_DAYS = 180;
 
 /**
- * How much a league's data point should count toward an averaged prediction, in (0, 1] - 1.0 for
- * the anchor league, decaying by half every `halfLifeDays` of release-date distance from it.
- * Leagues with no known release date (e.g. one the data source ingested under an unexpected name)
- * get full weight rather than being silently zeroed out. Takes the half-life as a parameter (rather
- * than always using HALF_LIFE_DAYS) so the backtest can test alternate weighting schemes without
- * touching the production constant - see leagueRecencyWeight for the normal, fixed-half-life case.
+ * A league's weight at a caller-supplied half-life, decaying by half every `halfLifeDays` of
+ * release-date distance from RECENCY_ANCHOR - used only by the backtest's weighting-scheme
+ * comparison now (see allLeagueRecencyWeightsWithHalfLife). Leagues with no known release date get
+ * full weight rather than being silently zeroed out.
  */
 export function leagueRecencyWeightWithHalfLife(league: string, halfLifeDays: number): number {
   const releaseDate = LEAGUE_RELEASE_DATES[league];
@@ -52,17 +54,22 @@ export function leagueRecencyWeightWithHalfLife(league: string, halfLifeDays: nu
   return Math.pow(0.5, daysFromAnchor / halfLifeDays);
 }
 
-/** The production weighting: HALF_LIFE_DAYS, decaying from the anchor league (see above). */
-export function leagueRecencyWeight(league: string): number {
-  return leagueRecencyWeightWithHalfLife(league, HALF_LIFE_DAYS);
-}
-
-/** All known leagues with their recency weight - used to build a SQL VALUES table for joining. */
+/**
+ * Production weighting: every known league counts equally (weight 1) - i.e. no recency effect at
+ * all. Used to decay by release-date distance from the most recent league (see
+ * leagueRecencyWeightWithHalfLife), on the reasonable-sounding assumption that a more recent
+ * league's economy should resemble the one being predicted more than an older one's. A backtest
+ * comparison (scripts/backtest-mirage.ts's league-weighting scheme sweep) tested that assumption
+ * directly against the Mirage holdout and found the opposite: prediction quality degraded
+ * MONOTONICALLY as the decay got more aggressive (half-life 180d -> 120d -> 90d -> 45d -> 14d each
+ * step worse than the last on both Spearman correlation and MAE), and flat weighting - this -
+ * outperformed every decayed variant tested, including the old 180-day default.
+ */
 export function allLeagueRecencyWeights(): Array<{ league: string; weight: number }> {
-  return Object.keys(LEAGUE_RELEASE_DATES).map((league) => ({ league, weight: leagueRecencyWeight(league) }));
+  return allKnownLeagues().map((league) => ({ league, weight: 1 }));
 }
 
-/** Every league with a known release date - i.e. every key allLeagueRecencyWeights can return. */
+/** Every known league - i.e. every key allLeagueRecencyWeights can return. */
 export function allKnownLeagues(): string[] {
   return Object.keys(LEAGUE_RELEASE_DATES);
 }

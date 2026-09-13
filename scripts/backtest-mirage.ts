@@ -7,7 +7,12 @@ import {
   type GrowthRatioBatchOptions,
 } from "../lib/growth-ratios";
 import { getAllCurrentCurrencyPrices } from "../lib/poe-ninja";
-import { CURRENT_LEAGUE, allLeagueRecencyWeightsWithHalfLife, allKnownLeagues } from "../lib/league-recency";
+import {
+  CURRENT_LEAGUE,
+  HALF_LIFE_DAYS,
+  allLeagueRecencyWeightsWithHalfLife,
+  allKnownLeagues,
+} from "../lib/league-recency";
 
 const HOLDOUT_LEAGUE = "Mirage";
 
@@ -27,10 +32,6 @@ for (const currentDay of START_DAYS) {
   }
 }
 
-function flatWeights(): Map<string, number> {
-  return new Map(allKnownLeagues().map((l) => [l, 1]));
-}
-
 /** Weight 1 for exactly one league, 0 for every other known league (rather than omitting them,
  *  which would fall back to the default weight of 1 - see GrowthRatioBatchOptions.leagueWeights). */
 function onlyLeagueWeights(league: string): Map<string, number> {
@@ -39,7 +40,8 @@ function onlyLeagueWeights(league: string): Map<string, number> {
 
 interface WeightingScheme {
   label: string;
-  /** undefined = production default (HALF_LIFE_DAYS-based recency weighting, see league-recency.ts). */
+  /** undefined = production default - see league-recency.ts's allLeagueRecencyWeights (flat,
+   *  as of the comparison this file ran: recency decay measurably hurt predictions - see below). */
   weights?: Map<string, number>;
   minLeaguesWithData?: number;
 }
@@ -50,13 +52,20 @@ interface WeightingScheme {
 // "most recent league only" scheme below. Update this if the training league set changes.
 const MOST_RECENT_TRAINING_LEAGUE = "Phrecia 2.0";
 
+// WEIGHTING_SCHEMES[0] is always the one main() runs the full per-scenario/per-category breakdown
+// for (see "baseline" below) - kept as whatever's actually live in production, so that detailed
+// output always describes what's actually shipping. Production is flat weighting (no recency
+// effect) as of the run that produced the comment on allLeagueRecencyWeights - every half-life
+// variant below is a comparison-only data point showing why: prediction quality degraded
+// monotonically as the decay got more aggressive, all the way from the old 180-day default down to
+// an extreme 14-day half-life.
 const WEIGHTING_SCHEMES: WeightingScheme[] = [
-  { label: "current (half-life 180d)" },
+  { label: "flat (current production default)" },
+  { label: `half-life ${HALF_LIFE_DAYS}d (former default)`, weights: allLeagueRecencyWeightsWithHalfLife(HALF_LIFE_DAYS) },
   { label: "half-life 120d", weights: allLeagueRecencyWeightsWithHalfLife(120) },
   { label: "half-life 90d", weights: allLeagueRecencyWeightsWithHalfLife(90) },
   { label: "half-life 45d", weights: allLeagueRecencyWeightsWithHalfLife(45) },
   { label: "half-life 14d (extreme recency)", weights: allLeagueRecencyWeightsWithHalfLife(14) },
-  { label: "flat (no recency effect)", weights: flatWeights() },
   {
     label: `most recent league only (${MOST_RECENT_TRAINING_LEAGUE})`,
     weights: onlyLeagueWeights(MOST_RECENT_TRAINING_LEAGUE),
@@ -396,10 +405,11 @@ async function main() {
   // exclusively) actually improve predictions, or just feel intuitive? ---
   console.log(
     `\n--- League-weighting scheme comparison, pooled across every scenario ---\n` +
-      `Each row re-runs the full backtest with a different league-recency weighting. "current" is\n` +
-      `the production default (unchanged, same numbers as above). Smaller half-life = more weight on\n` +
-      `recent leagues, less on old ones; "flat" removes recency entirely (every league counts\n` +
-      `equally); "most recent league only" trains on nothing but the single newest training league.\n`
+      `Each row re-runs the full backtest with a different league-recency weighting. "flat" is the\n` +
+      `production default (unchanged, same numbers as above) - every league counts equally, no\n` +
+      `recency effect. The half-life rows show why: smaller half-life = more weight on recent\n` +
+      `leagues, less on old ones, and prediction quality degrades monotonically as that gets more\n` +
+      `aggressive. "most recent league only" trains on nothing but the single newest training league.\n`
   );
   const comparisonRows = [weightingComparisonRow(baseline.label, baselineMatched)];
   for (const scheme of WEIGHTING_SCHEMES.slice(1)) {
