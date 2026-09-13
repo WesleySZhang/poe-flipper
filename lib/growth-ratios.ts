@@ -42,13 +42,17 @@ const MIN_STARTING_VALUE_CURRENCY = 0.2;
 const MIN_STARTING_VALUE_ITEM = 1;
 
 // A literal SQL VALUES table of every known league's recency weight, for joining onto matched
-// rows below. Built from a hardcoded release-date table (see league-recency.ts), not user input,
-// so inlining is safe. A league in the historical data that isn't in this table just gets the
-// default weight (see leagueRecencyWeight) via COALESCE at the join site.
-function leagueWeightsValuesSql(): string {
-  return allLeagueRecencyWeights()
-    .map(({ league, weight }) => `('${league.replace(/'/g, "''")}', ${weight.toFixed(8)})`)
-    .join(", ");
+// rows below. Built from a hardcoded release-date table (see league-recency.ts) by default, not
+// user input, so inlining is safe - `overrideWeights` is also never user-supplied (only the
+// backtest passes one, to test alternate weighting schemes), same reasoning applies. A league in
+// the historical data that isn't in this table just gets the default weight of 1 via COALESCE at
+// the join site (see leagueRecencyWeight, or an override scheme deliberately testing a flat/uniform
+// weighting - see backtest-mirage.ts).
+function leagueWeightsValuesSql(overrideWeights?: Map<string, number>): string {
+  const weights = overrideWeights
+    ? Array.from(overrideWeights, ([league, weight]) => ({ league, weight }))
+    : allLeagueRecencyWeights();
+  return weights.map(({ league, weight }) => `('${league.replace(/'/g, "''")}', ${weight.toFixed(8)})`).join(", ");
 }
 
 // currency_history_dayed/item_history_dayed (one row per league/name[/variant]/day) and
@@ -219,6 +223,21 @@ function scenarioValuesSql(scenarios: GrowthRatioScenario[]): string {
   return scenarios.map((s, i) => `(${i}, ${s.currentDay}, ${s.currentDay + s.durationDays})`).join(", ");
 }
 
+export interface GrowthRatioBatchOptions {
+  /** Exclude this league from the training data (e.g. the player's own active league, or a backtest holdout). */
+  excludeLeague?: string;
+  toleranceDays?: number;
+  /** Override the default recency-based league weights (see league-recency.ts) - used by the
+   *  backtest to test alternate weighting schemes without touching production behavior. A league
+   *  missing from this map gets the default weight of 1 via COALESCE at the join site, same as an
+   *  unrecognized league normally would - so to deliberately zero a league out, include it
+   *  explicitly at weight 0 rather than omitting it. */
+  leagueWeights?: Map<string, number>;
+  /** Override MIN_LEAGUES_WITH_DATA - e.g. to test training on a single league (with weight 0 on
+   *  every other league, since omitting them would just fall back to weight 1 - see above). */
+  minLeaguesWithData?: number;
+}
+
 /**
  * Same growth ratio as getCurrencyGrowthRatios, but for many (currentDay, durationDays) scenarios
  * in one query - used by the backtest, which otherwise re-scans the whole dayed table once per
@@ -227,15 +246,20 @@ function scenarioValuesSql(scenarios: GrowthRatioScenario[]): string {
  */
 export async function getCurrencyGrowthRatiosBatch(
   scenarios: GrowthRatioScenario[],
-  excludeLeague?: string,
-  toleranceDays = DEFAULT_TOLERANCE_DAYS
+  options: GrowthRatioBatchOptions = {}
 ): Promise<GrowthRatioRow[][]> {
+  const {
+    excludeLeague,
+    toleranceDays = DEFAULT_TOLERANCE_DAYS,
+    leagueWeights,
+    minLeaguesWithData = MIN_LEAGUES_WITH_DATA,
+  } = options;
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
-      VALUES ${leagueWeightsValuesSql()}
+      VALUES ${leagueWeightsValuesSql(leagueWeights)}
     ),
     scenarios (scenario_id, current_day, target_day) AS (
       VALUES ${scenarioValuesSql(scenarios)}
@@ -278,7 +302,11 @@ export async function getCurrencyGrowthRatiosBatch(
 ${DIVINE_AGGREGATE_SQL}
     FROM matched
     GROUP BY scenario_id, name
-    HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
+    -- SUM(weight) > 0 matters once a caller can override weights (see leagueWeights above): a row
+    -- can satisfy COUNT(*) >= minLeaguesWithData purely from leagues weighted to 0 (e.g. testing a
+    -- "only this one league counts" scheme), which would otherwise divide by zero into a NaN/Infinity
+    -- avg_ratio that still technically passes the row-count check.
+    HAVING COUNT(*) >= ${minLeaguesWithData} AND SUM(weight) > 0
     `,
     {
       tolerance: toleranceDays,
@@ -304,15 +332,20 @@ ${DIVINE_AGGREGATE_SQL}
 /** Same as getCurrencyGrowthRatiosBatch but for items/uniques/gems, keyed by (name, variant). */
 export async function getItemGrowthRatiosBatch(
   scenarios: GrowthRatioScenario[],
-  excludeLeague?: string,
-  toleranceDays = DEFAULT_TOLERANCE_DAYS
+  options: GrowthRatioBatchOptions = {}
 ): Promise<GrowthRatioRow[][]> {
+  const {
+    excludeLeague,
+    toleranceDays = DEFAULT_TOLERANCE_DAYS,
+    leagueWeights,
+    minLeaguesWithData = MIN_LEAGUES_WITH_DATA,
+  } = options;
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
-      VALUES ${leagueWeightsValuesSql()}
+      VALUES ${leagueWeightsValuesSql(leagueWeights)}
     ),
     scenarios (scenario_id, current_day, target_day) AS (
       VALUES ${scenarioValuesSql(scenarios)}
@@ -363,7 +396,9 @@ export async function getItemGrowthRatiosBatch(
 ${DIVINE_AGGREGATE_SQL}
     FROM matched
     GROUP BY scenario_id, name, variant
-    HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
+    -- See the currency batch query's comment above for why SUM(weight) > 0 is needed alongside the
+    -- row-count check once a caller can override weights.
+    HAVING COUNT(*) >= ${minLeaguesWithData} AND SUM(weight) > 0
     `,
     {
       tolerance: toleranceDays,

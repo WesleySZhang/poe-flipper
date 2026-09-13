@@ -11,6 +11,7 @@ import { daysBetweenUtc } from "./league-day";
 const LEAGUE_RELEASE_DATES: Record<string, string> = {
   Allflame: "2026-07-24",
   Mirage: "2026-03-06",
+  "Phrecia 2.0": "2026-01-29",
   Keepers: "2025-10-31",
   Mercenaries: "2025-06-13",
   Settlers: "2024-07-26",
@@ -36,18 +37,38 @@ const HALF_LIFE_DAYS = 180;
 
 /**
  * How much a league's data point should count toward an averaged prediction, in (0, 1] - 1.0 for
- * the anchor league, decaying by half every HALF_LIFE_DAYS of release-date distance from it.
+ * the anchor league, decaying by half every `halfLifeDays` of release-date distance from it.
  * Leagues with no known release date (e.g. one the data source ingested under an unexpected name)
- * get full weight rather than being silently zeroed out.
+ * get full weight rather than being silently zeroed out. Takes the half-life as a parameter (rather
+ * than always using HALF_LIFE_DAYS) so the backtest can test alternate weighting schemes without
+ * touching the production constant - see leagueRecencyWeight for the normal, fixed-half-life case.
  */
-export function leagueRecencyWeight(league: string): number {
+export function leagueRecencyWeightWithHalfLife(league: string, halfLifeDays: number): number {
   const releaseDate = LEAGUE_RELEASE_DATES[league];
   if (!releaseDate) return 1;
   const daysFromAnchor = Math.abs(daysBetweenUtc(new Date(releaseDate), new Date(RECENCY_ANCHOR)));
-  return Math.pow(0.5, daysFromAnchor / HALF_LIFE_DAYS);
+  // A half-life of 0 would divide by zero - treat it as "only the anchor league itself counts".
+  if (halfLifeDays <= 0) return daysFromAnchor === 0 ? 1 : 0;
+  return Math.pow(0.5, daysFromAnchor / halfLifeDays);
+}
+
+/** The production weighting: HALF_LIFE_DAYS, decaying from the anchor league (see above). */
+export function leagueRecencyWeight(league: string): number {
+  return leagueRecencyWeightWithHalfLife(league, HALF_LIFE_DAYS);
 }
 
 /** All known leagues with their recency weight - used to build a SQL VALUES table for joining. */
 export function allLeagueRecencyWeights(): Array<{ league: string; weight: number }> {
   return Object.keys(LEAGUE_RELEASE_DATES).map((league) => ({ league, weight: leagueRecencyWeight(league) }));
+}
+
+/** Every league with a known release date - i.e. every key allLeagueRecencyWeights can return. */
+export function allKnownLeagues(): string[] {
+  return Object.keys(LEAGUE_RELEASE_DATES);
+}
+
+/** Same as allLeagueRecencyWeights, but at a caller-supplied half-life - for the backtest to test
+ *  alternate weighting schemes (see growth-ratios.ts's GrowthRatioBatchOptions.leagueWeights). */
+export function allLeagueRecencyWeightsWithHalfLife(halfLifeDays: number): Map<string, number> {
+  return new Map(allKnownLeagues().map((league) => [league, leagueRecencyWeightWithHalfLife(league, halfLifeDays)]));
 }

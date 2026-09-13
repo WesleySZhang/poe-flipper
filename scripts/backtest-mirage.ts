@@ -4,9 +4,10 @@ import {
   getActualCurrencyValueAtDay,
   getActualItemValueAtDay,
   type GrowthRatioRow,
+  type GrowthRatioBatchOptions,
 } from "../lib/growth-ratios";
 import { getAllCurrentCurrencyPrices } from "../lib/poe-ninja";
-import { CURRENT_LEAGUE } from "../lib/league-recency";
+import { CURRENT_LEAGUE, allLeagueRecencyWeightsWithHalfLife, allKnownLeagues } from "../lib/league-recency";
 
 const HOLDOUT_LEAGUE = "Mirage";
 
@@ -25,6 +26,43 @@ for (const currentDay of START_DAYS) {
     }
   }
 }
+
+function flatWeights(): Map<string, number> {
+  return new Map(allKnownLeagues().map((l) => [l, 1]));
+}
+
+/** Weight 1 for exactly one league, 0 for every other known league (rather than omitting them,
+ *  which would fall back to the default weight of 1 - see GrowthRatioBatchOptions.leagueWeights). */
+function onlyLeagueWeights(league: string): Map<string, number> {
+  return new Map(allKnownLeagues().map((l) => [l, l === league ? 1 : 0]));
+}
+
+interface WeightingScheme {
+  label: string;
+  /** undefined = production default (HALF_LIFE_DAYS-based recency weighting, see league-recency.ts). */
+  weights?: Map<string, number>;
+  minLeaguesWithData?: number;
+}
+
+// Training leagues (everything except the HOLDOUT_LEAGUE and the still-active CURRENT_LEAGUE) are
+// currently Keepers (2025-10-31), Mercenaries (2025-06-13), Settlers (2024-07-26), and Phrecia 2.0
+// (2026-01-29) - Phrecia 2.0 is the most recent of the four, which is why it's the target for the
+// "most recent league only" scheme below. Update this if the training league set changes.
+const MOST_RECENT_TRAINING_LEAGUE = "Phrecia 2.0";
+
+const WEIGHTING_SCHEMES: WeightingScheme[] = [
+  { label: "current (half-life 180d)" },
+  { label: "half-life 120d", weights: allLeagueRecencyWeightsWithHalfLife(120) },
+  { label: "half-life 90d", weights: allLeagueRecencyWeightsWithHalfLife(90) },
+  { label: "half-life 45d", weights: allLeagueRecencyWeightsWithHalfLife(45) },
+  { label: "half-life 14d (extreme recency)", weights: allLeagueRecencyWeightsWithHalfLife(14) },
+  { label: "flat (no recency effect)", weights: flatWeights() },
+  {
+    label: `most recent league only (${MOST_RECENT_TRAINING_LEAGUE})`,
+    weights: onlyLeagueWeights(MOST_RECENT_TRAINING_LEAGUE),
+    minLeaguesWithData: 1,
+  },
+];
 
 interface MatchedRow {
   key: string;
@@ -184,23 +222,16 @@ function divineRatio(now: number | undefined, future: number | undefined): numbe
   return future / now;
 }
 
-async function main() {
-  console.log(
-    `Backtesting flip-suggestion model against holdout league "${HOLDOUT_LEAGUE}" (excluded from training).\n` +
-      `${SCENARIOS.length} scenarios, all with currentDay + durationDays <= ${MAX_TOTAL_DAY}. ` +
-      `Currency: all confidence levels. Items: High/Medium confidence only.\n`
-  );
-
-  // One query per type covering every scenario, instead of one pair per scenario - the expensive
-  // part (aggregating the whole multi-league history) doesn't depend on the scenario, so redoing
-  // it per scenario is pure waste.
-  const [currencyRatiosByScenario, itemRatiosByScenario, currencyTypes] = await Promise.all([
-    getCurrencyGrowthRatiosBatch(SCENARIOS, HOLDOUT_LEAGUE),
-    getItemGrowthRatiosBatch(SCENARIOS, HOLDOUT_LEAGUE),
-    // Currency's historical data has no type bucket of its own (see growth-ratios.ts) - proxy off
-    // the live current-league taxonomy, same approach as lib/mirage-simulator.ts, since poe.ninja's
-    // type buckets (Scarab, Essence, ...) are a fixed, league-agnostic taxonomy.
-    getAllCurrentCurrencyPrices(CURRENT_LEAGUE),
+/** Runs every scenario under one weighting scheme, returning every matched row pooled together
+ *  (per-scenario/per-category breakdowns are only printed for the baseline scheme - see main()). */
+async function runBacktest(
+  batchOptions: GrowthRatioBatchOptions,
+  currencyTypes: Map<string, { type: string }>,
+  logSkips: boolean
+): Promise<{ allMatched: MatchedRow[]; perScenarioSummary: Record<string, unknown>[] }> {
+  const [currencyRatiosByScenario, itemRatiosByScenario] = await Promise.all([
+    getCurrencyGrowthRatiosBatch(SCENARIOS, batchOptions),
+    getItemGrowthRatiosBatch(SCENARIOS, batchOptions),
   ]);
 
   const perScenarioSummary: Record<string, unknown>[] = [];
@@ -216,7 +247,7 @@ async function main() {
       currencyTypes
     );
     if (matched.length < 5) {
-      console.log(`day ${currentDay} -> +${durationDays}d: only ${matched.length} matched items, skipping`);
+      if (logSkips) console.log(`day ${currentDay} -> +${durationDays}d: only ${matched.length} matched items, skipping`);
       continue;
     }
     allMatched.push(...matched);
@@ -236,16 +267,58 @@ async function main() {
     });
   }
 
+  return { allMatched, perScenarioSummary };
+}
+
+function weightingComparisonRow(label: string, allMatched: MatchedRow[]) {
+  const chaos = summarize(chaosPairs(allMatched));
+  const divine = summarize(divinePairs(allMatched));
+  return {
+    scheme: label,
+    n_chaos: chaos.n,
+    spearman_chaos: chaos.spearman.toFixed(3),
+    "dir%_chaos": Math.round(chaos.directionalAccuracy * 100),
+    MAE_chaos: chaos.mae.toFixed(3),
+    n_div: divine.n,
+    spearman_div: divine.spearman.toFixed(3),
+    "dir%_div": Math.round(divine.directionalAccuracy * 100),
+    MAE_div: divine.mae.toFixed(3),
+  };
+}
+
+async function main() {
   console.log(
-    `--- Per-scenario results (${perScenarioSummary.length} scenarios with enough data) ---\n` +
+    `Backtesting flip-suggestion model against holdout league "${HOLDOUT_LEAGUE}" (excluded from training).\n` +
+      `${SCENARIOS.length} scenarios, all with currentDay + durationDays <= ${MAX_TOTAL_DAY}. ` +
+      `Currency: all confidence levels. Items: High/Medium confidence only.\n`
+  );
+
+  // Currency's historical data has no type bucket of its own (see growth-ratios.ts) - proxy off the
+  // live current-league taxonomy, same approach as lib/mirage-simulator.ts, since poe.ninja's type
+  // buckets (Scarab, Essence, ...) are a fixed, league-agnostic taxonomy. Doesn't depend on the
+  // weighting scheme, so fetched once and reused across every scheme below.
+  const currencyTypes = await getAllCurrentCurrencyPrices(CURRENT_LEAGUE);
+
+  // The baseline (production) scheme gets the full per-scenario + per-category breakdown, exactly
+  // as before - every other scheme only contributes a pooled row to the comparison table at the
+  // end, since running the full breakdown for all 7 schemes would be far more output than useful.
+  const baseline = WEIGHTING_SCHEMES[0];
+  const { allMatched: baselineMatched, perScenarioSummary } = await runBacktest(
+    { excludeLeague: HOLDOUT_LEAGUE, leagueWeights: baseline.weights, minLeaguesWithData: baseline.minLeaguesWithData },
+    currencyTypes,
+    true
+  );
+
+  console.log(
+    `--- Per-scenario results (${perScenarioSummary.length} scenarios with enough data), "${baseline.label}" ---\n` +
       `_chaos = prices measured in chaos (includes chaos debasement); _div = measured in divines\n` +
       `(real value change, debasement divided out).\n`
   );
   console.table(perScenarioSummary);
 
-  const pooledChaos = summarize(chaosPairs(allMatched));
-  const pooledDivine = summarize(divinePairs(allMatched));
-  console.log("\n--- Chaos vs divine denomination, pooled across every scenario ---");
+  const pooledChaos = summarize(chaosPairs(baselineMatched));
+  const pooledDivine = summarize(divinePairs(baselineMatched));
+  console.log(`\n--- Chaos vs divine denomination, pooled across every scenario, "${baseline.label}" ---`);
   console.table([
     {
       denomination: "chaos",
@@ -276,7 +349,7 @@ async function main() {
   // to trust on its own, but pooled across ~9x9 day/duration combos each category gets a much
   // larger, more stable sample.
   const byCategory = new Map<string, MatchedRow[]>();
-  for (const row of allMatched) {
+  for (const row of baselineMatched) {
     const list = byCategory.get(row.category) ?? [];
     list.push(row);
     byCategory.set(row.category, list);
@@ -302,7 +375,7 @@ async function main() {
     .sort((a, b) => b.spearman_r - a.spearman_r);
 
   console.log(
-    `\n--- Reliability by category, pooled across all ${SCENARIOS.length} scenarios (>= 20 matched rows only) ---\n` +
+    `\n--- Reliability by category, pooled across all ${SCENARIOS.length} scenarios (>= 20 matched rows only), "${baseline.label}" ---\n` +
       `Sorted by Spearman correlation (predicted x vs actual x) descending - higher means the model's\n` +
       `ranking of that category's items is more trustworthy; low/negative means treat its predictions with caution.\n`
   );
@@ -318,6 +391,26 @@ async function main() {
       medianAE: c.medianAE.toFixed(3),
     }))
   );
+
+  // --- League-weighting scheme comparison: does favoring recent leagues more (or less, or
+  // exclusively) actually improve predictions, or just feel intuitive? ---
+  console.log(
+    `\n--- League-weighting scheme comparison, pooled across every scenario ---\n` +
+      `Each row re-runs the full backtest with a different league-recency weighting. "current" is\n` +
+      `the production default (unchanged, same numbers as above). Smaller half-life = more weight on\n` +
+      `recent leagues, less on old ones; "flat" removes recency entirely (every league counts\n` +
+      `equally); "most recent league only" trains on nothing but the single newest training league.\n`
+  );
+  const comparisonRows = [weightingComparisonRow(baseline.label, baselineMatched)];
+  for (const scheme of WEIGHTING_SCHEMES.slice(1)) {
+    const { allMatched } = await runBacktest(
+      { excludeLeague: HOLDOUT_LEAGUE, leagueWeights: scheme.weights, minLeaguesWithData: scheme.minLeaguesWithData },
+      currencyTypes,
+      false
+    );
+    comparisonRows.push(weightingComparisonRow(scheme.label, allMatched));
+  }
+  console.table(comparisonRows);
 
   process.exit(0);
 }
