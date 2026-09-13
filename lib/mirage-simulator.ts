@@ -24,6 +24,9 @@ export interface MirageSimulationRow {
   actualFutureDivine?: number;
   predictedRatio: number;
   actualRatio: number;
+  /** Ratios with chaos debasement divided out - see GrowthRatioRow.avgRatioDivine. */
+  predictedRatioDivine?: number;
+  actualRatioDivine?: number;
 }
 
 /**
@@ -61,33 +64,35 @@ export async function simulateMirageLeague(
     getAllCurrentCurrencyPrices(CURRENT_LEAGUE),
   ]);
 
-  // Same reasoning as the live flip-suggestions side (see lib/flip-suggestions.ts): a chaos price
-  // alone conflates an item's own value with Divine Orb's exchange rate, which inflates a lot over
-  // a league. Here "now" and "future" are two different historical days, so each needs its own
-  // day-specific rate rather than a single current one.
-  const nowDivineRate = actualNowCurrency.get("Divine Orb");
-  const futureDivineRate = actualFutureCurrency.get("Divine Orb");
-
   const rows: MirageSimulationRow[] = [];
 
+  // Each actual value already carries its own day's divine conversion (see growth-ratios.ts), and
+  // the predicted divine value comes from the divine-denominated ratio rather than converting a
+  // chaos prediction - otherwise predicted and actual would be measured against Divine Orb rates
+  // from different days, and the comparison would be skewed by however much divine inflated in
+  // between (roughly 1.4x over a 14-day window early in Mirage).
   for (const trend of currencyTrends) {
     const actualNow = actualNowCurrency.get(trend.name);
     const actualFuture = actualFutureCurrency.get(trend.name);
-    if (actualNow === undefined || actualFuture === undefined || actualNow <= 0) continue;
-    const predictedChaosValue = actualNow * trend.avgRatio;
+    if (actualNow === undefined || actualFuture === undefined || actualNow.value <= 0) continue;
     rows.push({
       name: trend.name,
       category: "currency",
       filterCategory: currencyTypes.get(trend.name)?.type ?? "Currency",
       leagueCount: trend.leagueCount,
-      actualNowChaos: actualNow,
-      actualNowDivine: nowDivineRate ? actualNow / nowDivineRate : undefined,
-      predictedChaosValue,
-      predictedDivineValue: nowDivineRate ? predictedChaosValue / nowDivineRate : undefined,
-      actualFutureChaos: actualFuture,
-      actualFutureDivine: futureDivineRate ? actualFuture / futureDivineRate : undefined,
+      actualNowChaos: actualNow.value,
+      actualNowDivine: actualNow.valueDivine,
+      predictedChaosValue: actualNow.value * trend.avgRatio,
+      predictedDivineValue:
+        actualNow.valueDivine !== undefined && trend.avgRatioDivine !== undefined
+          ? actualNow.valueDivine * trend.avgRatioDivine
+          : undefined,
+      actualFutureChaos: actualFuture.value,
+      actualFutureDivine: actualFuture.valueDivine,
       predictedRatio: trend.avgRatio,
-      actualRatio: actualFuture / actualNow,
+      actualRatio: actualFuture.value / actualNow.value,
+      predictedRatioDivine: trend.avgRatioDivine,
+      actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
     });
   }
 
@@ -96,22 +101,31 @@ export async function simulateMirageLeague(
     const actualNow = actualNowItem.get(key);
     const actualFuture = actualFutureItem.get(key);
     if (actualNow === undefined || actualFuture === undefined || actualNow.value <= 0) continue;
-    const predictedChaosValue = actualNow.value * trend.avgRatio;
     rows.push({
       name: formatItemDisplayName(trend.name, trend.variant),
       category: "item",
       filterCategory: actualNow.type || trend.name,
       leagueCount: trend.leagueCount,
       actualNowChaos: actualNow.value,
-      actualNowDivine: nowDivineRate ? actualNow.value / nowDivineRate : undefined,
-      predictedChaosValue,
-      predictedDivineValue: nowDivineRate ? predictedChaosValue / nowDivineRate : undefined,
+      actualNowDivine: actualNow.valueDivine,
+      predictedChaosValue: actualNow.value * trend.avgRatio,
+      predictedDivineValue:
+        actualNow.valueDivine !== undefined && trend.avgRatioDivine !== undefined
+          ? actualNow.valueDivine * trend.avgRatioDivine
+          : undefined,
       actualFutureChaos: actualFuture.value,
-      actualFutureDivine: futureDivineRate ? actualFuture.value / futureDivineRate : undefined,
+      actualFutureDivine: actualFuture.valueDivine,
       predictedRatio: trend.avgRatio,
       actualRatio: actualFuture.value / actualNow.value,
+      predictedRatioDivine: trend.avgRatioDivine,
+      actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
     });
   }
 
   return rows.sort((a, b) => b.predictedRatio - a.predictedRatio);
+}
+
+function divineRatio(now: number | undefined, future: number | undefined): number | undefined {
+  if (now === undefined || future === undefined || now <= 0) return undefined;
+  return future / now;
 }

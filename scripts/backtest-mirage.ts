@@ -34,6 +34,15 @@ interface MatchedRow {
   actualNow: number;
   actualFuture: number;
   actualRatio: number;
+  /** Same prediction/outcome measured in divines, i.e. with chaos debasement divided out. */
+  predictedRatioDivine?: number;
+  actualRatioDivine?: number;
+}
+
+/** One prediction paired with what actually happened, in whichever denomination is being scored. */
+interface RatioPair {
+  predicted: number;
+  actual: number;
 }
 
 function mean(xs: number[]): number {
@@ -77,23 +86,38 @@ function spearman(xs: number[], ys: number[]): number {
   return pearson(rank(xs), rank(ys));
 }
 
-/** Fraction of rows where the prediction and reality agree on direction (both a rise or both a fall). */
-function directionalAccuracy(rows: MatchedRow[]): number {
-  const agree = rows.filter((m) => (m.predictedRatio >= 1) === (m.actualRatio >= 1)).length;
-  return agree / rows.length;
+/** Fraction of pairs where the prediction and reality agree on direction (both a rise or both a fall). */
+function directionalAccuracy(pairs: RatioPair[]): number {
+  const agree = pairs.filter((p) => (p.predicted >= 1) === (p.actual >= 1)).length;
+  return agree / pairs.length;
 }
 
-function summarize(rows: MatchedRow[]) {
-  const predicted = rows.map((m) => m.predictedRatio);
-  const actual = rows.map((m) => m.actualRatio);
-  const absErrors = rows.map((m) => Math.abs(m.predictedRatio - m.actualRatio));
+/** Prices in chaos - the model's original denomination, which includes chaos debasement. */
+function chaosPairs(rows: MatchedRow[]): RatioPair[] {
+  return rows.map((m) => ({ predicted: m.predictedRatio, actual: m.actualRatio }));
+}
+
+/** Prices in divines - real value change, with chaos debasement divided out. Rows missing a
+ *  Divine Orb rate on either day drop out, so this is scored over a slightly smaller sample. */
+function divinePairs(rows: MatchedRow[]): RatioPair[] {
+  return rows.flatMap((m) =>
+    m.predictedRatioDivine !== undefined && m.actualRatioDivine !== undefined
+      ? [{ predicted: m.predictedRatioDivine, actual: m.actualRatioDivine }]
+      : []
+  );
+}
+
+function summarize(pairs: RatioPair[]) {
+  const predicted = pairs.map((p) => p.predicted);
+  const actual = pairs.map((p) => p.actual);
+  const absErrors = pairs.map((p) => Math.abs(p.predicted - p.actual));
   return {
-    n: rows.length,
+    n: pairs.length,
     pearson: pearson(predicted, actual),
     spearman: spearman(predicted, actual),
     mae: mean(absErrors),
     medianAe: median(absErrors),
-    directionalAccuracy: directionalAccuracy(rows),
+    directionalAccuracy: directionalAccuracy(pairs),
     avgPredictedX: mean(predicted),
     avgActualX: mean(actual),
   };
@@ -120,15 +144,17 @@ async function runScenario(
   for (const trend of currencyRatios) {
     const actualNow = actualNowCurrency.get(trend.name);
     const actualFuture = actualFutureCurrency.get(trend.name);
-    if (actualNow === undefined || actualFuture === undefined || actualNow <= 0) continue;
+    if (actualNow === undefined || actualFuture === undefined || actualNow.value <= 0) continue;
     matched.push({
       key: trend.name,
       category: currencyTypes.get(trend.name)?.type ?? "Currency",
       predictedRatio: trend.avgRatio,
       leagueCount: trend.leagueCount,
-      actualNow,
-      actualFuture,
-      actualRatio: actualFuture / actualNow,
+      actualNow: actualNow.value,
+      actualFuture: actualFuture.value,
+      actualRatio: actualFuture.value / actualNow.value,
+      predictedRatioDivine: trend.avgRatioDivine,
+      actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
     });
   }
 
@@ -136,21 +162,26 @@ async function runScenario(
     const key = trend.variant ? `${trend.name}::${trend.variant}` : trend.name;
     const actualNowEntry = actualNowItem.get(key);
     const actualFutureEntry = actualFutureItem.get(key);
-    const actualNow = actualNowEntry?.value;
-    const actualFuture = actualFutureEntry?.value;
-    if (actualNow === undefined || actualFuture === undefined || actualNow <= 0) continue;
+    if (actualNowEntry === undefined || actualFutureEntry === undefined || actualNowEntry.value <= 0) continue;
     matched.push({
       key,
-      category: actualNowEntry?.type ?? actualFutureEntry?.type ?? "Unknown",
+      category: actualNowEntry.type ?? actualFutureEntry.type ?? "Unknown",
       predictedRatio: trend.avgRatio,
       leagueCount: trend.leagueCount,
-      actualNow,
-      actualFuture,
-      actualRatio: actualFuture / actualNow,
+      actualNow: actualNowEntry.value,
+      actualFuture: actualFutureEntry.value,
+      actualRatio: actualFutureEntry.value / actualNowEntry.value,
+      predictedRatioDivine: trend.avgRatioDivine,
+      actualRatioDivine: divineRatio(actualNowEntry.valueDivine, actualFutureEntry.valueDivine),
     });
   }
 
   return matched;
+}
+
+function divineRatio(now: number | undefined, future: number | undefined): number | undefined {
+  if (now === undefined || future === undefined || now <= 0) return undefined;
+  return future / now;
 }
 
 async function main() {
@@ -188,21 +219,56 @@ async function main() {
       continue;
     }
     allMatched.push(...matched);
-    const s = summarize(matched);
+    const chaos = summarize(chaosPairs(matched));
+    const divine = summarize(divinePairs(matched));
     perScenarioSummary.push({
       "day -> +Nd": `${currentDay} -> +${durationDays}d`,
-      n: s.n,
-      pearson_r: s.pearson.toFixed(3),
-      spearman_r: s.spearman.toFixed(3),
-      MAE: s.mae.toFixed(3),
-      "dir. accuracy%": Math.round(s.directionalAccuracy * 100),
-      "avg predicted x": s.avgPredictedX.toFixed(2),
-      "avg actual x": s.avgActualX.toFixed(2),
+      n: chaos.n,
+      spearman_chaos: chaos.spearman.toFixed(3),
+      spearman_div: divine.spearman.toFixed(3),
+      "dir%_chaos": Math.round(chaos.directionalAccuracy * 100),
+      "dir%_div": Math.round(divine.directionalAccuracy * 100),
+      MAE_chaos: chaos.mae.toFixed(3),
+      MAE_div: divine.mae.toFixed(3),
+      "avg actual x_chaos": chaos.avgActualX.toFixed(2),
+      "avg actual x_div": divine.avgActualX.toFixed(2),
     });
   }
 
-  console.log(`--- Per-scenario results (${perScenarioSummary.length} scenarios with enough data) ---`);
+  console.log(
+    `--- Per-scenario results (${perScenarioSummary.length} scenarios with enough data) ---\n` +
+      `_chaos = prices measured in chaos (includes chaos debasement); _div = measured in divines\n` +
+      `(real value change, debasement divided out).\n`
+  );
   console.table(perScenarioSummary);
+
+  const pooledChaos = summarize(chaosPairs(allMatched));
+  const pooledDivine = summarize(divinePairs(allMatched));
+  console.log("\n--- Chaos vs divine denomination, pooled across every scenario ---");
+  console.table([
+    {
+      denomination: "chaos",
+      n: pooledChaos.n,
+      pearson_r: pooledChaos.pearson.toFixed(3),
+      spearman_r: pooledChaos.spearman.toFixed(3),
+      MAE: pooledChaos.mae.toFixed(3),
+      medianAE: pooledChaos.medianAe.toFixed(3),
+      "dir. accuracy%": Math.round(pooledChaos.directionalAccuracy * 100),
+      "avg predicted x": pooledChaos.avgPredictedX.toFixed(2),
+      "avg actual x": pooledChaos.avgActualX.toFixed(2),
+    },
+    {
+      denomination: "divine",
+      n: pooledDivine.n,
+      pearson_r: pooledDivine.pearson.toFixed(3),
+      spearman_r: pooledDivine.spearman.toFixed(3),
+      MAE: pooledDivine.mae.toFixed(3),
+      medianAE: pooledDivine.medianAe.toFixed(3),
+      "dir. accuracy%": Math.round(pooledDivine.directionalAccuracy * 100),
+      "avg predicted x": pooledDivine.avgPredictedX.toFixed(2),
+      "avg actual x": pooledDivine.avgActualX.toFixed(2),
+    },
+  ]);
 
   // Pool every scenario's matches by category to answer "which item types is the model actually
   // reliable for" - a single scenario's category slice is often too small (e.g. 3 Scarabs matched)
@@ -218,17 +284,18 @@ async function main() {
   const categorySummary = Array.from(byCategory.entries())
     .filter(([, rows]) => rows.length >= 20) // too few pooled rows to say anything meaningful
     .map(([category, rows]) => {
-      const s = summarize(rows);
+      const chaos = summarize(chaosPairs(rows));
+      const divinePairsForCategory = divinePairs(rows);
+      const divine = divinePairsForCategory.length >= 20 ? summarize(divinePairsForCategory) : undefined;
       return {
         category,
-        n: s.n,
-        pearson_r: s.pearson,
-        spearman_r: s.spearman,
-        MAE: s.mae,
-        medianAE: s.medianAe,
-        "dir. accuracy%": Math.round(s.directionalAccuracy * 100),
-        "avg predicted x": s.avgPredictedX,
-        "avg actual x": s.avgActualX,
+        n: chaos.n,
+        spearman_r: chaos.spearman,
+        spearmanDivine: divine?.spearman,
+        MAE: chaos.mae,
+        medianAE: chaos.medianAe,
+        "dir. accuracy%": Math.round(chaos.directionalAccuracy * 100),
+        "dir. accuracy% (div)": divine ? Math.round(divine.directionalAccuracy * 100) : undefined,
       };
     })
     .sort((a, b) => b.spearman_r - a.spearman_r);
@@ -242,13 +309,12 @@ async function main() {
     categorySummary.map((c) => ({
       category: c.category,
       n: c.n,
-      pearson_r: c.pearson_r.toFixed(3),
-      spearman_r: c.spearman_r.toFixed(3),
+      spearman_chaos: c.spearman_r.toFixed(3),
+      spearman_div: c.spearmanDivine !== undefined ? c.spearmanDivine.toFixed(3) : "-",
+      "dir%_chaos": c["dir. accuracy%"],
+      "dir%_div": c["dir. accuracy% (div)"] ?? "-",
       MAE: c.MAE.toFixed(3),
       medianAE: c.medianAE.toFixed(3),
-      "dir. accuracy%": c["dir. accuracy%"],
-      "avg predicted x": c["avg predicted x"].toFixed(2),
-      "avg actual x": c["avg actual x"].toFixed(2),
     }))
   );
 

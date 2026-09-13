@@ -6,6 +6,13 @@ export interface GrowthRatioRow {
   variant?: string;
   avgRatio: number;
   leagueCount: number;
+  /**
+   * The same growth ratio measured in divines instead of chaos - i.e. with chaos debasement
+   * divided out, so it reflects the item's real change in value rather than the economy inflating
+   * around it. Undefined when too few leagues had a Divine Orb rate on both matched days.
+   */
+  avgRatioDivine?: number;
+  leagueCountDivine: number;
 }
 
 export interface GrowthRatioScenario {
@@ -38,11 +45,34 @@ function leagueWeightsValuesSql(): string {
     .join(", ");
 }
 
-// currency_history_dayed/item_history_dayed (one row per league/name[/variant]/day) are built once,
-// permanently, at ingest time (see scripts/ingest-history.ts) rather than materialized here at
-// query time - the raw per-listing history they're derived from is dropped after ingest, since
-// nothing else needs it, which keeps the shipped database small enough to deploy (see README's
-// deployment section).
+// currency_history_dayed/item_history_dayed (one row per league/name[/variant]/day) and
+// divine_rate_dayed (chaos-per-divine per league/day) are built once, permanently, at ingest time
+// (see scripts/ingest-history.ts) rather than materialized here at query time - the raw
+// per-listing history they're derived from is dropped after ingest, since nothing else needs it,
+// which keeps the shipped database small enough to deploy (see README's deployment section).
+
+// Each matched row carries the Divine Orb rate from its own day, so the divine-denominated ratio
+// is (future price in divines) / (now price in divines) - chaos inflation between the two days
+// cancels out instead of being counted as growth.
+const DIVINE_RATIO_SQL =
+  "(f.value_future / NULLIF(f.rate_future, 0)) / NULLIF(n.value_now / NULLIF(n.rate_now, 0), 0)";
+
+// Averaged the same way as the chaos ratio (recency-weighted, in log space), but only over the
+// leagues that actually had a divine rate on both days - hence the FILTERs and separate count.
+const DIVINE_AGGREGATE_SQL = `
+      EXP(
+        SUM(weight * LN(ratio_divine)) FILTER (WHERE ratio_divine > 0) /
+        NULLIF(SUM(weight) FILTER (WHERE ratio_divine > 0), 0)
+      ) AS avg_ratio_divine,
+      COUNT(*) FILTER (WHERE ratio_divine > 0) AS league_count_divine`;
+
+/** A divine ratio backed by fewer leagues than the chaos one is too thin to trust - drop it. */
+function divineRatioFrom(row: Record<string, unknown>): number | undefined {
+  if (Number(row.league_count_divine ?? 0) < MIN_LEAGUES_WITH_DATA) return undefined;
+  const parsed = Number(row.avg_ratio_divine);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 export interface GrowthRatioOptions extends GrowthRatioScenario {
   /** Exclude this league from the training data (e.g. the player's own active league, or a backtest holdout). */
   excludeLeague?: string;
@@ -54,26 +84,29 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
   const { currentDay, durationDays, excludeLeague, toleranceDays = DEFAULT_TOLERANCE_DAYS } = options;
   const targetDay = currentDay + durationDays;
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
+  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
       VALUES ${leagueWeightsValuesSql()}
     ),
     nearest_now AS (
-      SELECT league, name, value AS value_now, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY league, name ORDER BY ABS(day_offset - $currentDay)) AS rn
-      FROM currency_history_dayed
-      WHERE day_offset BETWEEN $currentDay - $tolerance AND $currentDay + $tolerance ${excludeClause}
+      SELECT d.league, d.name, d.value AS value_now, dr.chaos_per_divine AS rate_now, d.day_offset,
+             ROW_NUMBER() OVER (PARTITION BY d.league, d.name ORDER BY ABS(d.day_offset - $currentDay)) AS rn
+      FROM currency_history_dayed d
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
+      WHERE d.day_offset BETWEEN $currentDay - $tolerance AND $currentDay + $tolerance ${excludeClause}
     ),
     nearest_future AS (
-      SELECT league, name, value AS value_future, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY league, name ORDER BY ABS(day_offset - $targetDay)) AS rn
-      FROM currency_history_dayed
-      WHERE day_offset BETWEEN $targetDay - $tolerance AND $targetDay + $tolerance ${excludeClause}
+      SELECT d.league, d.name, d.value AS value_future, dr.chaos_per_divine AS rate_future, d.day_offset,
+             ROW_NUMBER() OVER (PARTITION BY d.league, d.name ORDER BY ABS(d.day_offset - $targetDay)) AS rn
+      FROM currency_history_dayed d
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
+      WHERE d.day_offset BETWEEN $targetDay - $tolerance AND $targetDay + $tolerance ${excludeClause}
     ),
     matched AS (
       SELECT n.name, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+             ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
       JOIN nearest_future f ON n.league = f.league AND n.name = f.name
@@ -85,7 +118,8 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
     -- Ratios are multiplicative (a 10x league and a 0.1x league should cancel out), so average
     -- in log space - a plain average would also let one outlier league dominate. Weighted by
     -- league recency on top of that, so a recent league's ratio counts far more than an old one's.
-    SELECT name, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count
+    SELECT name, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
+${DIVINE_AGGREGATE_SQL}
     FROM matched
     GROUP BY name
     HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
@@ -101,6 +135,8 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
     name: String(row.name),
     avgRatio: Number(row.avg_ratio),
     leagueCount: Number(row.league_count),
+    avgRatioDivine: divineRatioFrom(row),
+    leagueCountDivine: Number(row.league_count_divine ?? 0),
   }));
 }
 
@@ -109,26 +145,33 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
   const { currentDay, durationDays, excludeLeague, toleranceDays = DEFAULT_TOLERANCE_DAYS } = options;
   const targetDay = currentDay + durationDays;
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
+  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
       VALUES ${leagueWeightsValuesSql()}
     ),
     nearest_now AS (
-      SELECT league, name, variant, value AS value_now, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY league, name, variant ORDER BY ABS(day_offset - $currentDay)) AS rn
-      FROM item_history_dayed
-      WHERE day_offset BETWEEN $currentDay - $tolerance AND $currentDay + $tolerance ${excludeClause}
+      SELECT d.league, d.name, d.variant, d.value AS value_now, dr.chaos_per_divine AS rate_now, d.day_offset,
+             ROW_NUMBER() OVER (
+               PARTITION BY d.league, d.name, d.variant ORDER BY ABS(d.day_offset - $currentDay)
+             ) AS rn
+      FROM item_history_dayed d
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
+      WHERE d.day_offset BETWEEN $currentDay - $tolerance AND $currentDay + $tolerance ${excludeClause}
     ),
     nearest_future AS (
-      SELECT league, name, variant, value AS value_future, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY league, name, variant ORDER BY ABS(day_offset - $targetDay)) AS rn
-      FROM item_history_dayed
-      WHERE day_offset BETWEEN $targetDay - $tolerance AND $targetDay + $tolerance ${excludeClause}
+      SELECT d.league, d.name, d.variant, d.value AS value_future, dr.chaos_per_divine AS rate_future, d.day_offset,
+             ROW_NUMBER() OVER (
+               PARTITION BY d.league, d.name, d.variant ORDER BY ABS(d.day_offset - $targetDay)
+             ) AS rn
+      FROM item_history_dayed d
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
+      WHERE d.day_offset BETWEEN $targetDay - $tolerance AND $targetDay + $tolerance ${excludeClause}
     ),
     matched AS (
       SELECT n.name, n.variant, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+             ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
       JOIN nearest_future f
@@ -141,7 +184,8 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
     -- Ratios are multiplicative (a 10x league and a 0.1x league should cancel out), so average
     -- in log space - a plain average would also let one outlier league dominate. Weighted by
     -- league recency on top of that, so a recent league's ratio counts far more than an old one's.
-    SELECT name, variant, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count
+    SELECT name, variant, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
+${DIVINE_AGGREGATE_SQL}
     FROM matched
     GROUP BY name, variant
     HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
@@ -158,6 +202,8 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
     variant: row.variant ? String(row.variant) : undefined,
     avgRatio: Number(row.avg_ratio),
     leagueCount: Number(row.league_count),
+    avgRatioDivine: divineRatioFrom(row),
+    leagueCountDivine: Number(row.league_count_divine ?? 0),
   }));
 }
 
@@ -179,7 +225,7 @@ export async function getCurrencyGrowthRatiosBatch(
   toleranceDays = DEFAULT_TOLERANCE_DAYS
 ): Promise<GrowthRatioRow[][]> {
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
+  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
@@ -191,26 +237,29 @@ export async function getCurrencyGrowthRatiosBatch(
     -- Narrow the cross join to only the day range each scenario could ever match, before it
     -- multiplies the dayed table's row count by the scenario count.
     expanded AS (
-      SELECT s.scenario_id, s.current_day, s.target_day, d.league, d.name, d.day_offset, d.value
+      SELECT s.scenario_id, s.current_day, s.target_day, d.league, d.name, d.day_offset, d.value,
+             dr.chaos_per_divine AS rate
       FROM scenarios s
       JOIN currency_history_dayed d
         ON d.day_offset BETWEEN s.current_day - $tolerance AND s.target_day + $tolerance
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE TRUE ${excludeClause}
     ),
     nearest_now AS (
-      SELECT scenario_id, current_day, target_day, league, name, value AS value_now, day_offset,
+      SELECT scenario_id, current_day, target_day, league, name, value AS value_now, rate AS rate_now, day_offset,
              ROW_NUMBER() OVER (PARTITION BY scenario_id, league, name ORDER BY ABS(day_offset - current_day)) AS rn
       FROM expanded
       WHERE day_offset BETWEEN current_day - $tolerance AND current_day + $tolerance
     ),
     nearest_future AS (
-      SELECT scenario_id, league, name, value AS value_future, day_offset,
+      SELECT scenario_id, league, name, value AS value_future, rate AS rate_future, day_offset,
              ROW_NUMBER() OVER (PARTITION BY scenario_id, league, name ORDER BY ABS(day_offset - target_day)) AS rn
       FROM expanded
       WHERE day_offset BETWEEN target_day - $tolerance AND target_day + $tolerance
     ),
     matched AS (
       SELECT n.scenario_id, n.name, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+             ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
       JOIN nearest_future f ON n.scenario_id = f.scenario_id AND n.league = f.league AND n.name = f.name
@@ -219,7 +268,8 @@ export async function getCurrencyGrowthRatiosBatch(
         AND n.value_now >= ${MIN_STARTING_VALUE}
         AND f.value_future > 0
     )
-    SELECT scenario_id, name, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count
+    SELECT scenario_id, name, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
+${DIVINE_AGGREGATE_SQL}
     FROM matched
     GROUP BY scenario_id, name
     HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
@@ -233,7 +283,13 @@ export async function getCurrencyGrowthRatiosBatch(
   for (const row of reader.getRowObjects()) {
     const scenarioId = Number(row.scenario_id);
     const list = byScenario.get(scenarioId) ?? [];
-    list.push({ name: String(row.name), avgRatio: Number(row.avg_ratio), leagueCount: Number(row.league_count) });
+    list.push({
+      name: String(row.name),
+      avgRatio: Number(row.avg_ratio),
+      leagueCount: Number(row.league_count),
+      avgRatioDivine: divineRatioFrom(row),
+      leagueCountDivine: Number(row.league_count_divine ?? 0),
+    });
     byScenario.set(scenarioId, list);
   }
   return scenarios.map((_, i) => byScenario.get(i) ?? []);
@@ -246,7 +302,7 @@ export async function getItemGrowthRatiosBatch(
   toleranceDays = DEFAULT_TOLERANCE_DAYS
 ): Promise<GrowthRatioRow[][]> {
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND league != $excludeLeague" : "";
+  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
@@ -258,14 +314,17 @@ export async function getItemGrowthRatiosBatch(
     -- Narrow the cross join to only the day range each scenario could ever match, before it
     -- multiplies the dayed table's row count by the scenario count.
     expanded AS (
-      SELECT s.scenario_id, s.current_day, s.target_day, d.league, d.name, d.variant, d.day_offset, d.value
+      SELECT s.scenario_id, s.current_day, s.target_day, d.league, d.name, d.variant, d.day_offset, d.value,
+             dr.chaos_per_divine AS rate
       FROM scenarios s
       JOIN item_history_dayed d
         ON d.day_offset BETWEEN s.current_day - $tolerance AND s.target_day + $tolerance
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE TRUE ${excludeClause}
     ),
     nearest_now AS (
-      SELECT scenario_id, current_day, target_day, league, name, variant, value AS value_now, day_offset,
+      SELECT scenario_id, current_day, target_day, league, name, variant, value AS value_now,
+             rate AS rate_now, day_offset,
              ROW_NUMBER() OVER (
                PARTITION BY scenario_id, league, name, variant ORDER BY ABS(day_offset - current_day)
              ) AS rn
@@ -273,7 +332,7 @@ export async function getItemGrowthRatiosBatch(
       WHERE day_offset BETWEEN current_day - $tolerance AND current_day + $tolerance
     ),
     nearest_future AS (
-      SELECT scenario_id, league, name, variant, value AS value_future, day_offset,
+      SELECT scenario_id, league, name, variant, value AS value_future, rate AS rate_future, day_offset,
              ROW_NUMBER() OVER (
                PARTITION BY scenario_id, league, name, variant ORDER BY ABS(day_offset - target_day)
              ) AS rn
@@ -282,6 +341,7 @@ export async function getItemGrowthRatiosBatch(
     ),
     matched AS (
       SELECT n.scenario_id, n.name, n.variant, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+             ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
       JOIN nearest_future f
@@ -293,7 +353,8 @@ export async function getItemGrowthRatiosBatch(
         AND f.value_future > 0
     )
     SELECT scenario_id, name, variant, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio,
-           COUNT(*) AS league_count
+           COUNT(*) AS league_count,
+${DIVINE_AGGREGATE_SQL}
     FROM matched
     GROUP BY scenario_id, name, variant
     HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
@@ -312,10 +373,19 @@ export async function getItemGrowthRatiosBatch(
       variant: row.variant ? String(row.variant) : undefined,
       avgRatio: Number(row.avg_ratio),
       leagueCount: Number(row.league_count),
+      avgRatioDivine: divineRatioFrom(row),
+      leagueCountDivine: Number(row.league_count_divine ?? 0),
     });
     byScenario.set(scenarioId, list);
   }
   return scenarios.map((_, i) => byScenario.get(i) ?? []);
+}
+
+export interface ActualValue {
+  /** Chaos price on the matched day. */
+  value: number;
+  /** The same price in divines, using the Divine Orb rate from that same day. */
+  valueDivine?: number;
 }
 
 /** Actual (not averaged/predicted) currency values for one specific league at a given day - used for backtesting. */
@@ -323,27 +393,29 @@ export async function getActualCurrencyValueAtDay(
   league: string,
   day: number,
   toleranceDays = DEFAULT_TOLERANCE_DAYS
-): Promise<Map<string, number>> {
+): Promise<Map<string, ActualValue>> {
   const db = await getDb();
   const reader = await db.runAndReadAll(
     `
     WITH nearest AS (
-      SELECT name, value, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY name ORDER BY ABS(day_offset - $day)) AS rn
-      FROM currency_history_dayed
-      WHERE league = $league AND day_offset BETWEEN $day - $tolerance AND $day + $tolerance
+      SELECT d.name, d.value, dr.chaos_per_divine AS rate, d.day_offset,
+             ROW_NUMBER() OVER (PARTITION BY d.name ORDER BY ABS(d.day_offset - $day)) AS rn
+      FROM currency_history_dayed d
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
+      WHERE d.league = $league AND d.day_offset BETWEEN $day - $tolerance AND $day + $tolerance
     )
-    SELECT name, value FROM nearest WHERE rn = 1
+    SELECT name, value, rate FROM nearest WHERE rn = 1
     `,
     { league, day, tolerance: toleranceDays }
   );
-  const map = new Map<string, number>();
-  for (const row of reader.getRowObjects()) map.set(String(row.name), Number(row.value));
+  const map = new Map<string, ActualValue>();
+  for (const row of reader.getRowObjects()) {
+    map.set(String(row.name), { value: Number(row.value), valueDivine: divineValueFrom(row) });
+  }
   return map;
 }
 
-export interface ActualItemValue {
-  value: number;
+export interface ActualItemValue extends ActualValue {
   /** poe.ninja type bucket (SkillGem, UniqueWeapon, ...), for the category filter - the historical
    * replay has no live poe.ninja data to pull it from, so it comes from item_history instead. */
   type?: string;
@@ -359,12 +431,13 @@ export async function getActualItemValueAtDay(
   const reader = await db.runAndReadAll(
     `
     WITH nearest AS (
-      SELECT name, variant, value, type, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY name, variant ORDER BY ABS(day_offset - $day)) AS rn
-      FROM item_history_dayed
-      WHERE league = $league AND day_offset BETWEEN $day - $tolerance AND $day + $tolerance
+      SELECT d.name, d.variant, d.value, d.type, dr.chaos_per_divine AS rate, d.day_offset,
+             ROW_NUMBER() OVER (PARTITION BY d.name, d.variant ORDER BY ABS(d.day_offset - $day)) AS rn
+      FROM item_history_dayed d
+      LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
+      WHERE d.league = $league AND d.day_offset BETWEEN $day - $tolerance AND $day + $tolerance
     )
-    SELECT name, variant, value, type FROM nearest WHERE rn = 1
+    SELECT name, variant, value, type, rate FROM nearest WHERE rn = 1
     `,
     { league, day, tolerance: toleranceDays }
   );
@@ -372,7 +445,18 @@ export async function getActualItemValueAtDay(
   for (const row of reader.getRowObjects()) {
     const variant = row.variant ? String(row.variant) : "";
     const key = variant ? `${String(row.name)}::${variant}` : String(row.name);
-    map.set(key, { value: Number(row.value), type: row.type ? String(row.type) : undefined });
+    map.set(key, {
+      value: Number(row.value),
+      valueDivine: divineValueFrom(row),
+      type: row.type ? String(row.type) : undefined,
+    });
   }
   return map;
+}
+
+/** Converts a matched row's chaos price to divines using the rate joined from its own day. */
+function divineValueFrom(row: Record<string, unknown>): number | undefined {
+  const rate = Number(row.rate);
+  if (!Number.isFinite(rate) || rate <= 0) return undefined;
+  return Number(row.value) / rate;
 }

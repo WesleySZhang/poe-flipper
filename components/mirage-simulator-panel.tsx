@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,7 +13,7 @@ import { Pagination } from "@/components/pagination";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
-import { formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
+import { activeRatio, formatPriceValue, formatRatio, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 import type { MirageSimulationRow } from "@/lib/mirage-simulator";
 
 async function fetchMirageSimulation(currentDay: number, durationDays: number): Promise<MirageSimulationRow[]> {
@@ -47,7 +47,18 @@ export function MirageSimulatorPanel() {
   // Backtesting shows the model's predictions correlate well with what actually happens early in a
   // league, but that correlation collapses past ~day 30 once the economy has largely settled.
   const isStaleLeagueDay = currentDay > 30;
-  const visibleRows = rows.filter(
+  // Re-rank whenever the unit changes: in divine mode the ordering should follow predicted real
+  // value growth, not chaos growth. Rows with no divine ratio sort last.
+  const sortedRows = useMemo(
+    () =>
+      [...rows].sort(
+        (a, b) =>
+          (activeRatio(b.predictedRatio, b.predictedRatioDivine, priceUnit) ?? -Infinity) -
+          (activeRatio(a.predictedRatio, a.predictedRatioDivine, priceUnit) ?? -Infinity)
+      ),
+    [rows, priceUnit]
+  );
+  const visibleRows = sortedRows.filter(
     (r) => !hiddenCategories.has(r.filterCategory) && isWithinRange(r.actualNowChaos, nowChaosRange)
   );
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
@@ -211,8 +222,12 @@ export function MirageSimulatorPanel() {
                   <TableCell className="text-right">
                     {formatPriceValue(r.actualFutureChaos, r.actualFutureDivine, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-right">{r.predictedRatio.toFixed(2)}x</TableCell>
-                  <TableCell className="text-right">{r.actualRatio.toFixed(2)}x</TableCell>
+                  <TableCell className="text-right">
+                    {formatRatio(r.predictedRatio, r.predictedRatioDivine, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatRatio(r.actualRatio, r.actualRatioDivine, priceUnit)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

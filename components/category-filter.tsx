@@ -129,7 +129,7 @@ export function CategoryFilter({
             onClick={() => setUnreliableOpen((open) => !open)}
           >
             {unreliableOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-            Less reliable categories (sparser/noisier history - off by default)
+            Less reliable categories (off by default)
           </button>
           {unreliableOpen && (
             <div className="flex flex-col gap-1.5 pt-1">

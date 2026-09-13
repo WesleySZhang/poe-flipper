@@ -13,6 +13,8 @@ export interface FlipSuggestion {
   predictedChaosValue: number;
   predictedDivineValue?: number;
   avgGrowthRatio: number;
+  /** Growth with chaos debasement divided out - see GrowthRatioRow.avgRatioDivine. */
+  avgGrowthRatioDivine?: number;
   leagueCount: number;
   rationale: string;
 }
@@ -28,16 +30,23 @@ function buildSuggestion(
   const pctChange = Math.round((trend.avgRatio - 1) * 100);
   const direction = pctChange >= 0 ? "risen" : "fallen";
   const displayName = formatItemDisplayName(trend.name, trend.variant);
-  const predictedChaosValue = currentChaosValue * trend.avgRatio;
+  const currentDivineValue = divineRate ? currentChaosValue / divineRate : undefined;
   return {
     name: displayName,
     category,
     filterCategory,
     currentChaosValue,
-    currentDivineValue: divineRate ? currentChaosValue / divineRate : undefined,
-    predictedChaosValue,
-    predictedDivineValue: divineRate ? predictedChaosValue / divineRate : undefined,
+    currentDivineValue,
+    predictedChaosValue: currentChaosValue * trend.avgRatio,
+    // Grown by the divine-denominated ratio rather than converting the chaos prediction at today's
+    // rate - the chaos prediction already includes however much chaos is expected to debase over
+    // the window, so converting it at today's rate would double-count that inflation.
+    predictedDivineValue:
+      currentDivineValue !== undefined && trend.avgRatioDivine !== undefined
+        ? currentDivineValue * trend.avgRatioDivine
+        : undefined,
     avgGrowthRatio: trend.avgRatio,
+    avgGrowthRatioDivine: trend.avgRatioDivine,
     leagueCount: trend.leagueCount,
     rationale: `Historically has ${direction} ${Math.abs(pctChange)}% over the next ${durationDays} days from this point in the league, averaged over ${trend.leagueCount} past leagues.`,
   };

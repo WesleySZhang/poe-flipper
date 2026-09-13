@@ -119,6 +119,7 @@ async function main() {
     // that space, since this is always a freshly-created file - see above), and (2) the app has one
     // less cold-start cost, since there's no first-query aggregation step left to pay.
     console.log("Building day-aggregated tables...");
+
     await connection.run(`
       CREATE TABLE currency_history_dayed AS
       WITH daily AS (
@@ -163,10 +164,26 @@ async function main() {
       FROM daily d JOIN league_start ls ON d.league = ls.league
     `);
 
+    // Chaos is a moving yardstick: Divine Orb went from 36c to 295c over Mirage's first 30 days, so
+    // an item holding steady at "2 divines" all league still looks like an 8x chaos winner. This
+    // per-league-day rate lets queries divide that debasement out and measure real value change
+    // (see growth-ratios.ts). Kept as a tiny lookup table joined at query time rather than a divine
+    // column on every row - a few hundred rows here versus ~45MB of extra file there, which matters
+    // for staying inside Vercel's function bundle limit. Derived from the dayed table above so it
+    // shares exactly the same day_offset convention.
+    await connection.run(`
+      CREATE TABLE divine_rate_dayed AS
+      SELECT league, day_offset, value AS chaos_per_divine
+      FROM currency_history_dayed
+      WHERE name = 'Divine Orb' AND value > 0
+    `);
+
     const dayedCounts = await connection.runAndReadAll(`
       SELECT 'currency_history_dayed' AS table_name, COUNT(*) AS rows FROM currency_history_dayed
       UNION ALL
       SELECT 'item_history_dayed', COUNT(*) FROM item_history_dayed
+      UNION ALL
+      SELECT 'divine_rate_dayed', COUNT(*) FROM divine_rate_dayed
     `);
     console.table(dayedCounts.getRowObjects());
 
@@ -176,6 +193,7 @@ async function main() {
     await connection.run(`ATTACH '${escapedDbPath}' AS out`);
     await connection.run("CREATE TABLE out.currency_history_dayed AS SELECT * FROM currency_history_dayed");
     await connection.run("CREATE TABLE out.item_history_dayed AS SELECT * FROM item_history_dayed");
+    await connection.run("CREATE TABLE out.divine_rate_dayed AS SELECT * FROM divine_rate_dayed");
     await connection.run("DETACH out");
   } finally {
     connection.disconnectSync();

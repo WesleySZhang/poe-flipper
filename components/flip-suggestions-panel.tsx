@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,7 +14,13 @@ import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
-import { formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
+import {
+  activeRatio,
+  formatPercentChange,
+  formatPriceValue,
+  priceUnitLabel,
+  type PriceUnit,
+} from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
 
@@ -46,7 +52,18 @@ export function FlipSuggestionsPanel() {
     });
   }, [durationDays]);
 
-  const visibleSuggestions = suggestions.filter((s) => !hiddenCategories.has(s.filterCategory));
+  // Re-rank whenever the unit changes: in divine mode the ordering should follow real value growth,
+  // not chaos growth. Rows with no divine ratio (too few leagues had a Divine Orb rate) sort last.
+  const sortedSuggestions = useMemo(
+    () =>
+      [...suggestions].sort(
+        (a, b) =>
+          (activeRatio(b.avgGrowthRatio, b.avgGrowthRatioDivine, priceUnit) ?? -Infinity) -
+          (activeRatio(a.avgGrowthRatio, a.avgGrowthRatioDivine, priceUnit) ?? -Infinity)
+      ),
+    [suggestions, priceUnit]
+  );
+  const visibleSuggestions = sortedSuggestions.filter((s) => !hiddenCategories.has(s.filterCategory));
   const pageCount = Math.max(1, Math.ceil(visibleSuggestions.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
   const pagedSuggestions = visibleSuggestions.slice(pageStart, pageStart + PAGE_SIZE);
@@ -172,7 +189,9 @@ export function FlipSuggestionsPanel() {
                   <TableCell className="text-right">
                     {formatPriceValue(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-right">{Math.round((s.avgGrowthRatio - 1) * 100)}%</TableCell>
+                  <TableCell className="text-right">
+                    {formatPercentChange(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
