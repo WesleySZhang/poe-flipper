@@ -123,9 +123,13 @@ async function main() {
     await connection.run(`
       CREATE TABLE currency_history_dayed AS
       WITH daily AS (
+        -- Unlike items, currency trades are frequent/liquid enough that even Low-confidence
+        -- (few-listing) days are still a real market price, not noise - and Divine Orb's own rate
+        -- (derived from this table below) needs to be available on as many days as possible for
+        -- the divine-denominated model to have full coverage, so no confidence filter here at all.
         SELECT league, get AS name, date, AVG(value) AS value
         FROM currency_history
-        WHERE pay = 'Chaos Orb' AND get != 'Chaos Orb' AND confidence = 'High'
+        WHERE pay = 'Chaos Orb' AND get != 'Chaos Orb'
         GROUP BY league, get, date
       ),
       league_start AS (
@@ -150,7 +154,7 @@ async function main() {
             ELSE variant
           END AS variant
         FROM item_history
-        WHERE confidence = 'High'
+        WHERE confidence IN ('High', 'Medium')
       ),
       daily AS (
         SELECT league, name, variant, date, AVG(value) AS value, ANY_VALUE(type) AS type

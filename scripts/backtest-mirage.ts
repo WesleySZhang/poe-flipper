@@ -187,7 +187,8 @@ function divineRatio(now: number | undefined, future: number | undefined): numbe
 async function main() {
   console.log(
     `Backtesting flip-suggestion model against holdout league "${HOLDOUT_LEAGUE}" (excluded from training).\n` +
-      `${SCENARIOS.length} scenarios, all with currentDay + durationDays <= ${MAX_TOTAL_DAY}. High-confidence data only.\n`
+      `${SCENARIOS.length} scenarios, all with currentDay + durationDays <= ${MAX_TOTAL_DAY}. ` +
+      `Currency: all confidence levels. Items: High/Medium confidence only.\n`
   );
 
   // One query per type covering every scenario, instead of one pair per scenario - the expensive
