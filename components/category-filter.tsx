@@ -123,7 +123,7 @@ export function CategoryFilter({
         </div>
       )}
       {unreliable.length > 0 && (
-        <div className="flex flex-col gap-1.5 rounded-md border border-dashed p-2.5">
+        <div className="flex flex-col gap-1.5">
           <button
             type="button"
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
@@ -133,12 +133,12 @@ export function CategoryFilter({
             Etc.
           </button>
           {unreliableOpen && (
-            <div className="flex flex-col gap-1.5 pt-1">
+            <>
               <div className="flex justify-end">
                 <BulkActions categories={unreliable} onSelectAll={onSelectAll} onDeselectAll={onDeselectAll} />
               </div>
               <BadgeRow categories={unreliable} selected={selected} onToggle={onToggle} />
-            </div>
+            </>
           )}
         </div>
       )}

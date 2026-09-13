@@ -13,7 +13,7 @@ import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
-import { ALL_CATEGORIES, humanizeCategoryName } from "@/lib/category-reliability";
+import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import { activePrice, activeRatio, formatPriceValue, formatRatio, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
@@ -33,8 +33,9 @@ export function MirageSimulatorPanel() {
   const [currentDay, setCurrentDay] = useState(2);
   const [durationDays, setDurationDays] = useState(3);
   const [rows, setRows] = useState<MirageSimulationRow[]>([]);
-  // Every category starts enabled (see isDefaultEnabledCategory) - nothing hidden by default.
-  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(() => new Set());
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
+    () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
+  );
   const [page, setPage] = useState(0);
   const [searchText, setSearchText] = useState("");
   const [nowRange, setNowRange] = useState<NumericRange>({});

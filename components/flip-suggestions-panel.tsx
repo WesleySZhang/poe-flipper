@@ -13,7 +13,7 @@ import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
-import { ALL_CATEGORIES, humanizeCategoryName } from "@/lib/category-reliability";
+import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
@@ -40,8 +40,9 @@ async function fetchFlipSuggestions(durationDays: number): Promise<FlipSuggestio
 export function FlipSuggestionsPanel() {
   const [suggestions, setSuggestions] = useState<FlipSuggestion[]>([]);
   const [durationDays, setDurationDays] = useState(3);
-  // Every category starts enabled (see isDefaultEnabledCategory) - nothing hidden by default.
-  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(() => new Set());
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
+    () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
+  );
   const [page, setPage] = useState(0);
   const [searchText, setSearchText] = useState("");
   const [currentRange, setCurrentRange] = useState<NumericRange>({});
