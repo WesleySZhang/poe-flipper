@@ -8,9 +8,9 @@ export type PriceUnit = "chaos" | "divine";
  * they get more decimal places to stay legible for cheaper items.
  */
 export function formatPriceValue(chaosValue: number, divineValue: number | undefined, unit: PriceUnit): string {
-  if (unit === "chaos") return chaosValue.toFixed(1);
+  if (unit === "chaos") return `${chaosValue.toFixed(1)}c`;
   if (divineValue === undefined) return "—";
-  return divineValue.toFixed(divineValue < 1 ? 3 : 2);
+  return `${divineValue.toFixed(divineValue < 1 ? 3 : 2)}d`;
 }
 
 export function priceUnitLabel(unit: PriceUnit): string {
