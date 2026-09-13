@@ -466,3 +466,118 @@ function divineValueFrom(row: Record<string, unknown>): number | undefined {
   if (!Number.isFinite(rate) || rate <= 0) return undefined;
   return Number(row.value) / rate;
 }
+
+export interface RecentMomentumRow {
+  /** value(currentDay) / value(currentDay - lookbackDays), i.e. how this specific league's own
+   *  price for this name has moved recently - as opposed to avgRatio, which is a cross-league
+   *  historical average and knows nothing about this particular league's trajectory. */
+  momentumRatio: number;
+  /** Same, but with chaos debasement divided out over the lookback window - undefined if either day
+   *  is missing a Divine Orb rate. */
+  momentumRatioDivine?: number;
+}
+
+/**
+ * Recent within-league momentum for currencies - the backtest/mirage-simulator equivalent of the
+ * live sparkline (see poe-ninja.ts's recentRatioFromSparkline): both measure "how has this specific
+ * league's own price moved over the last `lookbackDays` days", just from different data sources
+ * (this one from the already-ingested day_offset history, since a finished/replayed league has no
+ * live poe.ninja sparkline to read).
+ *
+ * Returns an empty map if `currentDay - lookbackDays < 0` (too close to league launch to have a full
+ * lookback window) - callers should treat a missing entry as "no momentum signal" and fall back to
+ * the pure historical avgRatio, never fabricate one.
+ *
+ * Note: with the default tolerance window, this requires lookbackDays > 2 * toleranceDays so the
+ * "now" and "past" nearest-day windows can't overlap and collapse the ratio toward 1 - at
+ * DEFAULT_TOLERANCE_DAYS=3 that's lookbackDays > 6, so the intended lookbackDays=7 sits right at the
+ * edge on purpose (matches the live sparkline's fixed 7-day window).
+ */
+export async function getCurrencyRecentMomentum(
+  league: string,
+  currentDay: number,
+  lookbackDays: number,
+  toleranceDays = DEFAULT_TOLERANCE_DAYS
+): Promise<Map<string, RecentMomentumRow>> {
+  const pastDay = currentDay - lookbackDays;
+  if (pastDay < 0) return new Map();
+  const [now, past] = await Promise.all([
+    getActualCurrencyValueAtDay(league, currentDay, toleranceDays),
+    getActualCurrencyValueAtDay(league, pastDay, toleranceDays),
+  ]);
+  const result = new Map<string, RecentMomentumRow>();
+  for (const [name, n] of now) {
+    const p = past.get(name);
+    if (!p || p.value <= 0 || n.value <= 0) continue;
+    const momentumRatioDivine =
+      n.valueDivine !== undefined && p.valueDivine !== undefined && p.valueDivine > 0
+        ? n.valueDivine / p.valueDivine
+        : undefined;
+    result.set(name, { momentumRatio: n.value / p.value, momentumRatioDivine });
+  }
+  return result;
+}
+
+/** Same as getCurrencyRecentMomentum but for items/uniques/gems, keyed by (name, variant) like getActualItemValueAtDay. */
+export async function getItemRecentMomentum(
+  league: string,
+  currentDay: number,
+  lookbackDays: number,
+  toleranceDays = DEFAULT_TOLERANCE_DAYS
+): Promise<Map<string, RecentMomentumRow>> {
+  const pastDay = currentDay - lookbackDays;
+  if (pastDay < 0) return new Map();
+  const [now, past] = await Promise.all([
+    getActualItemValueAtDay(league, currentDay, toleranceDays),
+    getActualItemValueAtDay(league, pastDay, toleranceDays),
+  ]);
+  const result = new Map<string, RecentMomentumRow>();
+  for (const [key, n] of now) {
+    const p = past.get(key);
+    if (!p || p.value <= 0 || n.value <= 0) continue;
+    const momentumRatioDivine =
+      n.valueDivine !== undefined && p.valueDivine !== undefined && p.valueDivine > 0
+        ? n.valueDivine / p.valueDivine
+        : undefined;
+    result.set(key, { momentumRatio: n.value / p.value, momentumRatioDivine });
+  }
+  return result;
+}
+
+/**
+ * Blends the full-window historical ratio (avgRatio - a cross-league average, knows nothing about
+ * THIS league's own trajectory) with a recent within-league momentum ratio (knows nothing about how
+ * OTHER leagues tended to move from here, but does know how this one has been moving lately).
+ *
+ * Extrapolates momentum's implied daily rate forward over durationDays, then combines the two in log
+ * space as a weighted geometric mean - consistent with how avgRatio itself is already a
+ * recency-weighted geometric mean (see EXP(SUM(weight*LN(ratio))/SUM(weight)) above). alpha=0
+ * reproduces the pre-existing pure-historical behavior exactly; alpha=1 ignores history entirely and
+ * just extrapolates the recent trend in a straight line.
+ *
+ * Falls back to historicalRatio untouched whenever momentum isn't usable - no signal, non-finite, or
+ * non-positive - so a missing/broken momentum reading can never produce NaN/Infinity downstream.
+ *
+ * alpha=0 is not special-cased - the formula already reduces to historicalRatio exactly at alpha=0
+ * ((1-0)*ln(historical) + 0*rate*duration = ln(historical)) - so alpha may be negative too, to test a
+ * mean-reversion ("fade the recent move") hypothesis instead of a momentum-following one.
+ */
+export function blendGrowthRatio(
+  historicalRatio: number,
+  momentumRatio: number | undefined,
+  alpha: number,
+  durationDays: number,
+  lookbackDays: number
+): number {
+  if (
+    momentumRatio === undefined ||
+    !Number.isFinite(momentumRatio) ||
+    momentumRatio <= 0 ||
+    !Number.isFinite(historicalRatio) ||
+    historicalRatio <= 0
+  ) {
+    return historicalRatio;
+  }
+  const momentumDailyLogRate = Math.log(momentumRatio) / lookbackDays;
+  return Math.exp((1 - alpha) * Math.log(historicalRatio) + alpha * momentumDailyLogRate * durationDays);
+}

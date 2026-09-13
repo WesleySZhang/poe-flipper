@@ -83,6 +83,36 @@ interface CurrencyOverviewResponse {
   currencyDetails?: CurrencyDetail[];
 }
 
+interface RawSparkline {
+  totalChange: number;
+  data: number[];
+}
+
+// Clamps how far a single recent-momentum reading can swing a prediction - protects against a
+// glitchy or thin sparkline (verified some stash-overview sparklines are simply unreliable, see
+// recentRatioFromSparkline's comment) producing an absurd extrapolated prediction downstream.
+const MIN_RECENT_RATIO = 0.2; // -80% over the sparkline's window
+const MAX_RECENT_RATIO = 5; // +400% over the sparkline's window
+
+/**
+ * Converts poe.ninja's sparkline ({totalChange, data: number[7]}) into a plain multiplicative ratio
+ * (e.g. totalChange=-14.5 -> 0.855), for the exchange overview's `sparkline` field ONLY - verified
+ * live that the stash overview's equivalent fields (CurrencyOverviewLine's receiveSparkLine/
+ * paySparkLine, ItemOverviewLine's sparkLine) are NOT a reliable proxy for the same trend: cross-
+ * checked ~35 currencies' receiveSparkLine against the exchange overview's unambiguous sparkline for
+ * the same currency and found divergence as large as 450+ percentage points, uncorrelated with
+ * listing volume - the stash overview reflects raw player-listed asking prices, not actual trades,
+ * and can legitimately diverge from the Faustus-backed exchange overview at any liquidity level. So
+ * this is deliberately only ever called with an ExchangeOverviewLine's `sparkline`, not the stash
+ * overview's fields, even though they share the same {totalChange, data} shape.
+ */
+function recentRatioFromSparkline(spark?: RawSparkline | null): number | undefined {
+  if (!spark || !Array.isArray(spark.data) || spark.data.length === 0) return undefined;
+  const ratio = 1 + spark.totalChange / 100;
+  if (!Number.isFinite(ratio) || ratio <= 0) return undefined;
+  return Math.min(MAX_RECENT_RATIO, Math.max(MIN_RECENT_RATIO, ratio));
+}
+
 export interface ItemOverviewLine {
   name: string;
   baseType?: string;
@@ -147,6 +177,11 @@ export interface ExchangeOverviewLine {
    *  Orb as "primary" (verified across Currency, Fragment, Scarab, Essence, DivinationCard, Tattoo,
    *  Fossil), same as CurrencyOverviewLine.chaosEquivalent. */
   primaryValue: number;
+  /** Recent price-trend samples (verified live: 7 daily samples, cumulative % change from 7 days
+   *  ago, data[0]=0 and data[6]=totalChange - not documented by poe.ninja beyond "recent
+   *  price-trend samples", so treat this shape as inferred, not guaranteed). See
+   *  recentRatioFromSparkline for why this is the only sparkline field this file trusts. */
+  sparkline?: RawSparkline;
 }
 
 async function getExchangeOverview(league: string, type: CurrencyOverviewType): Promise<ExchangeOverviewLine[]> {
@@ -165,6 +200,11 @@ export interface CurrencyPrice {
   chaosValue: number;
   /** Which CURRENCY_OVERVIEW_TYPES bucket this came from (Currency, Fragment, Scarab, ...) - used for the category filter. */
   type: CurrencyOverviewType;
+  /** Multiplicative ratio implied by poe.ninja's live sparkline (now vs. ~7 days ago) - see
+   *  recentRatioFromSparkline. Only ever populated for the "Currency" bucket (the only one whose
+   *  price also comes from the exchange overview, see getAllCurrentCurrencyPrices) - undefined for
+   *  every other type, and for any Currency-type line whose sparkline was empty/missing. */
+  recentRatio?: number;
 }
 
 /** Price (+ type, for filtering) keyed by currency/fragment name, merged across all currency overview types. */
@@ -201,7 +241,13 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   const exchangeLines = await getExchangeOverview(league, "Currency");
   for (const line of exchangeLines) {
     const name = tradeIdToName.get(line.id);
-    if (name) prices.set(name, { chaosValue: line.primaryValue, type: "Currency" });
+    if (name) {
+      prices.set(name, {
+        chaosValue: line.primaryValue,
+        type: "Currency",
+        recentRatio: recentRatioFromSparkline(line.sparkline),
+      });
+    }
   }
 
   return prices;
