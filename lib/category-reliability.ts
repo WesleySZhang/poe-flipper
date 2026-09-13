@@ -20,20 +20,24 @@ export function humanizeCategoryName(category: string): string {
 // history, while niche/derivative categories (unique variants, skill gems, base types, ...) have
 // sparser, noisier data that produces less trustworthy growth ratios. This is a fixed, hand-curated
 // list (not derived from the data itself) used only to pick sensible category-filter defaults in
-// the UI - everything not listed here is treated as unreliable and starts unselected.
-export const RELIABLE_CATEGORIES: ReadonlySet<string> = new Set([
-  "Beast",
+// the UI - everything not listed here is treated as unreliable and starts unselected. Order matters
+// here - it's the display order in the UI's top "Categories" group (see category-filter.tsx), same
+// as UNIQUE_CATEGORIES_ORDERED below for the "Meta items" group.
+export const RELIABLE_CATEGORIES_ORDERED: string[] = [
   "Currency",
-  "DeliriumOrb",
   "DivinationCard",
   "Essence",
   "Fossil",
   "Fragment",
+  "Beast",
+  "DeliriumOrb",
   "Invitation",
   "Oil",
   "Omen",
   "Tattoo",
-]);
+];
+
+const RELIABLE_CATEGORIES: ReadonlySet<string> = new Set(RELIABLE_CATEGORIES_ORDERED);
 
 export function isReliableCategory(category: string): boolean {
   return RELIABLE_CATEGORIES.has(category);

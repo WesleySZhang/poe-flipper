@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   isReliableCategory,
   isUniqueCategory,
+  RELIABLE_CATEGORIES_ORDERED,
   UNIQUE_CATEGORIES_ORDERED,
   humanizeCategoryName,
 } from "@/lib/category-reliability";
@@ -92,7 +93,7 @@ export function CategoryFilter({
 
   if (categories.length === 0) return null;
 
-  const reliable = categories.filter(isReliableCategory);
+  const reliable = RELIABLE_CATEGORIES_ORDERED.filter((c) => categories.includes(c));
   const uniques = UNIQUE_CATEGORIES_ORDERED.filter((c) => categories.includes(c));
   const unreliable = categories.filter((c) => !isReliableCategory(c) && !isUniqueCategory(c));
 
