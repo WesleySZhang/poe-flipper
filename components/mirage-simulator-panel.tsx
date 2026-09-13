@@ -10,10 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { Pagination } from "@/components/pagination";
+import { SearchInput } from "@/components/search-input";
+import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
-import { activeRatio, formatPriceValue, formatRatio, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
+import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
+import { activePrice, activeRatio, formatPriceValue, formatRatio, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 import type { MirageSimulationRow } from "@/lib/mirage-simulator";
 
 async function fetchMirageSimulation(currentDay: number, durationDays: number): Promise<MirageSimulationRow[]> {
@@ -24,6 +27,8 @@ async function fetchMirageSimulation(currentDay: number, durationDays: number): 
 
 const PAGE_SIZE = 25;
 
+type SortKey = "now" | "predicted" | "actualFuture" | "predictedX" | "actualX";
+
 export function MirageSimulatorPanel() {
   const [currentDay, setCurrentDay] = useState(2);
   const [durationDays, setDurationDays] = useState(3);
@@ -32,7 +37,9 @@ export function MirageSimulatorPanel() {
     () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
   );
   const [page, setPage] = useState(0);
+  const [searchText, setSearchText] = useState("");
   const [nowChaosRange, setNowChaosRange] = useState<NumericRange>({});
+  const [sort, setSort] = useState<SortState<SortKey>>({ key: "predictedX", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [isPending, startTransition] = useTransition();
 
@@ -47,19 +54,32 @@ export function MirageSimulatorPanel() {
   // Backtesting shows the model's predictions correlate well with what actually happens early in a
   // league, but that correlation collapses past ~day 30 once the economy has largely settled.
   const isStaleLeagueDay = currentDay > 30;
-  // Re-rank whenever the unit changes: in divine mode the ordering should follow predicted real
-  // value growth, not chaos growth. Rows with no divine ratio sort last.
+  // Re-sort whenever the unit changes too: in divine mode a price/ratio column should order by real
+  // value, not chaos value. Rows with no divine figure for the active sort column sort last.
   const sortedRows = useMemo(
     () =>
-      [...rows].sort(
-        (a, b) =>
-          (activeRatio(b.predictedRatio, b.predictedRatioDivine, priceUnit) ?? -Infinity) -
-          (activeRatio(a.predictedRatio, a.predictedRatioDivine, priceUnit) ?? -Infinity)
-      ),
-    [rows, priceUnit]
+      sortByKey(rows, sort, (r, key) => {
+        switch (key) {
+          case "now":
+            return activePrice(r.actualNowChaos, r.actualNowDivine, priceUnit);
+          case "predicted":
+            return activePrice(r.predictedChaosValue, r.predictedDivineValue, priceUnit);
+          case "actualFuture":
+            return activePrice(r.actualFutureChaos, r.actualFutureDivine, priceUnit);
+          case "predictedX":
+            return activeRatio(r.predictedRatio, r.predictedRatioDivine, priceUnit);
+          case "actualX":
+            return activeRatio(r.actualRatio, r.actualRatioDivine, priceUnit);
+        }
+      }),
+    [rows, sort, priceUnit]
   );
+  const normalizedSearch = searchText.trim().toLowerCase();
   const visibleRows = sortedRows.filter(
-    (r) => !hiddenCategories.has(r.filterCategory) && isWithinRange(r.actualNowChaos, nowChaosRange)
+    (r) =>
+      !hiddenCategories.has(r.filterCategory) &&
+      isWithinRange(r.actualNowChaos, nowChaosRange) &&
+      r.name.toLowerCase().includes(normalizedSearch)
   );
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
@@ -93,8 +113,18 @@ export function MirageSimulatorPanel() {
     setPage(0);
   }
 
+  function changeSearchText(text: string) {
+    setSearchText(text);
+    setPage(0);
+  }
+
   function changeNowChaosRange(range: NumericRange) {
     setNowChaosRange(range);
+    setPage(0);
+  }
+
+  function handleSort(key: SortKey) {
+    setSort((prev) => toggleSort(prev, key));
     setPage(0);
   }
 
@@ -164,6 +194,10 @@ export function MirageSimulatorPanel() {
             predictions can be wildly misleading.
           </p>
         )}
+        <div className="flex flex-wrap items-end gap-4">
+          <SearchInput value={searchText} onChange={changeSearchText} />
+          <NumericRangeFilter label={`now cost (${priceUnitLabel("chaos")})`} onChange={changeNowChaosRange} />
+        </div>
         <CategoryFilter
           categories={ALL_CATEGORIES}
           selected={new Set(ALL_CATEGORIES.filter((c) => !hiddenCategories.has(c)))}
@@ -194,16 +228,21 @@ export function MirageSimulatorPanel() {
               <TableRow>
                 <TableHead className="w-[280px]">Item</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    Now ({priceUnitLabel(priceUnit)})
-                    <NumericRangeFilter label="Now (c)" range={nowChaosRange} onChange={changeNowChaosRange} />
-                  </div>
-                </TableHead>
-                <TableHead className="text-right">Predicted ({priceUnitLabel(priceUnit)})</TableHead>
-                <TableHead className="text-right">Actual future ({priceUnitLabel(priceUnit)})</TableHead>
-                <TableHead className="text-right">Predicted x</TableHead>
-                <TableHead className="text-right">Actual x</TableHead>
+                <SortableHeader label={`Now (${priceUnitLabel(priceUnit)})`} sortKey="now" sort={sort} onSort={handleSort} />
+                <SortableHeader
+                  label={`Predicted (${priceUnitLabel(priceUnit)})`}
+                  sortKey="predicted"
+                  sort={sort}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label={`Actual future (${priceUnitLabel(priceUnit)})`}
+                  sortKey="actualFuture"
+                  sort={sort}
+                  onSort={handleSort}
+                />
+                <SortableHeader label="Predicted x" sortKey="predictedX" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Actual x" sortKey="actualX" sort={sort} onSort={handleSort} />
               </TableRow>
             </TableHeader>
             <TableBody>

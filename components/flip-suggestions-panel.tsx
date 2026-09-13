@@ -10,11 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { Pagination } from "@/components/pagination";
+import { SearchInput } from "@/components/search-input";
+import { SortableHeader } from "@/components/sortable-header";
+import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
+import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
+  activePrice,
   activeRatio,
   formatPercentChange,
   formatPriceValue,
@@ -23,6 +28,8 @@ import {
 } from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
+
+type SortKey = "current" | "predicted" | "change";
 
 async function fetchFlipSuggestions(durationDays: number): Promise<FlipSuggestion[]> {
   const res = await fetch(`/api/flip-suggestions?durationDays=${durationDays}`);
@@ -37,6 +44,9 @@ export function FlipSuggestionsPanel() {
     () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
   );
   const [page, setPage] = useState(0);
+  const [searchText, setSearchText] = useState("");
+  const [currentChaosRange, setCurrentChaosRange] = useState<NumericRange>({});
+  const [sort, setSort] = useState<SortState<SortKey>>({ key: "change", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [isPending, startTransition] = useTransition();
 
@@ -52,18 +62,29 @@ export function FlipSuggestionsPanel() {
     });
   }, [durationDays]);
 
-  // Re-rank whenever the unit changes: in divine mode the ordering should follow real value growth,
-  // not chaos growth. Rows with no divine ratio (too few leagues had a Divine Orb rate) sort last.
+  // Re-sort whenever the unit changes too: in divine mode a price/change column should order by
+  // real value, not chaos value. Rows with no divine figure for the active sort column sort last.
   const sortedSuggestions = useMemo(
     () =>
-      [...suggestions].sort(
-        (a, b) =>
-          (activeRatio(b.avgGrowthRatio, b.avgGrowthRatioDivine, priceUnit) ?? -Infinity) -
-          (activeRatio(a.avgGrowthRatio, a.avgGrowthRatioDivine, priceUnit) ?? -Infinity)
-      ),
-    [suggestions, priceUnit]
+      sortByKey(suggestions, sort, (s, key) => {
+        switch (key) {
+          case "current":
+            return activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit);
+          case "predicted":
+            return activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit);
+          case "change":
+            return activeRatio(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit);
+        }
+      }),
+    [suggestions, sort, priceUnit]
   );
-  const visibleSuggestions = sortedSuggestions.filter((s) => !hiddenCategories.has(s.filterCategory));
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const visibleSuggestions = sortedSuggestions.filter(
+    (s) =>
+      !hiddenCategories.has(s.filterCategory) &&
+      isWithinRange(s.currentChaosValue, currentChaosRange) &&
+      s.name.toLowerCase().includes(normalizedSearch)
+  );
   const pageCount = Math.max(1, Math.ceil(visibleSuggestions.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
   const pagedSuggestions = visibleSuggestions.slice(pageStart, pageStart + PAGE_SIZE);
@@ -93,6 +114,21 @@ export function FlipSuggestionsPanel() {
       categories.forEach((c) => next.add(c));
       return next;
     });
+    setPage(0);
+  }
+
+  function changeSearchText(text: string) {
+    setSearchText(text);
+    setPage(0);
+  }
+
+  function changeCurrentChaosRange(range: NumericRange) {
+    setCurrentChaosRange(range);
+    setPage(0);
+  }
+
+  function handleSort(key: SortKey) {
+    setSort((prev) => toggleSort(prev, key));
     setPage(0);
   }
 
@@ -146,6 +182,10 @@ export function FlipSuggestionsPanel() {
             predictions can be wildly misleading.
           </p>
         )}
+        <div className="flex flex-wrap items-end gap-4">
+          <SearchInput value={searchText} onChange={changeSearchText} />
+          <NumericRangeFilter label={`current cost (${priceUnitLabel("chaos")})`} onChange={changeCurrentChaosRange} />
+        </div>
         <CategoryFilter
           categories={ALL_CATEGORIES}
           selected={new Set(ALL_CATEGORIES.filter((c) => !hiddenCategories.has(c)))}
@@ -163,7 +203,7 @@ export function FlipSuggestionsPanel() {
           <p className="text-sm text-muted-foreground">No historical matches found for current live prices yet.</p>
         )}
         {!isPending && suggestions.length > 0 && visibleSuggestions.length === 0 && (
-          <p className="text-sm text-muted-foreground">No suggestions match the selected categories.</p>
+          <p className="text-sm text-muted-foreground">No suggestions match the current filters.</p>
         )}
         {pagedSuggestions.length > 0 && (
           <Table>
@@ -171,9 +211,19 @@ export function FlipSuggestionsPanel() {
               <TableRow>
                 <TableHead className="w-[280px]">Item</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead className="text-right">Current ({priceUnitLabel(priceUnit)})</TableHead>
-                <TableHead className="text-right">Predicted ({priceUnitLabel(priceUnit)})</TableHead>
-                <TableHead className="text-right">Change</TableHead>
+                <SortableHeader
+                  label={`Current (${priceUnitLabel(priceUnit)})`}
+                  sortKey="current"
+                  sort={sort}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label={`Predicted (${priceUnitLabel(priceUnit)})`}
+                  sortKey="predicted"
+                  sort={sort}
+                  onSort={handleSort}
+                />
+                <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
               </TableRow>
             </TableHeader>
             <TableBody>

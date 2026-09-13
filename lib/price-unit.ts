@@ -37,6 +37,11 @@ export function activeRatio(chaosRatio: number, divineRatio: number | undefined,
   return unit === "chaos" ? chaosRatio : divineRatio;
 }
 
+/** The price for the selected unit - same undefined-for-divine caveat as activeRatio. Used for sorting a price column by whichever unit is currently displayed. */
+export function activePrice(chaosValue: number, divineValue: number | undefined, unit: PriceUnit): number | undefined {
+  return unit === "chaos" ? chaosValue : divineValue;
+}
+
 export function formatRatio(chaosRatio: number, divineRatio: number | undefined, unit: PriceUnit): string {
   const ratio = activeRatio(chaosRatio, divineRatio, unit);
   return ratio === undefined ? "—" : `${ratio.toFixed(2)}x`;
