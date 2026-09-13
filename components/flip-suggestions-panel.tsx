@@ -180,7 +180,7 @@ export function FlipSuggestionsPanel() {
               {pagedSuggestions.map((s) => (
                 <TableRow key={`${s.category}-${s.name}`}>
                   <TableCell>
-                    <div className="max-w-[280px] truncate" title={s.name}>
+                    <div className="max-w-[280px] overflow-x-auto whitespace-nowrap" title={s.name}>
                       {s.name}
                     </div>
                   </TableCell>

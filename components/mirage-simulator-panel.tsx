@@ -210,7 +210,7 @@ export function MirageSimulatorPanel() {
               {pagedRows.map((r) => (
                 <TableRow key={`${r.category}-${r.name}`}>
                   <TableCell>
-                    <div className="max-w-[280px] truncate" title={r.name}>
+                    <div className="max-w-[280px] overflow-x-auto whitespace-nowrap" title={r.name}>
                       {r.name}
                     </div>
                   </TableCell>
