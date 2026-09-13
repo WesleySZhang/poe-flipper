@@ -192,7 +192,7 @@ export function MirageSimulatorPanel() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Item</TableHead>
+                <TableHead className="w-[280px]">Item</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">
                   <div className="flex items-center justify-end gap-1">
@@ -210,7 +210,11 @@ export function MirageSimulatorPanel() {
               {pagedRows.map((r) => (
                 <TableRow key={`${r.category}-${r.name}`}>
                   <TableCell>
-                    <div className="max-w-[280px] overflow-x-auto whitespace-nowrap" title={r.name}>
+                    <div
+                      tabIndex={0}
+                      className="max-w-[280px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip"
+                      title={r.name}
+                    >
                       {r.name}
                     </div>
                   </TableCell>

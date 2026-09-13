@@ -169,7 +169,7 @@ export function FlipSuggestionsPanel() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Item</TableHead>
+                <TableHead className="w-[280px]">Item</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Current ({priceUnitLabel(priceUnit)})</TableHead>
                 <TableHead className="text-right">Predicted ({priceUnitLabel(priceUnit)})</TableHead>
@@ -180,7 +180,11 @@ export function FlipSuggestionsPanel() {
               {pagedSuggestions.map((s) => (
                 <TableRow key={`${s.category}-${s.name}`}>
                   <TableCell>
-                    <div className="max-w-[280px] overflow-x-auto whitespace-nowrap" title={s.name}>
+                    <div
+                      tabIndex={0}
+                      className="max-w-[280px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip"
+                      title={s.name}
+                    >
                       {s.name}
                     </div>
                   </TableCell>
