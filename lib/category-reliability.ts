@@ -35,6 +35,11 @@ export const RELIABLE_CATEGORIES_ORDERED: string[] = [
   "Oil",
   "Omen",
   "Tattoo",
+  "AllflameEmber",
+  "Memory",
+  "Resonator",
+  "Wombgift",
+  "Vial",
 ];
 
 const RELIABLE_CATEGORIES: ReadonlySet<string> = new Set(RELIABLE_CATEGORIES_ORDERED);
@@ -67,20 +72,8 @@ export function isUniqueCategory(category: string): boolean {
   return UNIQUE_CATEGORIES.has(category);
 }
 
-// "Etc." (everything outside RELIABLE_CATEGORIES_ORDERED and UNIQUE_CATEGORIES_ORDERED) defaults
-// to OFF - it's the least-curated, catch-all tier. These specific few are exceptions, enabled by
-// default despite falling in that tier - order is just append order here, not display order (the
-// "Etc." group's own display order comes from category-filter.tsx's category list, not this array).
-const DEFAULT_ENABLED_ETC_CATEGORIES: ReadonlySet<string> = new Set([
-  "AllflameEmber",
-  "Memory",
-  "Resonator",
-  "Wombgift",
-  "Vial",
-]);
-
-// Reliable and meta-items categories are enabled by default; "Etc." categories are off by default
-// except for the specific exceptions above.
+// Reliable and meta-items categories are enabled by default; "Etc." (everything outside both
+// tiers - the least-curated, catch-all group) is off by default.
 export function isDefaultEnabledCategory(category: string): boolean {
-  return isReliableCategory(category) || isUniqueCategory(category) || DEFAULT_ENABLED_ETC_CATEGORIES.has(category);
+  return isReliableCategory(category) || isUniqueCategory(category);
 }
