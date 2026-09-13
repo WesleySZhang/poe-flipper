@@ -31,11 +31,11 @@ export const DEFAULT_TOLERANCE_DAYS = 3;
 // ~20 leagues were ingested) is often unreachable. 3 was already shown to perform about as well as
 // 5 did in that earlier tuning pass.
 const MIN_LEAGUES_WITH_DATA = 3;
-// Bulk-flipping cheap, high-liquidity currency (Orb of Alteration, Armourer's Scrap, etc. - some
-// worth well under 0.01c) is a real, deliberate trading strategy, not noise - buy a stack at a low
-// price, sell it later at a better one. Only guards against a literal zero/near-zero price (a data
-// glitch, not a real listing), so almost everything gets through.
-const MIN_STARTING_VALUE_CURRENCY = 0.001;
+// Bulk-flipping cheap, high-liquidity currency (Orb of Alteration, Armourer's Scrap, etc.) is a
+// real, deliberate trading strategy, not noise - buy a stack at a low price, sell it later at a
+// better one - but below 0.2c even that gets too thin/glitchy to trust (e.g. Rogue's Marker at
+// 0.002c), so still floor it there rather than letting literally everything through.
+const MIN_STARTING_VALUE_CURRENCY = 0.2;
 // Items don't have the same bulk-flip dynamic - they're traded one at a time, not in stacks - so a
 // random item worth a fraction of a chaos is usually just low-value junk. Below ~1c there, tiny
 // absolute price noise (e.g. 0.1c -> 0.4c) produces enormous ratios that swamp genuine signal.
