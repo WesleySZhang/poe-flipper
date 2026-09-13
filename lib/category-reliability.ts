@@ -22,6 +22,7 @@ export function humanizeCategoryName(category: string): string {
 // list (not derived from the data itself) used only to pick sensible category-filter defaults in
 // the UI - everything not listed here is treated as unreliable and starts unselected.
 export const RELIABLE_CATEGORIES: ReadonlySet<string> = new Set([
+  "Beast",
   "Currency",
   "DeliriumOrb",
   "DivinationCard",
@@ -55,6 +56,7 @@ export const UNIQUE_CATEGORIES_ORDERED: string[] = [
   "UniqueTincture",
   "UniqueWeapon",
   "SkillGem",
+  "BaseType",
 ];
 
 const UNIQUE_CATEGORIES: ReadonlySet<string> = new Set(UNIQUE_CATEGORIES_ORDERED);
