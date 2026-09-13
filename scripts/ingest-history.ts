@@ -15,8 +15,11 @@ const DB_PATH = path.join(process.cwd(), "db", "history.duckdb");
 // Restricting to the last handful of leagues trades away data volume for data quality - older
 // leagues' price history is noisier/less complete, and league-recency weighting (see
 // league-recency.ts) already discounts old leagues heavily, so keeping them around was mostly
-// just adding stale signal the model had to average away.
-const INCLUDED_LEAGUES = ["Mirage", "Keepers", "Mercenaries", "Settlers", "Phrecia 2.0"];
+// just adding stale signal the model had to average away. Phrecia and Phrecia 2.0 are excluded
+// even though they're recent: both were short event leagues (not a normal challenge league
+// economy), and their price data was noisy enough to need a dedicated sanity check elsewhere (see
+// the currency magnitude check below) - not worth the risk of feeding more of that in.
+const INCLUDED_LEAGUES = ["Mirage", "Keepers", "Mercenaries", "Settlers"];
 
 async function main() {
   if (!fs.existsSync(DATA_DIR)) {

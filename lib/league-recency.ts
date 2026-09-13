@@ -11,7 +11,6 @@ import { daysBetweenUtc } from "./league-day";
 const LEAGUE_RELEASE_DATES: Record<string, string> = {
   Allflame: "2026-07-24",
   Mirage: "2026-03-06",
-  "Phrecia 2.0": "2026-01-29",
   Keepers: "2025-10-31",
   Mercenaries: "2025-06-13",
   Settlers: "2024-07-26",
