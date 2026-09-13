@@ -209,7 +209,11 @@ export function MirageSimulatorPanel() {
             <TableBody>
               {pagedRows.map((r) => (
                 <TableRow key={`${r.category}-${r.name}`}>
-                  <TableCell>{r.name}</TableCell>
+                  <TableCell>
+                    <div className="max-w-[280px] truncate" title={r.name}>
+                      {r.name}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{humanizeCategoryName(r.filterCategory)}</Badge>
                   </TableCell>

@@ -179,7 +179,11 @@ export function FlipSuggestionsPanel() {
             <TableBody>
               {pagedSuggestions.map((s) => (
                 <TableRow key={`${s.category}-${s.name}`}>
-                  <TableCell>{s.name}</TableCell>
+                  <TableCell>
+                    <div className="max-w-[280px] truncate" title={s.name}>
+                      {s.name}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
                   </TableCell>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FlipSuggestionsPanel } from "@/components/flip-suggestions-panel";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Dashboard() {
   return (
@@ -11,12 +12,15 @@ export function Dashboard() {
             Unofficial tool - not affiliated with or endorsed by Grinding Gear Games.
           </p>
         </div>
-        <Link
-          href="/mirage-simulator"
-          className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-        >
-          Mirage league simulator
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/mirage-simulator"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            Mirage league simulator
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
 
       <FlipSuggestionsPanel />
