@@ -1,4 +1,4 @@
-import { DuckDBInstance } from "@duckdb/node-api";
+import { DuckDBInstance, type DuckDBDateValue } from "@duckdb/node-api";
 import { config } from "dotenv";
 import { glob } from "glob";
 import fs from "node:fs";
@@ -120,24 +120,86 @@ async function main() {
     // less cold-start cost, since there's no first-query aggregation step left to pay.
     console.log("Building day-aggregated tables...");
 
+    // Unlike items, currency trades are frequent/liquid enough that even Low-confidence
+    // (few-listing) days are still a real market price, not noise - and Divine Orb's own rate
+    // (derived from this table below) needs to be available on as many days as possible for
+    // the divine-denominated model to have full coverage, so no confidence filter here at all.
+    await connection.run(`
+      CREATE TABLE currency_daily AS
+      SELECT league, get AS name, date, AVG(value) AS value,
+             MAX(CASE WHEN confidence IN ('High', 'Medium') THEN 1 ELSE 0 END) AS is_reliable
+      FROM currency_history
+      WHERE pay = 'Chaos Orb' AND get != 'Chaos Orb'
+      GROUP BY league, get, date
+    `);
+
+    // Sanity check specifically for Low-confidence days: found real cases (e.g. Fragment of
+    // Terror in late Mirage) where confidence permanently collapses to Low and the price
+    // explodes to 100x+ its recent trend for days at a stretch - clearly bad data, not a real
+    // market move, since nothing comparable ever happens at High/Medium confidence. This has to
+    // be a sequential walk rather than a single SQL pass: a pure-SQL version (ASOF join for the
+    // last reliable value + LAG for the previous day's value, both checked against a 5x band)
+    // still let a multi-day run of bad values partially through, because LAG reads the RAW
+    // (unfiltered) previous day - so a rejected bad value at day N still served as the
+    // comparison anchor for day N+1, letting consecutive bad values in a plateau pass against
+    // each other. Walking sequentially and tracking "last accepted" ourselves (only ever
+    // updated on acceptance) makes rejection correctly cascade through an entire bad run instead.
+    const dailyRows = await connection.runAndReadAll(`
+      SELECT league, name, date, value, is_reliable
+      FROM currency_daily
+      ORDER BY league, name, date
+    `);
+
+    await connection.run(`
+      CREATE TABLE currency_daily_filtered (league VARCHAR, name VARCHAR, date DATE, value DOUBLE)
+    `);
+    const appender = await connection.createAppender("currency_daily_filtered");
+    let groupKey = "";
+    let lastReliableValue: number | null = null;
+    let lastAcceptedValue: number | null = null;
+    let filteredCount = 0;
+    let totalCount = 0;
+    for (const row of dailyRows.getRowObjects()) {
+      totalCount++;
+      const key = `${row.league as string} ${row.name as string}`;
+      if (key !== groupKey) {
+        groupKey = key;
+        lastReliableValue = null;
+        lastAcceptedValue = null;
+      }
+      const value = row.value as number;
+      const isReliable = Number(row.is_reliable) === 1;
+      const withinBand = (reference: number | null) =>
+        reference === null || (value >= reference / 5 && value <= reference * 5);
+      const accepted = isReliable || (withinBand(lastReliableValue) && withinBand(lastAcceptedValue));
+
+      if (!accepted) {
+        filteredCount++;
+        continue;
+      }
+      appender.appendVarchar(row.league as string);
+      appender.appendVarchar(row.name as string);
+      appender.appendDate(row.date as DuckDBDateValue);
+      appender.appendDouble(value);
+      appender.endRow();
+      lastAcceptedValue = value;
+      if (isReliable) lastReliableValue = value;
+    }
+    appender.closeSync();
+    console.log(
+      `Currency magnitude sanity check: filtered ${filteredCount} of ${totalCount} Low-confidence day rows`
+    );
+
     await connection.run(`
       CREATE TABLE currency_history_dayed AS
-      WITH daily AS (
-        -- Unlike items, currency trades are frequent/liquid enough that even Low-confidence
-        -- (few-listing) days are still a real market price, not noise - and Divine Orb's own rate
-        -- (derived from this table below) needs to be available on as many days as possible for
-        -- the divine-denominated model to have full coverage, so no confidence filter here at all.
-        SELECT league, get AS name, date, AVG(value) AS value
-        FROM currency_history
-        WHERE pay = 'Chaos Orb' AND get != 'Chaos Orb'
-        GROUP BY league, get, date
-      ),
-      league_start AS (
-        SELECT league, MIN(date) AS start_date FROM daily GROUP BY league
+      WITH league_start AS (
+        SELECT league, MIN(date) AS start_date FROM currency_daily_filtered GROUP BY league
       )
-      SELECT d.league, d.name, d.value, date_diff('day', ls.start_date, d.date) AS day_offset
-      FROM daily d JOIN league_start ls ON d.league = ls.league
+      SELECT f.league, f.name, f.value, date_diff('day', ls.start_date, f.date) AS day_offset
+      FROM currency_daily_filtered f JOIN league_start ls ON f.league = ls.league
     `);
+    await connection.run("DROP TABLE currency_daily");
+    await connection.run("DROP TABLE currency_daily_filtered");
     await connection.run(`
       CREATE TABLE item_history_dayed AS
       WITH combined AS (
