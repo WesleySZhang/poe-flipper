@@ -31,9 +31,15 @@ export const DEFAULT_TOLERANCE_DAYS = 3;
 // ~20 leagues were ingested) is often unreachable. 3 was already shown to perform about as well as
 // 5 did in that earlier tuning pass.
 const MIN_LEAGUES_WITH_DATA = 3;
-// Below ~1c, tiny absolute price noise (e.g. 0.1c -> 0.4c) produces enormous ratios that
-// swamp genuine signal - require a starting price with some weight behind it.
-const MIN_STARTING_VALUE = 1;
+// Bulk-flipping cheap, high-liquidity currency (Orb of Alteration, Armourer's Scrap, etc. - some
+// worth well under 0.01c) is a real, deliberate trading strategy, not noise - buy a stack at a low
+// price, sell it later at a better one. Only guards against a literal zero/near-zero price (a data
+// glitch, not a real listing), so almost everything gets through.
+const MIN_STARTING_VALUE_CURRENCY = 0.001;
+// Items don't have the same bulk-flip dynamic - they're traded one at a time, not in stacks - so a
+// random item worth a fraction of a chaos is usually just low-value junk. Below ~1c there, tiny
+// absolute price noise (e.g. 0.1c -> 0.4c) produces enormous ratios that swamp genuine signal.
+const MIN_STARTING_VALUE_ITEM = 1;
 
 // A literal SQL VALUES table of every known league's recency weight, for joining onto matched
 // rows below. Built from a hardcoded release-date table (see league-recency.ts), not user input,
@@ -112,7 +118,7 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
       JOIN nearest_future f ON n.league = f.league AND n.name = f.name
       LEFT JOIN league_weights lw ON lw.league = n.league
       WHERE n.rn = 1 AND f.rn = 1
-        AND n.value_now >= ${MIN_STARTING_VALUE}
+        AND n.value_now >= ${MIN_STARTING_VALUE_CURRENCY}
         AND f.value_future > 0
     )
     -- Ratios are multiplicative (a 10x league and a 0.1x league should cancel out), so average
@@ -178,7 +184,7 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
         ON n.league = f.league AND n.name = f.name AND n.variant IS NOT DISTINCT FROM f.variant
       LEFT JOIN league_weights lw ON lw.league = n.league
       WHERE n.rn = 1 AND f.rn = 1
-        AND n.value_now >= ${MIN_STARTING_VALUE}
+        AND n.value_now >= ${MIN_STARTING_VALUE_ITEM}
         AND f.value_future > 0
     )
     -- Ratios are multiplicative (a 10x league and a 0.1x league should cancel out), so average
@@ -265,7 +271,7 @@ export async function getCurrencyGrowthRatiosBatch(
       JOIN nearest_future f ON n.scenario_id = f.scenario_id AND n.league = f.league AND n.name = f.name
       LEFT JOIN league_weights lw ON lw.league = n.league
       WHERE n.rn = 1 AND f.rn = 1
-        AND n.value_now >= ${MIN_STARTING_VALUE}
+        AND n.value_now >= ${MIN_STARTING_VALUE_CURRENCY}
         AND f.value_future > 0
     )
     SELECT scenario_id, name, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
@@ -349,7 +355,7 @@ export async function getItemGrowthRatiosBatch(
         AND n.variant IS NOT DISTINCT FROM f.variant
       LEFT JOIN league_weights lw ON lw.league = n.league
       WHERE n.rn = 1 AND f.rn = 1
-        AND n.value_now >= ${MIN_STARTING_VALUE}
+        AND n.value_now >= ${MIN_STARTING_VALUE_ITEM}
         AND f.value_future > 0
     )
     SELECT scenario_id, name, variant, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio,
