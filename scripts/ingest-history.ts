@@ -233,7 +233,7 @@ async function main() {
     await connection.run("DROP TABLE currency_daily");
     await connection.run("DROP TABLE currency_daily_filtered");
     await connection.run(`
-      CREATE TABLE item_history_dayed AS
+      CREATE TABLE item_history_dayed_raw AS
       WITH combined AS (
         -- A linked item prices completely differently from an unlinked one (a 6-link is a
         -- different item to trade, not just a variant of the same one) - fold the links bucket
@@ -261,6 +261,71 @@ async function main() {
       SELECT d.league, d.name, d.variant, d.value, d.type, date_diff('day', ls.start_date, d.date) AS day_offset
       FROM daily d JOIN league_start ls ON d.league = ls.league
     `);
+
+    // Magnitude sanity check: unlike currency, every surviving row here already passed a
+    // confidence filter (Low was dropped above) - but confirmed empirically that poe.ninja's
+    // confidence label alone doesn't guarantee a sane price for a rare/expensive item. Real case:
+    // House of Mirrors (Mirage) went 14915.75c -> 17c -> 14.5c -> 28.5c across four straight days,
+    // every one of them tagged "High" - a >99% "crash" that's obviously bad data, not a real
+    // market move, and it directly corrupted this item's growth-ratio prediction (a 5-day window
+    // landed right on the glitch and predicted a 95% loss).
+    //
+    // Items don't have a separate always-trusted confidence tier left to anchor against the way
+    // currency's Low-vs-High/Medium split does (see the currency check above), so this compares
+    // each day against a LOCAL windowed median instead - a GLOBAL per-item median would be wrong,
+    // since items can legitimately shift to a whole new price tier for the rest of a league (a
+    // build gets discovered, demand permanently jumps) and a global median would wrongly flag the
+    // new, real price level as the outlier. A local window still tracks that kind of genuine drift
+    // (verified: a real sustained step-change is preserved even right at the transition boundary,
+    // since the median naturally follows whichever side has the local majority) while catching a
+    // short bad run, as long as the bad run is a minority within its own window.
+    //
+    // The window is defined by ROW COUNT (nearest 25 surviving days each side), not a calendar-day
+    // RANGE - tried RANGE first and found it wrongly rejected House of Mirrors' entire legitimate
+    // pre-glitch climb: rare items already have gaps from Low-confidence days excluded upstream, so
+    // a fixed calendar window can end up containing MORE glitch days than good ones, dragging the
+    // median itself into the bad range. A row-count window guarantees enough real neighboring data
+    // points regardless of calendar gaps. Also had to widen past an initial +/-15 rows: House of
+    // Mirrors' actual bad run turned out to span 16 straight days (not the few days assumed at
+    // first), long enough that even a 31-point row-count window was still majority-bad near its
+    // center - verified against the real sequence that +/-25 rows correctly keeps both the
+    // legitimate pre-glitch climb and the legitimate (much higher) post-glitch price, rejecting only
+    // the bad run itself.
+    //
+    // Pure SQL (a windowed MEDIAN), unlike currency's JS sequential walk - items don't need the
+    // "reliable anchor" bootstrapping that walk exists for, since there's no reliable/unreliable
+    // split left to bootstrap from here.
+    await connection.run(`
+      CREATE TABLE item_history_dayed AS
+      WITH with_reference AS (
+        SELECT *,
+               MEDIAN(value) OVER (
+                 PARTITION BY league, name, variant ORDER BY day_offset
+                 ROWS BETWEEN 25 PRECEDING AND 25 FOLLOWING
+               ) AS local_median,
+               COUNT(*) OVER (
+                 PARTITION BY league, name, variant ORDER BY day_offset
+                 ROWS BETWEEN 25 PRECEDING AND 25 FOLLOWING
+               ) AS window_count
+        FROM item_history_dayed_raw
+      )
+      SELECT league, name, variant, value, type, day_offset
+      FROM with_reference
+      -- Too few nearby days to form a trustworthy local median (common for genuinely rare items) -
+      -- nothing better to compare against, so accept as-is rather than reject on no evidence.
+      WHERE window_count < 5
+         OR value BETWEEN local_median / 5 AND local_median * 5
+    `);
+    const itemFilterCounts = await connection.runAndReadAll(`
+      SELECT
+        (SELECT COUNT(*) FROM item_history_dayed_raw) AS before_count,
+        (SELECT COUNT(*) FROM item_history_dayed) AS after_count
+    `);
+    const { before_count: itemBefore, after_count: itemAfter } = itemFilterCounts.getRowObjects()[0];
+    console.log(
+      `Item magnitude sanity check: filtered ${Number(itemBefore) - Number(itemAfter)} of ${itemBefore} day rows`
+    );
+    await connection.run("DROP TABLE item_history_dayed_raw");
 
     // Chaos is a moving yardstick: Divine Orb went from 36c to 295c over Mirage's first 30 days, so
     // an item holding steady at "2 divines" all league still looks like an 8x chaos winner. This
