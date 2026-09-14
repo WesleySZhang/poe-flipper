@@ -31,11 +31,19 @@ export const DEFAULT_TOLERANCE_DAYS = 3;
 // ~20 leagues were ingested) is often unreachable. 3 was already shown to perform about as well as
 // 5 did in that earlier tuning pass.
 const MIN_LEAGUES_WITH_DATA = 3;
-// Bulk-flipping cheap, high-liquidity currency (Orb of Alteration, Armourer's Scrap, etc.) is a
-// real, deliberate trading strategy, not noise - buy a stack at a low price, sell it later at a
-// better one - but below 0.2c even that gets too thin/glitchy to trust (e.g. Rogue's Marker at
-// 0.002c), so still floor it there rather than letting literally everything through.
-const MIN_STARTING_VALUE_CURRENCY = 0.2;
+// Bulk-flipping cheap, high-liquidity currency (Orb of Alteration, Orb of Fusing, etc.) is a real,
+// deliberate trading strategy, not noise - buy a stack at a low price, sell it later at a better
+// one. This used to sit at 0.2c on the theory that anything cheaper gets too thin/glitchy to trust,
+// but checked that empirically: these items are tagged "High" confidence by poe.ninja on
+// essentially every single day across every league (Orb of Alteration and Orb of Fusing both never
+// once drop below High in the ingested data) - the 0.2c line was catching genuinely well-supported
+// bulk currency purely for being cheap, not for being unreliable. Confirmed by sweeping the floor
+// from 0.2 down to 0.001: zero currencies produced an extreme (>5x or <0.2x) avgRatio at ANY floor
+// tested, so the real protection against bad data is the confidence tag plus the sequential
+// magnitude sanity check at ingest time (see ingest-history.ts), not this price cutoff. Still keep
+// a small floor rather than 0, purely to guard the division itself against a literal 0 or
+// near-zero "value_now" (which would blow the ratio up regardless of confidence).
+const MIN_STARTING_VALUE_CURRENCY = 0.02;
 // Items don't have the same bulk-flip dynamic - they're traded one at a time, not in stacks - so a
 // random item worth a fraction of a chaos is usually just low-value junk. Below ~1c there, tiny
 // absolute price noise (e.g. 0.1c -> 0.4c) produces enormous ratios that swamp genuine signal.
