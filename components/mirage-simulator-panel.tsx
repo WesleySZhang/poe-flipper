@@ -198,9 +198,9 @@ export function MirageSimulatorPanel() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {isStaleLeagueDay && (
-          <p className="text-sm font-medium text-red-600 dark:text-red-500">
+          <p className="text-xs font-medium text-red-600 dark:text-red-500">
             Warning: day {currentDay} is past day 30 of the league - the economy has largely settled by this point, so
-            predictions can be wildly misleading.
+            predictions can be misleading.
           </p>
         )}
         <CategoryFilter

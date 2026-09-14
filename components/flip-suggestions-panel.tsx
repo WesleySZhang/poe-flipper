@@ -138,7 +138,7 @@ export function FlipSuggestionsPanel() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
           <CardTitle className="flex items-center gap-2">
             Flip suggestions
@@ -150,7 +150,7 @@ export function FlipSuggestionsPanel() {
             )}
           </CardTitle>
           <CardDescription>
-            Projected from day {currentDay} to day {currentDay + durationDays} of {CURRENT_LEAGUE}
+            Projected from Day-{currentDay} to Day-{currentDay + durationDays} of {CURRENT_LEAGUE}
           </CardDescription>
         </div>
         <div className="flex flex-wrap items-end gap-4">
@@ -181,9 +181,9 @@ export function FlipSuggestionsPanel() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {isStaleLeagueDay && (
-          <p className="text-sm font-medium text-red-600 dark:text-red-500">
+          <p className="text-xs font-medium text-red-600 dark:text-red-500">
             Warning: day {currentDay} is past day 30 of the league - the economy has largely settled by this point, so
-            predictions can be wildly misleading.
+            predictions can be misleading.
           </p>
         )}
         <CategoryFilter
