@@ -155,7 +155,7 @@ export function FlipSuggestionsPanel() {
         </div>
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="durationDays">Project forward (days)</Label>
+            <Label htmlFor="durationDays">Days ahead</Label>
             <Input
               id="durationDays"
               type="number"
