@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
-import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
+import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
@@ -139,7 +139,7 @@ export function FlipSuggestionsPanel() {
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
+        <div className="flex flex-col gap-4">
           <CardTitle className="flex items-center gap-2">
             Flip suggestions
             {isPending && (
@@ -149,11 +149,6 @@ export function FlipSuggestionsPanel() {
               </span>
             )}
           </CardTitle>
-          <CardDescription>
-            Projected from Day-{currentDay} to Day-{currentDay + durationDays} of {CURRENT_LEAGUE}
-          </CardDescription>
-        </div>
-        <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="durationDays">Days ahead</Label>
             <Input
@@ -168,6 +163,8 @@ export function FlipSuggestionsPanel() {
               className="w-28"
             />
           </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">
             <Label>Prices in</Label>
             <Tabs value={priceUnit} onValueChange={(value) => setPriceUnit(value as PriceUnit)}>
