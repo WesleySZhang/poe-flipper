@@ -114,7 +114,7 @@ export function CategoryFilter({
             <div>
               <p className="text-xs font-medium">Meta items</p>
               <p className="text-xs text-muted-foreground">
-                Disclaimer: these values are league-meta dependent.
+                These can be league-meta dependent.
               </p>
             </div>
             <BulkActions categories={uniques} onSelectAll={onSelectAll} onDeselectAll={onDeselectAll} />
