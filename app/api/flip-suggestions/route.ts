@@ -11,7 +11,15 @@ export async function GET(request: Request) {
     return Response.json({ error: "durationDays must be a number" }, { status: 400 });
   }
 
-  const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
+  // Optional override so a testing tool can replay the model against a past league day while still
+  // pricing off today's live values - see app/current-league-tester/page.tsx. Absent, this behaves
+  // exactly as before (today's actual league day).
+  const currentDayParam = searchParams.get("currentDay");
+  const currentDay = currentDayParam !== null ? Number(currentDayParam) : currentLeagueDay(CURRENT_LEAGUE_START_DATE);
+  if (!Number.isFinite(currentDay)) {
+    return Response.json({ error: "currentDay must be a number" }, { status: 400 });
+  }
+
   const suggestions = await getFlipSuggestions(CURRENT_LEAGUE, currentDay, durationDays);
   return Response.json(suggestions);
 }
