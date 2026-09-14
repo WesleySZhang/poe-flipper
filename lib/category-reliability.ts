@@ -57,6 +57,7 @@ export function isReliableCategory(category: string): boolean {
 export const UNIQUE_CATEGORIES_ORDERED: string[] = [
   "Scarab",
   "UniqueJewel",
+  "ClusterJewel",
   "UniqueFlask",
   "UniqueAccessory",
   "UniqueArmour",
