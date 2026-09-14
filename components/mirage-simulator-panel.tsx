@@ -169,7 +169,7 @@ export function MirageSimulatorPanel() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="durationDays">+ Days</Label>
+              <Label htmlFor="durationDays">Days ahead</Label>
               <Input
                 id="durationDays"
                 type="number"
