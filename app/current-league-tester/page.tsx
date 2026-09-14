@@ -16,10 +16,12 @@ export default function CurrentLeagueTesterPage() {
           </Link>
           <h1 className="mt-2 text-2xl font-semibold">{CURRENT_LEAGUE} tester</h1>
           <p className="text-sm text-muted-foreground">
-            Testing tool - replays the flip-suggestion model against any day of the current (still ongoing){" "}
-            {CURRENT_LEAGUE} league, priced off today&apos;s real live values. Since {CURRENT_LEAGUE} hasn&apos;t
-            finished yet, there&apos;s no historical record of what actually happens later in it - Actual future and
-            Actual % can&apos;t be filled in, unlike the Mirage simulator.
+            Spot-check tool for one item at a time in the current (still ongoing) {CURRENT_LEAGUE} league. Since{" "}
+            {CURRENT_LEAGUE} hasn&apos;t finished yet, this app has no day-by-day price history for it to compare
+            against - so instead of a table, type in an item, the price you see for it on a given league day (from
+            poe.ninja&apos;s site, which shows a per-item history chart the public API doesn&apos;t expose), and how
+            many days ahead to project. This tells you what the model predicts; look up the actual price on that
+            future day yourself on poe.ninja to see how close it got.
           </p>
         </div>
         <ThemeToggle />

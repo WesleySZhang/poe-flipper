@@ -582,3 +582,37 @@ function divineValueFrom(row: Record<string, unknown>): number | undefined {
   if (!Number.isFinite(rate) || rate <= 0) return undefined;
   return Number(row.value) / rate;
 }
+
+export interface KnownName {
+  category: "currency" | "item";
+  name: string;
+  variant?: string;
+}
+
+/**
+ * Every (category, name[, variant]) this app has historical data for - powers the current-league
+ * tester's item picker, so a lookup can offer exact, autocompleted matches instead of the user
+ * guessing an exact historical name/variant string blind. Not filtered by MIN_LEAGUES_WITH_DATA or
+ * either starting-value floor (see getCurrencyGrowthRatios/getItemGrowthRatios) - those apply per
+ * (currentDay, durationDays) scenario, which this name list is independent of, so an item can
+ * legitimately appear here yet still return "not enough data" for a specific day/duration the user
+ * later picks.
+ */
+export async function getKnownNames(): Promise<KnownName[]> {
+  const db = await getDb();
+  const [currencyReader, itemReader] = await Promise.all([
+    db.runAndReadAll("SELECT DISTINCT name FROM currency_history_dayed ORDER BY name"),
+    db.runAndReadAll("SELECT DISTINCT name, variant FROM item_history_dayed ORDER BY name, variant"),
+  ]);
+  const names: KnownName[] = currencyReader
+    .getRowObjects()
+    .map((row) => ({ category: "currency" as const, name: String(row.name) }));
+  for (const row of itemReader.getRowObjects()) {
+    names.push({
+      category: "item",
+      name: String(row.name),
+      variant: row.variant ? String(row.variant) : undefined,
+    });
+  }
+  return names;
+}
