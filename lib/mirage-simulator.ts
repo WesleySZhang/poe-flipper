@@ -27,6 +27,16 @@ export interface MirageSimulationRow {
   /** Ratios with chaos debasement divided out - see GrowthRatioRow.avgRatioDivine. */
   predictedRatioDivine?: number;
   actualRatioDivine?: number;
+  /** Leagues backing the divine-denominated figures - can be lower than leagueCount, so the
+   *  confidence hover quotes the right denominator in divine mode. */
+  leagueCountDivine: number;
+  /** How reliably this has gained in the training leagues, 0-100 - see lib/confidence.ts. Scored
+   *  from the same leagues the prediction came from, so it never peeks at Mirage's own outcome. */
+  confidence: number;
+  confidenceDivine?: number;
+  /** Share of training leagues that gained, for the "N of M leagues" hover text. */
+  upFraction: number;
+  upFractionDivine?: number;
 }
 
 /**
@@ -92,6 +102,11 @@ export async function simulateMirageLeague(
       predictedRatio: trend.avgRatio,
       actualRatio: actualFuture.value / actualNow.value,
       predictedRatioDivine: trend.avgRatioDivine,
+      leagueCountDivine: trend.leagueCountDivine,
+      confidence: trend.confidence,
+      confidenceDivine: trend.confidenceDivine,
+      upFraction: trend.upFraction,
+      upFractionDivine: trend.upFractionDivine,
       actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
     });
   }
@@ -118,6 +133,11 @@ export async function simulateMirageLeague(
       predictedRatio: trend.avgRatio,
       actualRatio: actualFuture.value / actualNow.value,
       predictedRatioDivine: trend.avgRatioDivine,
+      leagueCountDivine: trend.leagueCountDivine,
+      confidence: trend.confidence,
+      confidenceDivine: trend.confidenceDivine,
+      upFraction: trend.upFraction,
+      upFractionDivine: trend.upFractionDivine,
       actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
     });
   }

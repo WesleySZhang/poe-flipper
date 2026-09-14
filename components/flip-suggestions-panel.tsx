@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
+import { ConfidenceBadge } from "@/components/confidence-badge";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -17,6 +18,7 @@ import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
+import { activeConfidence } from "@/lib/confidence";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
   activePrice,
@@ -29,7 +31,7 @@ import {
 
 const PAGE_SIZE = 25;
 
-type SortKey = "current" | "predicted" | "change";
+type SortKey = "current" | "predicted" | "change" | "confidence";
 
 async function fetchFlipSuggestions(durationDays: number): Promise<FlipSuggestion[]> {
   const res = await fetch(`/api/flip-suggestions?durationDays=${durationDays}`);
@@ -74,6 +76,8 @@ export function FlipSuggestionsPanel() {
             return activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit);
           case "change":
             return activeRatio(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit);
+          case "confidence":
+            return activeConfidence(s.confidence, s.confidenceDivine, priceUnit);
         }
       }),
     [suggestions, sort, priceUnit]
@@ -225,6 +229,7 @@ export function FlipSuggestionsPanel() {
                   onSort={handleSort}
                 />
                 <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Confidence" sortKey="confidence" sort={sort} onSort={handleSort} />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -250,6 +255,13 @@ export function FlipSuggestionsPanel() {
                   </TableCell>
                   <TableCell className="text-right">
                     {formatPercentChange(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ConfidenceBadge
+                      score={activeConfidence(s.confidence, s.confidenceDivine, priceUnit)}
+                      upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
+                      leagueCount={priceUnit === "chaos" ? s.leagueCount : s.leagueCountDivine}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

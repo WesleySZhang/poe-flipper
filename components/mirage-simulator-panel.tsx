@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
+import { ConfidenceBadge } from "@/components/confidence-badge";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
+import { activeConfidence } from "@/lib/confidence";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
   activePrice,
@@ -34,7 +36,7 @@ async function fetchMirageSimulation(currentDay: number, durationDays: number): 
 
 const PAGE_SIZE = 25;
 
-type SortKey = "now" | "predicted" | "actualFuture" | "predictedX" | "actualX";
+type SortKey = "now" | "predicted" | "actualFuture" | "predictedX" | "actualX" | "confidence";
 
 export function MirageSimulatorPanel() {
   const [currentDay, setCurrentDay] = useState(2);
@@ -77,6 +79,8 @@ export function MirageSimulatorPanel() {
             return activeRatio(r.predictedRatio, r.predictedRatioDivine, priceUnit);
           case "actualX":
             return activeRatio(r.actualRatio, r.actualRatioDivine, priceUnit);
+          case "confidence":
+            return activeConfidence(r.confidence, r.confidenceDivine, priceUnit);
         }
       }),
     [rows, sort, priceUnit]
@@ -252,6 +256,7 @@ export function MirageSimulatorPanel() {
                 />
                 <SortableHeader label="Predicted %" sortKey="predictedX" sort={sort} onSort={handleSort} />
                 <SortableHeader label="Actual %" sortKey="actualX" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Confidence" sortKey="confidence" sort={sort} onSort={handleSort} />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -283,6 +288,13 @@ export function MirageSimulatorPanel() {
                   </TableCell>
                   <TableCell className="text-right">
                     {formatPercentChange(r.actualRatio, r.actualRatioDivine, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <ConfidenceBadge
+                      score={activeConfidence(r.confidence, r.confidenceDivine, priceUnit)}
+                      upFraction={priceUnit === "chaos" ? r.upFraction : r.upFractionDivine}
+                      leagueCount={priceUnit === "chaos" ? r.leagueCount : r.leagueCountDivine}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

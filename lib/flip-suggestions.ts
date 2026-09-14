@@ -16,6 +16,15 @@ export interface FlipSuggestion {
   /** Growth with chaos debasement divided out - see GrowthRatioRow.avgRatioDivine. */
   avgGrowthRatioDivine?: number;
   leagueCount: number;
+  /** Leagues backing the divine-denominated figures - can be lower than leagueCount, so the
+   *  confidence hover quotes the right denominator in divine mode. */
+  leagueCountDivine: number;
+  /** How reliably this has gained before, 0-100 - see lib/confidence.ts. */
+  confidence: number;
+  confidenceDivine?: number;
+  /** Share of past leagues that gained, for the "N of M leagues" hover text. */
+  upFraction: number;
+  upFractionDivine?: number;
   rationale: string;
 }
 
@@ -48,6 +57,11 @@ function buildSuggestion(
     avgGrowthRatio: trend.avgRatio,
     avgGrowthRatioDivine: trend.avgRatioDivine,
     leagueCount: trend.leagueCount,
+    leagueCountDivine: trend.leagueCountDivine,
+    confidence: trend.confidence,
+    confidenceDivine: trend.confidenceDivine,
+    upFraction: trend.upFraction,
+    upFractionDivine: trend.upFractionDivine,
     rationale: `Historically has ${direction} ${Math.abs(pctChange)}% over the next ${durationDays} days from this point in the league, averaged over ${trend.leagueCount} past leagues.`,
   };
 }

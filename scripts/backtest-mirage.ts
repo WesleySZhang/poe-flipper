@@ -6,6 +6,7 @@ import {
   type GrowthRatioRow,
   type GrowthRatioBatchOptions,
 } from "../lib/growth-ratios";
+import { confidenceTier, type ConfidenceTier } from "../lib/confidence";
 import { getAllCurrentCurrencyPrices } from "../lib/poe-ninja";
 import {
   CURRENT_LEAGUE,
@@ -84,6 +85,9 @@ interface MatchedRow {
   /** Same prediction/outcome measured in divines, i.e. with chaos debasement divided out. */
   predictedRatioDivine?: number;
   actualRatioDivine?: number;
+  /** Confidence the model assigned from the training leagues alone - scored before seeing any of
+   *  the holdout's outcome, so checking it against actualRatio below is a fair test. */
+  confidence: number;
 }
 
 /** One prediction paired with what actually happened, in whichever denomination is being scored. */
@@ -201,6 +205,7 @@ async function runScenario(
       actualFuture: actualFuture.value,
       actualRatio: actualFuture.value / actualNow.value,
       predictedRatioDivine: trend.avgRatioDivine,
+      confidence: trend.confidence,
       actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
     });
   }
@@ -219,6 +224,7 @@ async function runScenario(
       actualFuture: actualFutureEntry.value,
       actualRatio: actualFutureEntry.value / actualNowEntry.value,
       predictedRatioDivine: trend.avgRatioDivine,
+      confidence: trend.confidence,
       actualRatioDivine: divineRatio(actualNowEntry.valueDivine, actualFutureEntry.valueDivine),
     });
   }
@@ -421,6 +427,45 @@ async function main() {
     comparisonRows.push(weightingComparisonRow(scheme.label, allMatched));
   }
   console.table(comparisonRows);
+
+  // --- Confidence tiers: does the badge the UI shows actually mean anything? ---
+  // The gate for shipping the confidence column. Each row's score came from the training leagues
+  // only, so comparing it against what Mirage actually did is a fair out-of-sample test. If the
+  // tiers don't separate on "actually gained", the badge is decoration and shouldn't be shown.
+  console.log(
+    `\n--- Confidence tier reliability, pooled across every scenario, "${baseline.label}" ---\n` +
+      `Confidence answers "how reliably has this gained before", so the column that matters is\n` +
+      `"actually gained %" - not MAE, which runs HIGHER for confident rows simply because reliable\n` +
+      `gainers move further. Tiers should separate cleanly top to bottom.\n`
+  );
+  const byTier = new Map<ConfidenceTier, MatchedRow[]>();
+  for (const row of baselineMatched) {
+    const tier = confidenceTier(row.confidence);
+    const list = byTier.get(tier) ?? [];
+    list.push(row);
+    byTier.set(tier, list);
+  }
+  const TIER_ORDER: ConfidenceTier[] = ["high", "medium", "low"];
+  console.table(
+    TIER_ORDER.flatMap((tier) => {
+      const rows = byTier.get(tier) ?? [];
+      if (rows.length === 0) return [];
+      const gained = rows.filter((r) => r.actualRatio > 1).length;
+      const gained20 = rows.filter((r) => r.actualRatio >= 1.2).length;
+      const chaos = summarize(chaosPairs(rows));
+      return [
+        {
+          tier,
+          n: rows.length,
+          "actually gained %": Math.round((gained / rows.length) * 100),
+          "gained 20%+ %": Math.round((gained20 / rows.length) * 100),
+          "median actual x": median(rows.map((r) => r.actualRatio)).toFixed(3),
+          "dir. accuracy%": Math.round(chaos.directionalAccuracy * 100),
+          MAE: chaos.mae.toFixed(3),
+        },
+      ];
+    })
+  );
 
   process.exit(0);
 }
