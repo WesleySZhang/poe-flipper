@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -142,7 +142,7 @@ export function MirageSimulatorPanel() {
   return (
     <Card>
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-        <div>
+        <div className="flex flex-col gap-4">
           <CardTitle className="flex items-center gap-2">
             Mirage league simulator
             {isPending && (
@@ -152,41 +152,39 @@ export function MirageSimulatorPanel() {
               </span>
             )}
           </CardTitle>
-          <CardDescription>
-            Simulates Day-{currentDay} of Mirage and predicts Day-{targetDay} prices
-            against actual prices
-          </CardDescription>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="currentDay">Current day</Label>
+              <Input
+                id="currentDay"
+                type="number"
+                min={0}
+                max={MIRAGE_LEAGUE_LENGTH_DAYS}
+                value={currentDay}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  setCurrentDay(Number.isFinite(value) ? Math.max(0, Math.min(MIRAGE_LEAGUE_LENGTH_DAYS, value)) : 0);
+                }}
+                className="w-24"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="durationDays">+ Days</Label>
+              <Input
+                id="durationDays"
+                type="number"
+                min={1}
+                value={durationDays}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  setDurationDays(Number.isFinite(value) && value > 0 ? Math.floor(value) : 1);
+                }}
+                className="w-28"
+              />
+            </div>
+          </div>
         </div>
         <div className="flex flex-wrap items-end gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="currentDay">Current day</Label>
-            <Input
-              id="currentDay"
-              type="number"
-              min={0}
-              max={MIRAGE_LEAGUE_LENGTH_DAYS}
-              value={currentDay}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                setCurrentDay(Number.isFinite(value) ? Math.max(0, Math.min(MIRAGE_LEAGUE_LENGTH_DAYS, value)) : 0);
-              }}
-              className="w-24"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="durationDays">Project forward (days)</Label>
-            <Input
-              id="durationDays"
-              type="number"
-              min={1}
-              value={durationDays}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                setDurationDays(Number.isFinite(value) && value > 0 ? Math.floor(value) : 1);
-              }}
-              className="w-28"
-            />
-          </div>
           <div className="flex flex-col gap-1.5">
             <Label>Prices in</Label>
             <Tabs value={priceUnit} onValueChange={(value) => setPriceUnit(value as PriceUnit)}>
