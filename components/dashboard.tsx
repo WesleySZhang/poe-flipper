@@ -19,6 +19,12 @@ export function Dashboard() {
           >
             Mirage league simulator
           </Link>
+          <Link
+            href="/current-league-tester"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            League tester
+          </Link>
           <ThemeToggle />
         </div>
       </header>
