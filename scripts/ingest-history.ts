@@ -1,4 +1,4 @@
-import { DuckDBInstance, type DuckDBDateValue } from "@duckdb/node-api";
+import { DuckDBInstance, type DuckDBConnection, type DuckDBDateValue } from "@duckdb/node-api";
 import { config } from "dotenv";
 import { glob } from "glob";
 import fs from "node:fs";
@@ -47,6 +47,140 @@ const INCLUDED_LEAGUES = ["Mirage", "Keepers", "Mercenaries", "Settlers", "Phrec
 // training as a result - this allowlist stays empty until a future extras drop earns a spot in it
 // the same way (glob is exercised either way so the mechanism itself stays tested).
 const INCLUDED_EXTRA_LEAGUES: string[] = [];
+
+// One-day "spike" glitches: a steady price suddenly drops (or jumps) to a small fraction/multiple
+// of itself for exactly one day, then returns to right around its former level and keeps trending
+// the way it already was. Distinct from the magnitude-band and local-median rejection above (which
+// throw the bad day away entirely, leaving a gap) - this instead guesses the value that day
+// probably should have been, by log-linearly interpolating between the surviving day right before
+// and right after it, so a chart or a growth-ratio training window sees a smooth curve instead of a
+// spike. Applied as a post-process on top of the tables above, after their own filtering has
+// already run, since a spike can slip through those unrejected (they anchor against a wide 5x band
+// or a +/-25-day window median, not the immediate neighboring days).
+//
+// Tuned and spot-checked against the real production DB (db/history.duckdb) before landing:
+//   - Requiring BOTH neighbors to sit within 60% of each other ("steady") is what tells a real,
+//     sustained crash/rally apart from a one-day blip - a persisting regime change fails this check
+//     (the "after" side never comes back close to the "before" side) and is correctly left alone.
+//     Verified this against two real multi-day crashes found in Keepers (Annulment Shard,
+//     Al-Hezmin's Crest) that a naive "far from local-interpolated line" check wrongly flagged -
+//     neither is flagged once this steady-neighbor requirement is added.
+//   - Requiring the flagged day to be at least 2x away from BOTH neighbors, in the same direction
+//     (a clean V or inverted-V), caught 475 currency rows and 18516 item rows out of ~8.4M total
+//     rows (~0.2%) - a small, targeted slice, not a broad rewrite of the dataset.
+const SPIKE_RATIO_THRESHOLD = 2.0;
+const SPIKE_NEIGHBOR_STEADY_TOLERANCE = 1.6;
+const SPIKE_MAX_NEIGHBOR_GAP_DAYS = 6;
+
+interface SpikeRow {
+  league: string;
+  name: string;
+  variant: string | null;
+  dayOffset: number;
+  value: number;
+}
+
+interface SpikeCorrection extends SpikeRow {
+  originalValue: number;
+}
+
+function detectSpikeCorrections(rows: SpikeRow[]): SpikeCorrection[] {
+  const corrections: SpikeCorrection[] = [];
+  const groups = new Map<string, SpikeRow[]>();
+  for (const row of rows) {
+    const key = JSON.stringify([row.league, row.name, row.variant]);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+  const lnSpike = Math.log(SPIKE_RATIO_THRESHOLD);
+  const lnSteady = Math.log(SPIKE_NEIGHBOR_STEADY_TOLERANCE);
+  for (const group of groups.values()) {
+    // group is already in day_offset order (rows were fetched pre-sorted) - each candidate is
+    // checked against its immediate, real (uncorrected) neighbors, not a running/adjusted value, so
+    // two adjacent spike days each get judged independently off their own actual surroundings.
+    for (let i = 1; i < group.length - 1; i++) {
+      const prev = group[i - 1];
+      const cur = group[i];
+      const next = group[i + 1];
+      const gap = next.dayOffset - prev.dayOffset;
+      if (gap <= 0 || gap > SPIKE_MAX_NEIGHBOR_GAP_DAYS) continue;
+      if (prev.value <= 0 || cur.value <= 0 || next.value <= 0) continue;
+      const lnPrev = Math.log(prev.value);
+      const lnCur = Math.log(cur.value);
+      const lnNext = Math.log(next.value);
+      const drift = lnNext - lnPrev;
+      if (Math.abs(drift) > lnSteady) continue;
+      const devPrev = lnCur - lnPrev;
+      const devNext = lnCur - lnNext;
+      const sameSign = (devPrev > 0 && devNext > 0) || (devPrev < 0 && devNext < 0);
+      if (!sameSign || Math.min(Math.abs(devPrev), Math.abs(devNext)) < lnSpike) continue;
+      const t = (cur.dayOffset - prev.dayOffset) / gap;
+      const interpolated = Math.exp(lnPrev + t * drift);
+      corrections.push({ ...cur, value: interpolated, originalValue: cur.value });
+    }
+  }
+  return corrections;
+}
+
+/** Runs the spike check above against one dayed table and writes any corrected values back into it. */
+async function correctSpikesInTable(
+  connection: DuckDBConnection,
+  table: "currency_history_dayed" | "item_history_dayed",
+  hasVariant: boolean
+): Promise<void> {
+  const variantSelect = hasVariant ? "variant" : "NULL AS variant";
+  const orderBy = hasVariant ? "league, name, variant, day_offset" : "league, name, day_offset";
+  const reader = await connection.runAndReadAll(
+    `SELECT league, name, ${variantSelect}, day_offset, value FROM ${table} ORDER BY ${orderBy}`
+  );
+  const rows: SpikeRow[] = reader.getRowObjects().map((row) => ({
+    league: String(row.league),
+    name: String(row.name),
+    variant: row.variant === null || row.variant === undefined ? null : String(row.variant),
+    dayOffset: Number(row.day_offset),
+    value: Number(row.value),
+  }));
+
+  const corrections = detectSpikeCorrections(rows);
+  console.log(`Spike correction: ${corrections.length} of ${rows.length} rows corrected in ${table}`);
+  if (corrections.length === 0) return;
+
+  console.table(
+    corrections.slice(0, 10).map((c) => ({
+      league: c.league,
+      name: hasVariant && c.variant ? `${c.name} (${c.variant})` : c.name,
+      day: c.dayOffset,
+      was: c.originalValue,
+      now: Number(c.value.toFixed(4)),
+    }))
+  );
+
+  await connection.run("DROP TABLE IF EXISTS spike_corrections");
+  await connection.run(
+    "CREATE TABLE spike_corrections (league VARCHAR, name VARCHAR, variant VARCHAR, day_offset BIGINT, new_value DOUBLE)"
+  );
+  const appender = await connection.createAppender("spike_corrections");
+  for (const c of corrections) {
+    appender.appendVarchar(c.league);
+    appender.appendVarchar(c.name);
+    if (c.variant === null) appender.appendNull();
+    else appender.appendVarchar(c.variant);
+    appender.appendBigInt(BigInt(c.dayOffset));
+    appender.appendDouble(c.value);
+    appender.endRow();
+  }
+  appender.closeSync();
+
+  const variantJoinClause = hasVariant ? "AND t.variant IS NOT DISTINCT FROM c.variant" : "";
+  await connection.run(`
+    UPDATE ${table} t
+    SET value = c.new_value
+    FROM spike_corrections c
+    WHERE t.league = c.league AND t.name = c.name ${variantJoinClause} AND t.day_offset = c.day_offset
+  `);
+  await connection.run("DROP TABLE spike_corrections");
+}
 
 async function main() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -273,6 +407,7 @@ async function main() {
     `);
     await connection.run("DROP TABLE currency_daily");
     await connection.run("DROP TABLE currency_daily_filtered");
+    await correctSpikesInTable(connection, "currency_history_dayed", false);
     await connection.run(`
       CREATE TABLE item_history_dayed_raw AS
       WITH combined AS (
@@ -377,6 +512,7 @@ async function main() {
       `Item magnitude sanity check: filtered ${Number(itemBefore) - Number(itemAfter)} of ${itemBefore} day rows`
     );
     await connection.run("DROP TABLE item_history_dayed_raw");
+    await correctSpikesInTable(connection, "item_history_dayed", true);
 
     // Chaos is a moving yardstick: Divine Orb went from 36c to 295c over Mirage's first 30 days, so
     // an item holding steady at "2 divines" all league still looks like an 8x chaos winner. This
