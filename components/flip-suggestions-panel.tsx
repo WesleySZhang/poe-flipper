@@ -270,19 +270,25 @@ export function FlipSuggestionsPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[280px]">Item</TableHead>
-                <TableHead className="text-center">Category</TableHead>
+                {/* Category/Current/Exchange Price/Predicted are dropped below `sm` - mobile keeps
+                    only what's needed for a quick scan (Item/Change/Confidence), same reasoning as
+                    the mirage-simulator table below. The full set is always one tap away: expanding
+                    a row's chart doesn't lose anything, it just isn't visible in the row itself. */}
+                <TableHead className="hidden text-center sm:table-cell">Category</TableHead>
                 <SortableHeader
                   label={`Current (${priceUnitLabel(priceUnit)})`}
                   sortKey="current"
                   sort={sort}
                   onSort={handleSort}
+                  className="hidden sm:table-cell"
                 />
-                <TableHead className="text-center">Exchange Price</TableHead>
+                <TableHead className="hidden text-center sm:table-cell">Exchange Price</TableHead>
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
                   sortKey="predicted"
                   sort={sort}
                   onSort={handleSort}
+                  className="hidden sm:table-cell"
                 />
                 <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
                 <TableHead>
@@ -306,15 +312,15 @@ export function FlipSuggestionsPanel() {
                   priceUnit={priceUnit}
                   colSpan={7}
                 >
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <div className="flex justify-center">
                       <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right sm:table-cell">
                     {formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <div className="flex justify-center">
                       {s.faustusTradeable ? (
                         <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
@@ -323,7 +329,7 @@ export function FlipSuggestionsPanel() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right sm:table-cell">
                     {formatPriceValue(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell className="text-right">
