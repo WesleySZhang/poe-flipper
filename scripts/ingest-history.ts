@@ -282,7 +282,7 @@ async function main() {
         -- matched separately everywhere downstream, and displays as "Name (6 links)" the same way
         -- an existing gem/quality variant already does.
         SELECT
-          league, name, date, type, value,
+          league, name, date, type, base_type, value,
           CASE
             WHEN links IS NOT NULL AND variant IS NOT NULL THEN variant || ', ' || links
             WHEN links IS NOT NULL THEN links
@@ -292,14 +292,24 @@ async function main() {
         WHERE confidence IN ('High', 'Medium')
       ),
       daily AS (
-        SELECT league, name, variant, date, AVG(value) AS value, ANY_VALUE(type) AS type
+        SELECT league, name, variant, date, AVG(value) AS value, ANY_VALUE(type) AS type,
+               ANY_VALUE(base_type) AS base_type
         FROM combined
         GROUP BY league, name, variant, date
       ),
       league_start AS (
         SELECT league, MIN(date) AS start_date FROM daily GROUP BY league
       )
-      SELECT d.league, d.name, d.variant, d.value, d.type, date_diff('day', ls.start_date, d.date) AS day_offset
+      -- poe.ninja files "Vaal Aspect" base-type jewels (e.g. Cooperation) under UniqueJewel, but
+      -- they're structurally priced, evergreen items closer in spirit to Fragment than to a
+      -- build/meta-driven passive-tree jewel - corrected here once so every downstream consumer
+      -- (category filter, badges, lib/category-reliability.ts's tiering) sees the fixed bucket
+      -- without needing to know this base type exists. Mirrored for live data in
+      -- lib/poe-ninja.ts's correctedItemType() - base_type itself isn't needed past this point, so
+      -- it isn't carried into the final table.
+      SELECT d.league, d.name, d.variant, d.value,
+             CASE WHEN d.type = 'UniqueJewel' AND d.base_type = 'Vaal Aspect' THEN 'Fragment' ELSE d.type END AS type,
+             date_diff('day', ls.start_date, d.date) AS day_offset
       FROM daily d JOIN league_start ls ON d.league = ls.league
     `);
 

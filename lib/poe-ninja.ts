@@ -209,8 +209,22 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
 
 export interface ItemPrice {
   chaosValue: number;
-  /** Which ITEM_OVERVIEW_TYPES bucket this came from (SkillGem, UniqueWeapon, Scarab, ...) - used for the category filter. */
-  type: ItemOverviewType;
+  /** Which category bucket this counts as for the category filter - usually one of
+   *  ITEM_OVERVIEW_TYPES verbatim (SkillGem, UniqueWeapon, Scarab, ...), but see
+   *  correctedItemType() for the one deliberate override. */
+  type: string;
+}
+
+/**
+ * poe.ninja files "Vaal Aspect" base-type jewels (e.g. Cooperation) under UniqueJewel, but they
+ * behave nothing like a socketed passive-tree jewel that trades on build/meta popularity - they're
+ * structurally priced, evergreen items much closer in spirit to Fragment. Corrected once here (and
+ * at the equivalent point for historical data, scripts/ingest-history.ts) so every downstream
+ * consumer - category filter, badges, the reliability-tier grouping in lib/category-reliability.ts -
+ * sees the corrected bucket without needing to know this specific base type exists.
+ */
+export function correctedItemType(type: string, baseType: string | undefined): string {
+  return type === "UniqueJewel" && baseType === "Vaal Aspect" ? "Fragment" : type;
 }
 
 // Matches the bucket text ("1-4 links"/"5 links"/"6 links") the ingested historical data already
@@ -245,7 +259,7 @@ export async function getAllCurrentItemPrices(league: string): Promise<Map<strin
     for (const line of lines) {
       const key = itemPriceKey(line.name, effectiveVariant(line.variant, line.links));
       if (!prices.has(key)) {
-        prices.set(key, { chaosValue: line.chaosValue, type });
+        prices.set(key, { chaosValue: line.chaosValue, type: correctedItemType(type, line.baseType) });
       }
     }
   });
