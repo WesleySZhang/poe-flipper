@@ -11,7 +11,7 @@ export interface KnownItemName {
   displayName: string;
 }
 
-const MAX_SUGGESTIONS = 20;
+const MAX_SUGGESTIONS = 50;
 
 /**
  * Free-text search over every name this app has historical data for, that only ever resolves to an
@@ -34,7 +34,17 @@ export function ItemNameCombobox({
   const normalizedQuery = query.trim().toLowerCase();
   const suggestions = useMemo(() => {
     if (!normalizedQuery || selected) return [];
-    return names.filter((n) => n.displayName.toLowerCase().includes(normalizedQuery)).slice(0, MAX_SUGGESTIONS);
+    const matches = names.filter((n) => n.displayName.toLowerCase().includes(normalizedQuery));
+    // Plain alphabetical order buries an exact/prefix match under every longer name that happens to
+    // sort earlier - e.g. "Foulborn Mageblood" (corrupted-implicit variant) sorts before the plain
+    // "Mageblood" a search for "mageblood" is almost always actually after. Sort.() is stable, so
+    // this only reorders the two buckets - alphabetical order survives within each.
+    matches.sort((a, b) => {
+      const aStarts = a.displayName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
+      const bStarts = b.displayName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
+      return aStarts - bStarts;
+    });
+    return matches.slice(0, MAX_SUGGESTIONS);
   }, [names, normalizedQuery, selected]);
 
   function handleChange(text: string) {
@@ -66,7 +76,7 @@ export function ItemNameCombobox({
         autoComplete="off"
       />
       {isOpen && suggestions.length > 0 && (
-        <ul className="absolute top-full z-10 mt-1 max-h-72 w-72 overflow-y-auto rounded-md border bg-popover py-1 text-sm shadow-md">
+        <ul className="absolute top-full z-10 mt-1 max-h-[28rem] w-72 overflow-y-auto rounded-md border bg-popover py-1 text-sm shadow-md">
           {suggestions.map((n) => (
             <li key={`${n.category}-${n.name}-${n.variant ?? ""}`}>
               <button
