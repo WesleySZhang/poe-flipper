@@ -5,7 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import type { ConfidenceTier } from "@/lib/confidence";
 
 const TIERS: ConfidenceTier[] = ["high", "medium", "low"];
-const TIER_LABEL: Record<ConfidenceTier, string> = { high: "High", medium: "Medium", low: "Low" };
+// Single-letter to stay compact enough for a table header cell - the full name is still available
+// via the title attribute below.
+const TIER_LETTER: Record<ConfidenceTier, string> = { high: "H", medium: "M", low: "L" };
+const TIER_NAME: Record<ConfidenceTier, string> = { high: "High", medium: "Medium", low: "Low" };
 
 /**
  * Toggle-badge filter for the Confidence column - lives inside that column's own header (see
@@ -32,6 +35,7 @@ export function ConfidenceTierFilter({
           variant={hidden.has(tier) ? "outline" : "default"}
           role="button"
           tabIndex={0}
+          title={`${TIER_NAME[tier]} confidence - click to ${hidden.has(tier) ? "show" : "hide"}`}
           onClick={(e) => {
             // This sits inside SortableHeader's cell, right below its sort button - stop the click
             // from also bubbling up into that button and flipping the sort.
@@ -45,9 +49,9 @@ export function ConfidenceTierFilter({
               onToggle(tier);
             }
           }}
-          className="cursor-pointer select-none text-[0.65rem]"
+          className="h-4 w-4 cursor-pointer select-none px-0 py-0 text-[0.6rem] leading-none"
         >
-          {TIER_LABEL[tier]}
+          {TIER_LETTER[tier]}
         </Badge>
       ))}
     </div>
