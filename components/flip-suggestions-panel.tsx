@@ -268,7 +268,7 @@ export function FlipSuggestionsPanel() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[280px]">Item</TableHead>
+                <TableHead className="w-[140px] sm:w-[200px] lg:w-[280px]">Item</TableHead>
                 <TableHead>Category</TableHead>
                 <SortableHeader
                   label={`Current (${priceUnitLabel(priceUnit)})`}
@@ -298,7 +298,7 @@ export function FlipSuggestionsPanel() {
                   <TableCell>
                     <div
                       tabIndex={0}
-                      className="max-w-[280px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip"
+                      className="max-w-[140px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
                       title={s.name}
                     >
                       {s.name}
