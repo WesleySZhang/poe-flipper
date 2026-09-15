@@ -10,13 +10,14 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
+import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
-import { activeConfidence } from "@/lib/confidence";
+import { activeConfidence, confidenceTier, type ConfidenceTier } from "@/lib/confidence";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
   activePrice,
@@ -58,6 +59,7 @@ export function MirageSimulatorPanel() {
   const [nowRange, setNowRange] = useState<NumericRange>({});
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "predictedX", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
+  const [hiddenConfidenceTiers, setHiddenConfidenceTiers] = useState<Set<ConfidenceTier>>(new Set());
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -106,10 +108,12 @@ export function MirageSimulatorPanel() {
     // Undefined only when the row has no divine figure at all - don't exclude on a check we can't
     // actually evaluate, same philosophy as the sort/format helpers elsewhere in this unit.
     const activeNow = activePrice(r.actualNowChaos, r.actualNowDivine, priceUnit);
+    const activeConf = activeConfidence(r.confidence, r.confidenceDivine, priceUnit);
     return (
       !hiddenCategories.has(r.filterCategory) &&
       (activeNow === undefined || isWithinRange(activeNow, nowRange)) &&
-      r.name.toLowerCase().includes(normalizedSearch)
+      r.name.toLowerCase().includes(normalizedSearch) &&
+      (activeConf === undefined || !hiddenConfidenceTiers.has(confidenceTier(activeConf)))
     );
   });
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
@@ -173,6 +177,16 @@ export function MirageSimulatorPanel() {
     // noise (a fraction of a divine) otherwise clutters the table with items too cheap to matter at
     // divine granularity.
     setNowRange(unit === "divine" ? { min: 1 } : {});
+    setPage(0);
+  }
+
+  function toggleConfidenceTier(tier: ConfidenceTier) {
+    setHiddenConfidenceTiers((prev) => {
+      const next = new Set(prev);
+      if (next.has(tier)) next.delete(tier);
+      else next.add(tier);
+      return next;
+    });
     setPage(0);
   }
 
@@ -260,6 +274,7 @@ export function MirageSimulatorPanel() {
             onChange={changeNowRange}
             initialMin={priceUnit === "divine" ? 1 : undefined}
           />
+          <ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">

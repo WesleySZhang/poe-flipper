@@ -52,7 +52,7 @@ export function FaustusPriceButton({ name, priceUnit }: { name: string; priceUni
       title="Fetch this currency's price from GGG's Currency Exchange (Faustus) instead of poe.ninja"
     >
       {state.status === "loading" && <Loader2 className="animate-spin" />}
-      {state.status === "error" ? "Unavailable" : "Faustus Price"}
+      {state.status === "error" ? "Unavailable" : "Exchange Price"}
     </Button>
   );
 }

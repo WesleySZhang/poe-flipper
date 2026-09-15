@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
+import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
@@ -19,7 +20,7 @@ import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
-import { activeConfidence } from "@/lib/confidence";
+import { activeConfidence, confidenceTier, type ConfidenceTier } from "@/lib/confidence";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
   activePrice,
@@ -52,6 +53,7 @@ export function FlipSuggestionsPanel() {
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "change", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [faustusOnly, setFaustusOnly] = useState(false);
+  const [hiddenConfidenceTiers, setHiddenConfidenceTiers] = useState<Set<ConfidenceTier>>(new Set());
   const [isPending, startTransition] = useTransition();
 
   const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
@@ -89,11 +91,13 @@ export function FlipSuggestionsPanel() {
     // Undefined only when the row has no divine figure at all - don't exclude on a check we can't
     // actually evaluate, same philosophy as the sort/format helpers elsewhere in this unit.
     const activeCurrent = activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit);
+    const activeConf = activeConfidence(s.confidence, s.confidenceDivine, priceUnit);
     return (
       !hiddenCategories.has(s.filterCategory) &&
       (activeCurrent === undefined || isWithinRange(activeCurrent, currentRange)) &&
       s.name.toLowerCase().includes(normalizedSearch) &&
-      (!faustusOnly || s.faustusTradeable)
+      (!faustusOnly || s.faustusTradeable) &&
+      (activeConf === undefined || !hiddenConfidenceTiers.has(confidenceTier(activeConf)))
     );
   });
   const pageCount = Math.max(1, Math.ceil(visibleSuggestions.length / PAGE_SIZE));
@@ -150,6 +154,16 @@ export function FlipSuggestionsPanel() {
 
   function toggleFaustusOnly() {
     setFaustusOnly((prev) => !prev);
+    setPage(0);
+  }
+
+  function toggleConfidenceTier(tier: ConfidenceTier) {
+    setHiddenConfidenceTiers((prev) => {
+      const next = new Set(prev);
+      if (next.has(tier)) next.delete(tier);
+      else next.add(tier);
+      return next;
+    });
     setPage(0);
   }
 
@@ -234,8 +248,9 @@ export function FlipSuggestionsPanel() {
             className="h-8 cursor-pointer select-none px-3"
             title="Show only currencies GGG's Currency Exchange (Faustus) can price - the default sort otherwise buries these on some far-off page"
           >
-            Faustus available
+            Exchange price available
           </Badge>
+          <ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -261,6 +276,7 @@ export function FlipSuggestionsPanel() {
                   sort={sort}
                   onSort={handleSort}
                 />
+                <TableHead>Exchange Price</TableHead>
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
                   sortKey="predicted"
@@ -269,7 +285,6 @@ export function FlipSuggestionsPanel() {
                 />
                 <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
                 <SortableHeader label="Confidence" sortKey="confidence" sort={sort} onSort={handleSort} />
-                <TableHead>Faustus</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -290,6 +305,13 @@ export function FlipSuggestionsPanel() {
                   <TableCell className="text-right">
                     {formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   </TableCell>
+                  <TableCell>
+                    {s.faustusTradeable ? (
+                      <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   </TableCell>
@@ -302,13 +324,6 @@ export function FlipSuggestionsPanel() {
                       upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
                       leagueCount={priceUnit === "chaos" ? s.leagueCount : s.leagueCountDivine}
                     />
-                  </TableCell>
-                  <TableCell>
-                    {s.faustusTradeable ? (
-                      <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
                   </TableCell>
                 </TableRow>
               ))}
