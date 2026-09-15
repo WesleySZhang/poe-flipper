@@ -298,7 +298,7 @@ export function MirageSimulatorPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[280px]">Item</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead className="text-center">Category</TableHead>
                 <SortableHeader label={`Now (${priceUnitLabel(priceUnit)})`} sortKey="now" sort={sort} onSort={handleSort} />
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
@@ -334,7 +334,7 @@ export function MirageSimulatorPanel() {
                       {r.name}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
                     <Badge variant="secondary">{humanizeCategoryName(r.filterCategory)}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
@@ -352,7 +352,7 @@ export function MirageSimulatorPanel() {
                   <TableCell className="text-right">
                     {formatPercentChange(r.actualRatio, r.actualRatioDivine, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     <ConfidenceBadge
                       score={activeConfidence(r.confidence, r.confidenceDivine, priceUnit)}
                       upFraction={priceUnit === "chaos" ? r.upFraction : r.upFractionDivine}

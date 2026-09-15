@@ -269,14 +269,14 @@ export function FlipSuggestionsPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[280px]">Item</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead className="text-center">Category</TableHead>
                 <SortableHeader
                   label={`Current (${priceUnitLabel(priceUnit)})`}
                   sortKey="current"
                   sort={sort}
                   onSort={handleSort}
                 />
-                <TableHead className="text-right">Exchange Price</TableHead>
+                <TableHead className="text-center">Exchange Price</TableHead>
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
                   sortKey="predicted"
@@ -304,13 +304,13 @@ export function FlipSuggestionsPanel() {
                       {s.name}
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
                     <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     {s.faustusTradeable ? (
                       <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
                     ) : (
@@ -323,7 +323,7 @@ export function FlipSuggestionsPanel() {
                   <TableCell className="text-right">
                     {formatPercentChange(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     <ConfidenceBadge
                       score={activeConfidence(s.confidence, s.confidenceDivine, priceUnit)}
                       upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
