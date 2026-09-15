@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { cn } from "cn";
 import { allKnownLeagues, CURRENT_LEAGUE } from "@/lib/league-recency";
 import { activePrice, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 import type { LeagueSeries } from "@/lib/price-history";
@@ -18,9 +19,8 @@ const VIEW_HEIGHT = 240;
 const MARGIN = { top: 12, right: 16, bottom: 24, left: 44 };
 const PLOT_WIDTH = VIEW_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
-// A drag shorter than this (in view units) is treated as a click/hover, not a deliberate zoom
-// selection - otherwise every hover-then-slightly-move would accidentally trigger a 1-day zoom.
-const MIN_DRAG_VIEW_WIDTH = 8;
+// The brush window can't shrink narrower than this many days, to avoid a degenerate/inverted zoom.
+const MIN_ZOOM_DAYS = 1;
 
 const CHART_COLOR_VARS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 // Stable per-league color assignment - an index into whichever subset of leagues happen to have
@@ -50,6 +50,124 @@ interface PlottedSeries {
   points: PlottedPoint[];
 }
 
+type BrushDragMode = "left" | "right" | "move";
+
+/**
+ * Horizontal range brush below the main chart - a track spanning the full day range with a
+ * draggable/resizable window over it. Dragging a handle resizes the window (zoom in/out); dragging
+ * the window body pans it. Plain HTML/CSS (percentage-positioned divs), not SVG - simpler pointer
+ * math for a purely horizontal, linear-scale control than embedding another coordinate system.
+ */
+function RangeBrush({
+  fullMin,
+  fullMax,
+  valueMin,
+  valueMax,
+  onChange,
+}: {
+  fullMin: number;
+  fullMax: number;
+  valueMin: number;
+  valueMax: number;
+  onChange: (min: number, max: number) => void;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ mode: BrushDragMode; startClientX: number; startMin: number; startMax: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fullRange = fullMax - fullMin || 1;
+
+  function valueAtClientX(clientX: number): number {
+    const track = trackRef.current;
+    if (!track) return fullMin;
+    const rect = track.getBoundingClientRect();
+    const fraction = (clientX - rect.left) / rect.width;
+    return fullMin + Math.min(1, Math.max(0, fraction)) * fullRange;
+  }
+
+  // Three directly-declared handlers rather than one factory called inline in JSX to produce a
+  // closure per drag mode - React Compiler's ref-safety lint flags a ref write reachable through any
+  // function invoked during render, even when the actual write only happens later inside a returned
+  // event-handler closure. Each of these IS the handler (referenced, never called, in JSX), so
+  // there's no such intermediate call for the lint to flag.
+  function beginDrag(mode: BrushDragMode, e: React.PointerEvent<HTMLDivElement>) {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { mode, startClientX: e.clientX, startMin: valueMin, startMax: valueMax };
+    setIsDragging(true);
+  }
+  function handleLeftPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    beginDrag("left", e);
+  }
+  function handleRightPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    beginDrag("right", e);
+  }
+  function handleMovePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    beginDrag("move", e);
+  }
+
+  function handlePointerMove(e: React.PointerEvent) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (drag.mode === "left") {
+      const next = Math.min(valueAtClientX(e.clientX), drag.startMax - MIN_ZOOM_DAYS);
+      onChange(Math.max(fullMin, next), drag.startMax);
+    } else if (drag.mode === "right") {
+      const next = Math.max(valueAtClientX(e.clientX), drag.startMin + MIN_ZOOM_DAYS);
+      onChange(drag.startMin, Math.min(fullMax, next));
+    } else {
+      // "move" - pan the window, keeping its width fixed. Computed as a delta rather than an
+      // absolute position, so panning doesn't jump if the pointer isn't exactly over the window.
+      const delta = valueAtClientX(e.clientX) - valueAtClientX(drag.startClientX);
+      const width = drag.startMax - drag.startMin;
+      let nextMin = drag.startMin + delta;
+      let nextMax = nextMin + width;
+      if (nextMin < fullMin) {
+        nextMin = fullMin;
+        nextMax = fullMin + width;
+      }
+      if (nextMax > fullMax) {
+        nextMax = fullMax;
+        nextMin = fullMax - width;
+      }
+      onChange(nextMin, nextMax);
+    }
+  }
+
+  function endDrag() {
+    dragRef.current = null;
+    setIsDragging(false);
+  }
+
+  const leftPct = ((valueMin - fullMin) / fullRange) * 100;
+  const rightPct = ((valueMax - fullMin) / fullRange) * 100;
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative h-6 w-full rounded-sm bg-muted"
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    >
+      <div
+        onPointerDown={handleMovePointerDown}
+        className={cn("absolute top-0 h-full rounded-sm bg-primary/30", isDragging ? "cursor-grabbing" : "cursor-grab")}
+        style={{ left: `${leftPct}%`, width: `${Math.max(0, rightPct - leftPct)}%` }}
+      />
+      <div
+        onPointerDown={handleLeftPointerDown}
+        className="absolute top-0 h-full w-2.5 -translate-x-1/2 cursor-ew-resize rounded-sm bg-foreground/60 hover:bg-foreground"
+        style={{ left: `${leftPct}%` }}
+      />
+      <div
+        onPointerDown={handleRightPointerDown}
+        className="absolute top-0 h-full w-2.5 -translate-x-1/2 cursor-ew-resize rounded-sm bg-foreground/60 hover:bg-foreground"
+        style={{ left: `${rightPct}%` }}
+      />
+    </div>
+  );
+}
+
 /**
  * Per-item price history, one line per past league, with a vertical marker for the current day of
  * the league being predicted from. See lib/price-history.ts for why the live current league itself
@@ -58,8 +176,8 @@ interface PlottedSeries {
  * A single item's leagues can have wildly different tracked lengths (a league that ran for a year
  * vs. one that ran for 90 days) - defaulting to the full combined day range would squash every
  * league's early, most-interesting action into a sliver at the left edge. Rather than guess a
- * "reasonable" default window, the full range is always the default and the user can drag-select
- * across the plot to zoom into whatever window they care about (reset via the button below).
+ * "reasonable" default window, the full range is always the default and the range brush below the
+ * chart lets the user pick whatever window they care about.
  */
 export function PriceHistoryChart({
   state,
@@ -74,8 +192,6 @@ export function PriceHistoryChart({
   const clipId = useId();
   const [hoverDay, setHoverDay] = useState<number | undefined>();
   const [zoomDomain, setZoomDomain] = useState<[number, number] | undefined>();
-  const [dragStartDay, setDragStartDay] = useState<number | undefined>();
-  const [dragCurrentDay, setDragCurrentDay] = useState<number | undefined>();
 
   const plotted: PlottedSeries[] = useMemo(() => {
     if (state.status !== "loaded") return [];
@@ -124,8 +240,8 @@ export function PriceHistoryChart({
 
   const fullDayMin = Math.min(0, ...allDays, currentDay);
   const fullDayMax = Math.max(...allDays, currentDay);
-  // The active (possibly zoomed) day domain - everything below scales against this, not the full
-  // range, so dragging to zoom actually changes what's drawn.
+  // The active (possibly zoomed) day domain, driven by the range brush below the chart - everything
+  // else scales against this, not the full range.
   const dayMin = zoomDomain ? zoomDomain[0] : fullDayMin;
   const dayMax = zoomDomain ? zoomDomain[1] : fullDayMax;
   const dayRange = dayMax - dayMin || 1;
@@ -133,7 +249,7 @@ export function PriceHistoryChart({
   // Y auto-rescales to whatever's actually visible in the current window, not the full history -
   // otherwise zooming into a flat stretch would still show it squashed against a scale set by a
   // price spike outside the visible window. Falls back to the full range if the window happens to
-  // contain no points at all (e.g. mid-drag, before the drag has crossed any data).
+  // contain no points at all.
   const visibleValues = plotted.flatMap((s) =>
     s.points.filter((p) => p.dayOffset >= dayMin && p.dayOffset <= dayMax).map((p) => p.value)
   );
@@ -149,53 +265,34 @@ export function PriceHistoryChart({
 
   const xScale = (day: number) => MARGIN.left + ((day - dayMin) / dayRange) * PLOT_WIDTH;
   const yScale = (value: number) => MARGIN.top + (1 - (Math.log(value) - logMin) / (logMax - logMin)) * PLOT_HEIGHT;
-  /** Inverse of xScale, clamped to the active domain - shared by hover and drag-to-zoom. */
-  function dayAtClientX(clientX: number): number {
-    const svg = svgRef.current;
-    if (!svg) return dayMin;
-    const rect = svg.getBoundingClientRect();
-    const fraction = (clientX - rect.left) / rect.width;
-    const viewX = fraction * VIEW_WIDTH;
-    const day = dayMin + ((viewX - MARGIN.left) / PLOT_WIDTH) * dayRange;
-    return Math.min(dayMax, Math.max(dayMin, day));
-  }
 
   const yTicks = [0, 1 / 3, 2 / 3, 1].map((f) => Math.exp(logMin + f * (logMax - logMin)));
   const isZoomed = zoomDomain !== undefined;
-  const isDragging = dragStartDay !== undefined && dragCurrentDay !== undefined;
-
-  function handlePointerDown(e: React.PointerEvent<SVGRectElement>) {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const day = dayAtClientX(e.clientX);
-    setDragStartDay(day);
-    setDragCurrentDay(day);
-  }
 
   function handlePointerMove(e: React.PointerEvent<SVGRectElement>) {
-    const day = dayAtClientX(e.clientX);
-    if (dragStartDay !== undefined) {
-      setDragCurrentDay(day);
-    } else {
-      setHoverDay(Math.round(day));
-    }
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const fraction = (e.clientX - rect.left) / rect.width;
+    const viewX = fraction * VIEW_WIDTH;
+    const day = Math.round(dayMin + ((viewX - MARGIN.left) / PLOT_WIDTH) * dayRange);
+    setHoverDay(Math.min(dayMax, Math.max(dayMin, day)));
   }
 
-  function handlePointerUp() {
-    if (dragStartDay !== undefined && dragCurrentDay !== undefined) {
-      const from = Math.min(dragStartDay, dragCurrentDay);
-      const to = Math.max(dragStartDay, dragCurrentDay);
-      if (xScale(to) - xScale(from) >= MIN_DRAG_VIEW_WIDTH) {
-        setZoomDomain([from, to]);
-      }
+  function handleBrushChange(min: number, max: number) {
+    // Snap back to "not zoomed" once the window is dragged back out to (near) the full range,
+    // rather than leaving a technically-zoomed-but-visually-identical state.
+    if (min <= fullDayMin + 1e-6 && max >= fullDayMax - 1e-6) {
+      setZoomDomain(undefined);
+    } else {
+      setZoomDomain([min, max]);
     }
-    setDragStartDay(undefined);
-    setDragCurrentDay(undefined);
   }
 
   // Nearest point per league to the hovered day, for the tooltip - not necessarily an exact day
   // match, since not every league has a recorded value on every single day.
   const hoverRows =
-    hoverDay === undefined || isDragging
+    hoverDay === undefined
       ? []
       : plotted
           .map((s) => {
@@ -210,18 +307,6 @@ export function PriceHistoryChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">Drag across the chart to zoom in.</span>
-        {isZoomed && (
-          <button
-            type="button"
-            onClick={() => setZoomDomain(undefined)}
-            className="text-xs font-medium text-foreground underline-offset-2 hover:underline"
-          >
-            Reset zoom
-          </button>
-        )}
-      </div>
       <div className="relative h-56 w-full sm:h-64">
         <svg
           ref={svgRef}
@@ -283,7 +368,7 @@ export function PriceHistoryChart({
             )}
 
             {/* Hover crosshair */}
-            {hoverDay !== undefined && !isDragging && (
+            {hoverDay !== undefined && (
               <line
                 x1={xScale(hoverDay)}
                 x2={xScale(hoverDay)}
@@ -318,42 +403,21 @@ export function PriceHistoryChart({
                 )}
               </g>
             ))}
-
-            {/* Drag-to-zoom selection rectangle */}
-            {isDragging && dragStartDay !== undefined && dragCurrentDay !== undefined && (
-              <rect
-                x={Math.min(xScale(dragStartDay), xScale(dragCurrentDay))}
-                y={MARGIN.top}
-                width={Math.abs(xScale(dragCurrentDay) - xScale(dragStartDay))}
-                height={PLOT_HEIGHT}
-                fill="var(--foreground)"
-                fillOpacity={0.08}
-                stroke="var(--foreground)"
-                strokeOpacity={0.3}
-              />
-            )}
           </g>
 
-          {/* Transparent overlay capturing pointer position for hover + drag-to-zoom. */}
+          {/* Transparent overlay capturing pointer position for the hover tooltip. */}
           <rect
             x={MARGIN.left}
             y={MARGIN.top}
             width={PLOT_WIDTH}
             height={PLOT_HEIGHT}
             fill="transparent"
-            style={{ touchAction: "none", cursor: "crosshair" }}
-            onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={() => {
-              setHoverDay(undefined);
-              if (!isDragging) return;
-              handlePointerUp();
-            }}
+            onPointerLeave={() => setHoverDay(undefined)}
           />
         </svg>
 
-        {hoverDay !== undefined && !isDragging && hoverRows.length > 0 && (
+        {hoverDay !== undefined && hoverRows.length > 0 && (
           <div
             className="pointer-events-none absolute top-2 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-popover p-2 text-xs shadow-sm"
             style={{ left: `${((xScale(hoverDay) / VIEW_WIDTH) * 100).toFixed(2)}%` }}
@@ -367,6 +431,24 @@ export function PriceHistoryChart({
               </span>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Range brush - aligned under the plot area (not the Y-axis labels) via the same margin
+          proportions as the chart above it. */}
+      <div className="flex items-center gap-2" style={{ paddingLeft: `${(MARGIN.left / VIEW_WIDTH) * 100}%`, paddingRight: `${(MARGIN.right / VIEW_WIDTH) * 100}%` }}>
+        <RangeBrush fullMin={fullDayMin} fullMax={fullDayMax} valueMin={dayMin} valueMax={dayMax} onChange={handleBrushChange} />
+      </div>
+      <div className="flex items-center justify-between px-1">
+        <span className="text-xs text-muted-foreground">Drag the window&apos;s edges to resize, or its middle to pan.</span>
+        {isZoomed && (
+          <button
+            type="button"
+            onClick={() => setZoomDomain(undefined)}
+            className="text-xs font-medium text-foreground underline-offset-2 hover:underline"
+          >
+            Reset zoom
+          </button>
         )}
       </div>
 
