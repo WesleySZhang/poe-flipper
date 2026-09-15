@@ -46,8 +46,8 @@ const PAGE_SIZE = 25;
 type SortKey = "now" | "predicted" | "actualFuture" | "predictedX" | "actualX" | "confidence";
 
 export function MirageSimulatorPanel() {
-  const [currentDay, setCurrentDay] = useState(2);
-  const [durationDays, setDurationDays] = useState(3);
+  const [currentDay, setCurrentDay] = useState(3);
+  const [durationDays, setDurationDays] = useState(7);
   const [rows, setRows] = useState<MirageSimulationRow[]>([]);
   const [knownNames, setKnownNames] = useState<KnownItemName[]>([]);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
