@@ -276,7 +276,7 @@ export function FlipSuggestionsPanel() {
                   sort={sort}
                   onSort={handleSort}
                 />
-                <TableHead>Exchange Price</TableHead>
+                <TableHead className="text-right">Exchange Price</TableHead>
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
                   sortKey="predicted"
@@ -305,7 +305,7 @@ export function FlipSuggestionsPanel() {
                   <TableCell className="text-right">
                     {formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-right">
                     {s.faustusTradeable ? (
                       <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
                     ) : (
