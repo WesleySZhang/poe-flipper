@@ -524,7 +524,7 @@ export function PriceHistoryChart({
 
         {hoverDay !== undefined && !isChartDragging && hoverRows.length > 0 && (
           <div
-            className="pointer-events-none absolute top-2 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-popover/85 p-2 text-xs shadow-sm backdrop-blur-sm"
+            className="pointer-events-none absolute top-2 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-popover/55 p-2 text-xs shadow-sm backdrop-blur-sm"
             style={{ left: `${((xScale(hoverDay) / VIEW_WIDTH) * 100).toFixed(2)}%` }}
           >
             <span className="font-medium text-popover-foreground">Day {hoverDay}</span>
