@@ -29,41 +29,27 @@ export function ConfidenceTierFilter({
     <div className={cn("flex items-center gap-1.5", className)}>
       {TIERS.map((tier) => {
         const isHidden = hidden.has(tier);
-        // Blocked here rather than trusting every caller to replicate the same guard - hiding the
-        // last remaining shown tier would empty the table with no way back short of some other
-        // affordance, and "no tier shown" was never a meaningful filter state to begin with.
-        const isOnlyOneLeft = !isHidden && hidden.size >= TIERS.length - 1;
         return (
           <Badge
             key={tier}
             variant={isHidden ? "outline" : "default"}
             role="button"
             tabIndex={0}
-            aria-disabled={isOnlyOneLeft}
-            title={
-              isOnlyOneLeft
-                ? `${TIER_NAME[tier]} confidence - at least one tier must stay shown`
-                : `${TIER_NAME[tier]} confidence - click to ${isHidden ? "show" : "hide"}`
-            }
+            title={`${TIER_NAME[tier]} confidence - click to ${isHidden ? "show" : "hide"}`}
             onClick={(e) => {
               // This sits inside the Confidence column's own header cell - stop the click from
               // bubbling any further than the badge itself.
               e.stopPropagation();
-              if (isOnlyOneLeft) return;
               onToggle(tier);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 e.stopPropagation();
-                if (isOnlyOneLeft) return;
                 onToggle(tier);
               }
             }}
-            className={cn(
-              "shrink-0 select-none justify-center p-0 text-xs",
-              isOnlyOneLeft ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-            )}
+            className="shrink-0 cursor-pointer select-none justify-center p-0 text-xs"
             // Inline, not Tailwind classes, for the actual circle geometry - the base Badge's own
             // w-fit/rounded-4xl kept winning out over size-*/rounded-full despite those correctly
             // overriding it in the merged class *string*, so this guarantees the shape rather than
