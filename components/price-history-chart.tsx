@@ -12,15 +12,21 @@ export type PriceHistoryFetchState =
   | { status: "error" }
   | { status: "loaded"; series: LeagueSeries[] };
 
-// Fixed logical coordinate space - the <svg> scales to its container via CSS (preserveAspectRatio
-// "none" + a w-full/h-* wrapper), so none of this math needs to know the actual rendered pixel size.
+// Fixed logical coordinate space for the main chart. The container is sized via CSS aspect-ratio
+// (not a fixed height) so the rendered chart always keeps this exact 2.5:1 shape regardless of how
+// wide its table cell ends up - a fixed height + preserveAspectRatio="none" used to stretch the
+// chart vertically/horizontally out of proportion on a wide row.
 const VIEW_WIDTH = 600;
 const VIEW_HEIGHT = 240;
 const MARGIN = { top: 12, right: 16, bottom: 24, left: 44 };
 const PLOT_WIDTH = VIEW_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
+const CHART_ASPECT_RATIO = `${VIEW_WIDTH} / ${VIEW_HEIGHT}`;
 // The brush window can't shrink narrower than this many days, to avoid a degenerate/inverted zoom.
 const MIN_ZOOM_DAYS = 1;
+// Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
+// via a 0-100 viewBox, since the track is already positioned with percentages).
+const BRUSH_VIEW_HEIGHT = 40;
 
 const CHART_COLOR_VARS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 // Stable per-league color assignment - an index into whichever subset of leagues happen to have
@@ -54,9 +60,13 @@ type BrushDragMode = "left" | "right" | "move";
 
 /**
  * Horizontal range brush below the main chart - a track spanning the full day range with a
- * draggable/resizable window over it. Dragging a handle resizes the window (zoom in/out); dragging
- * the window body pans it. Plain HTML/CSS (percentage-positioned divs), not SVG - simpler pointer
- * math for a purely horizontal, linear-scale control than embedding another coordinate system.
+ * draggable/resizable window over it, its background a miniature preview of the same lines the main
+ * chart shows (over the FULL, unzoomed range) so there's something to aim the window at. Drag either
+ * handle to resize the window (zoom in/out); drag the window's body to pan it. Percentage-positioned
+ * HTML/CSS for the interactive pieces (simpler pointer math for a purely horizontal, linear-scale
+ * control than another coordinate system), with a small 0-100-viewBox SVG behind them for the preview
+ * lines - the 0-100 span matches the percentage math exactly, so both use the same day->position
+ * formula.
  */
 function RangeBrush({
   fullMin,
@@ -64,17 +74,24 @@ function RangeBrush({
   valueMin,
   valueMax,
   onChange,
+  series,
+  logDomain,
 }: {
   fullMin: number;
   fullMax: number;
   valueMin: number;
   valueMax: number;
   onChange: (min: number, max: number) => void;
+  series: PlottedSeries[];
+  /** [logMin, logMax] over the FULL, unzoomed data - the preview always shows the whole history,
+   *  regardless of the main chart's current zoom. */
+  logDomain: [number, number];
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ mode: BrushDragMode; startClientX: number; startMin: number; startMax: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fullRange = fullMax - fullMin || 1;
+  const [logMin, logMax] = logDomain;
 
   function valueAtClientX(clientX: number): number {
     const track = trackRef.current;
@@ -140,18 +157,45 @@ function RangeBrush({
 
   const leftPct = ((valueMin - fullMin) / fullRange) * 100;
   const rightPct = ((valueMax - fullMin) / fullRange) * 100;
+  const miniX = (day: number) => ((day - fullMin) / fullRange) * 100;
+  const miniY = (value: number) => BRUSH_VIEW_HEIGHT * (1 - (Math.log(value) - logMin) / (logMax - logMin || 1));
 
   return (
     <div
       ref={trackRef}
-      className="relative h-6 w-full rounded-sm bg-muted"
+      className="relative h-10 w-full overflow-hidden rounded-md border border-border bg-muted"
       onPointerMove={handlePointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
+      {/* Mini preview of the same lines the main chart shows, over the full history - purely
+          decorative context for aiming the window, so it's not interactive itself. */}
+      <svg
+        viewBox={`0 0 100 ${BRUSH_VIEW_HEIGHT}`}
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0 h-full w-full"
+      >
+        {series.map((s) => (
+          <polyline
+            key={s.league}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={1}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+            points={s.points.map((p) => `${miniX(p.dayOffset)},${miniY(p.value)}`).join(" ")}
+          />
+        ))}
+      </svg>
+
+      {/* Dim the excluded portions so the selected window reads as "in focus" against the preview. */}
+      <div className="absolute inset-y-0 left-0 bg-background/70" style={{ width: `${leftPct}%` }} />
+      <div className="absolute inset-y-0 right-0 bg-background/70" style={{ width: `${100 - rightPct}%` }} />
+
       <div
         onPointerDown={handleMovePointerDown}
-        className={cn("absolute top-0 h-full rounded-sm bg-primary/30", isDragging ? "cursor-grabbing" : "cursor-grab")}
+        className={cn("absolute top-0 h-full border-x-2 border-foreground/70", isDragging ? "cursor-grabbing" : "cursor-grab")}
         style={{ left: `${leftPct}%`, width: `${Math.max(0, rightPct - leftPct)}%` }}
       />
       <div
@@ -213,7 +257,7 @@ export function PriceHistoryChart({
 
   if (state.status === "loading") {
     return (
-      <div className="flex h-56 items-center justify-center gap-2 text-sm text-muted-foreground sm:h-64">
+      <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground" style={{ aspectRatio: CHART_ASPECT_RATIO }}>
         <Loader2 className="size-4 animate-spin" />
         Loading price history...
       </div>
@@ -222,7 +266,7 @@ export function PriceHistoryChart({
 
   if (state.status === "error") {
     return (
-      <div className="flex h-56 items-center justify-center text-sm text-muted-foreground sm:h-64">
+      <div className="flex items-center justify-center text-sm text-muted-foreground" style={{ aspectRatio: CHART_ASPECT_RATIO }}>
         Couldn&apos;t load price history.
       </div>
     );
@@ -230,7 +274,7 @@ export function PriceHistoryChart({
 
   if (plotted.length === 0) {
     return (
-      <div className="flex h-56 items-center justify-center text-sm text-muted-foreground sm:h-64">
+      <div className="flex items-center justify-center text-sm text-muted-foreground" style={{ aspectRatio: CHART_ASPECT_RATIO }}>
         {priceUnit === "divine"
           ? "No historical price data for this item in Divine terms - try Chaos mode."
           : "No historical price data for this item."}
@@ -261,6 +305,14 @@ export function PriceHistoryChart({
     // scale (divide-by-zero guard).
     logMin -= 0.5;
     logMax += 0.5;
+  }
+  // Separate, full-history log domain for the brush's own mini-preview, which always shows
+  // everything regardless of the main chart's current zoom.
+  let fullLogMin = Math.log(Math.min(...allValues));
+  let fullLogMax = Math.log(Math.max(...allValues));
+  if (fullLogMin === fullLogMax) {
+    fullLogMin -= 0.5;
+    fullLogMax += 0.5;
   }
 
   const xScale = (day: number) => MARGIN.left + ((day - dayMin) / dayRange) * PLOT_WIDTH;
@@ -307,13 +359,8 @@ export function PriceHistoryChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="relative h-56 w-full sm:h-64">
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-          preserveAspectRatio="none"
-          className="h-full w-full overflow-visible"
-        >
+      <div className="relative w-full" style={{ aspectRatio: CHART_ASPECT_RATIO }}>
+        <svg ref={svgRef} viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} className="h-full w-full overflow-visible">
           <defs>
             {/* Unique per instance (useId) - multiple rows can be expanded at once, and an SVG id
                 reference resolves document-wide, not per-<svg>, so a shared literal id would let one
@@ -436,8 +483,16 @@ export function PriceHistoryChart({
 
       {/* Range brush - aligned under the plot area (not the Y-axis labels) via the same margin
           proportions as the chart above it. */}
-      <div className="flex items-center gap-2" style={{ paddingLeft: `${(MARGIN.left / VIEW_WIDTH) * 100}%`, paddingRight: `${(MARGIN.right / VIEW_WIDTH) * 100}%` }}>
-        <RangeBrush fullMin={fullDayMin} fullMax={fullDayMax} valueMin={dayMin} valueMax={dayMax} onChange={handleBrushChange} />
+      <div style={{ paddingLeft: `${(MARGIN.left / VIEW_WIDTH) * 100}%`, paddingRight: `${(MARGIN.right / VIEW_WIDTH) * 100}%` }}>
+        <RangeBrush
+          fullMin={fullDayMin}
+          fullMax={fullDayMax}
+          valueMin={dayMin}
+          valueMax={dayMax}
+          onChange={handleBrushChange}
+          series={plotted}
+          logDomain={[fullLogMin, fullLogMax]}
+        />
       </div>
       <div className="flex items-center justify-between px-1">
         <span className="text-xs text-muted-foreground">Drag the window&apos;s edges to resize, or its middle to pan.</span>
