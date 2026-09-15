@@ -3,6 +3,30 @@ import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey, for
 import { getCurrencyGrowthRatios, getItemGrowthRatios, type GrowthRatioRow } from "./growth-ratios";
 import { getFaustusPrices, isFaustusTradeable } from "./faustus";
 
+// Guards against one specific failure mode: a rare item/variant (a corrupted 21/23% quality gem, an
+// influence-exalted base) with only a handful of live sellers, where the historical training data
+// swung wildly (e.g. 1.08x in one league, 8.94x in another) purely because one seller repriced it -
+// not a real trend. Deliberately gated on BOTH a thin live market AND an extreme predicted ratio,
+// not liquidity alone: an earlier version of this filter used only a seller-count floor and turned
+// out to remove ~42% of all item suggestions (3000+ perfectly ordinary, modest predictions) - most
+// niche gear/gem variants simply always have few concurrent sellers, which is normal and not a sign
+// of anything wrong, so liquidity by itself was far too broad a signal. Restricting to also require
+// an extreme ratio targets just the actual problem: of the ~10.6k current predictions, only 15
+// (0.14%) show a >100% predicted swing, and all but 2 of those have 1-4 live sellers right now.
+// Currency has no equivalent check - poe.ninja's currency overview has no per-line seller count, and
+// bulk currency essentially never produces this kind of swing anyway.
+const MIN_ITEM_SELLER_COUNT_FOR_EXTREME_RATIO = 5;
+// "Extreme" here means outside a 2x/0.5x band - roughly the same territory the ~15 flagged rows
+// occupied (all >=2x), with the low end mirrored for symmetry (a thin market can crash the same way
+// it can spike).
+const EXTREME_RATIO_HIGH = 2;
+const EXTREME_RATIO_LOW = 0.5;
+
+function isThinMarketOutlier(ratio: number, sellerCount: number | undefined): boolean {
+  if (sellerCount === undefined || sellerCount >= MIN_ITEM_SELLER_COUNT_FOR_EXTREME_RATIO) return false;
+  return ratio > EXTREME_RATIO_HIGH || ratio < EXTREME_RATIO_LOW;
+}
+
 export interface FlipSuggestion {
   name: string;
   category: "currency" | "item";
@@ -121,7 +145,12 @@ export async function getFlipSuggestions(
   for (const trend of itemTrends) {
     const itemPrice = itemPrices.get(itemPriceKey(trend.name, trend.variant));
     if (itemPrice !== undefined && itemPrice.chaosValue > 0) {
-      suggestions.push(buildSuggestion(trend, "item", itemPrice.type, itemPrice.chaosValue, durationDays, divineRate));
+      // See isThinMarketOutlier above - skip rather than fall through to the currency-price
+      // fallback below, which prices a completely different set of items (Scarabs/Essences/etc.)
+      // and wouldn't legitimately apply to this same trend.
+      if (!isThinMarketOutlier(trend.avgRatio, itemPrice.sellerCount)) {
+        suggestions.push(buildSuggestion(trend, "item", itemPrice.type, itemPrice.chaosValue, durationDays, divineRate));
+      }
       continue;
     }
     // Scarabs/Essences/Fossils/Oils/Omens/Resonators/Tattoos/DeliriumOrbs/DivinationCards are

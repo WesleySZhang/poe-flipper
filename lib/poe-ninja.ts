@@ -89,6 +89,8 @@ export interface ItemOverviewLine {
   variant?: string;
   links?: number;
   chaosValue: number;
+  /** Distinct sellers currently listing this exact name+variant - see ItemPrice.sellerCount. */
+  count?: number;
 }
 
 interface CacheEntry<T> {
@@ -213,6 +215,14 @@ export interface ItemPrice {
    *  ITEM_OVERVIEW_TYPES verbatim (SkillGem, UniqueWeapon, Scarab, ...), but see
    *  correctedItemType() for the one deliberate override. */
   type: string;
+  /** How many distinct people are currently selling this exact name+variant, straight from
+   *  poe.ninja's own `count` field - undefined if a future response ever omits it. A rare
+   *  corrupted-quality gem or influence-exalted base can have as few as 1-4 concurrent sellers, at
+   *  which point "the price" is really just whatever those few people happen to be asking, not a
+   *  real market - see MIN_ITEM_SELLER_COUNT in flip-suggestions.ts, which uses this to filter such
+   *  rows out. Currency overview lines have no equivalent field (poe.ninja aggregates those
+   *  stash-tab-wide rather than per-listing), so CurrencyPrice has no counterpart. */
+  sellerCount?: number;
 }
 
 /**
@@ -259,7 +269,11 @@ export async function getAllCurrentItemPrices(league: string): Promise<Map<strin
     for (const line of lines) {
       const key = itemPriceKey(line.name, effectiveVariant(line.variant, line.links));
       if (!prices.has(key)) {
-        prices.set(key, { chaosValue: line.chaosValue, type: correctedItemType(type, line.baseType) });
+        prices.set(key, {
+          chaosValue: line.chaosValue,
+          type: correctedItemType(type, line.baseType),
+          sellerCount: line.count,
+        });
       }
     }
   });
