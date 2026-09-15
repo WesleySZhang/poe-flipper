@@ -51,6 +51,7 @@ export function FlipSuggestionsPanel() {
   const [currentRange, setCurrentRange] = useState<NumericRange>({});
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "change", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
+  const [faustusOnly, setFaustusOnly] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
@@ -91,7 +92,8 @@ export function FlipSuggestionsPanel() {
     return (
       !hiddenCategories.has(s.filterCategory) &&
       (activeCurrent === undefined || isWithinRange(activeCurrent, currentRange)) &&
-      s.name.toLowerCase().includes(normalizedSearch)
+      s.name.toLowerCase().includes(normalizedSearch) &&
+      (!faustusOnly || s.faustusTradeable)
     );
   });
   const pageCount = Math.max(1, Math.ceil(visibleSuggestions.length / PAGE_SIZE));
@@ -133,6 +135,11 @@ export function FlipSuggestionsPanel() {
 
   function changeCurrentRange(range: NumericRange) {
     setCurrentRange(range);
+    setPage(0);
+  }
+
+  function toggleFaustusOnly() {
+    setFaustusOnly((prev) => !prev);
     setPage(0);
   }
 
@@ -198,6 +205,22 @@ export function FlipSuggestionsPanel() {
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} />
           <NumericRangeFilter label={`cost (${priceUnitLabel(priceUnit)})`} onChange={changeCurrentRange} />
+          <Badge
+            variant={faustusOnly ? "default" : "outline"}
+            role="button"
+            tabIndex={0}
+            onClick={toggleFaustusOnly}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggleFaustusOnly();
+              }
+            }}
+            className="h-8 cursor-pointer select-none px-3"
+            title="Show only currencies GGG's Currency Exchange (Faustus) can price - the default sort otherwise buries these on some far-off page"
+          >
+            Faustus available
+          </Badge>
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
