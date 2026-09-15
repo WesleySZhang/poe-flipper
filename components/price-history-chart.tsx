@@ -24,6 +24,9 @@ const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
 const CHART_ASPECT_RATIO = `${VIEW_WIDTH} / ${VIEW_HEIGHT}`;
 // The brush window can't shrink narrower than this many days, to avoid a degenerate/inverted zoom.
 const MIN_ZOOM_DAYS = 1;
+// A drag shorter than this (in view units) on the main chart is treated as a click/hover, not a
+// deliberate zoom selection - otherwise every hover-then-slightly-move would zoom by accident.
+const MIN_CHART_DRAG_VIEW_WIDTH = 8;
 // Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
 // via a 0-100 viewBox, since the track is already positioned with percentages).
 const BRUSH_VIEW_HEIGHT = 40;
@@ -195,7 +198,10 @@ function RangeBrush({
 
       <div
         onPointerDown={handleMovePointerDown}
-        className={cn("absolute top-0 h-full border-x-2 border-foreground/70", isDragging ? "cursor-grabbing" : "cursor-grab")}
+        className={cn(
+          "absolute top-0 h-full border-x-2 border-foreground/70 bg-primary/20",
+          isDragging ? "cursor-grabbing" : "cursor-grab"
+        )}
         style={{ left: `${leftPct}%`, width: `${Math.max(0, rightPct - leftPct)}%` }}
       />
       <div
@@ -236,6 +242,8 @@ export function PriceHistoryChart({
   const clipId = useId();
   const [hoverDay, setHoverDay] = useState<number | undefined>();
   const [zoomDomain, setZoomDomain] = useState<[number, number] | undefined>();
+  const [chartDragStartDay, setChartDragStartDay] = useState<number | undefined>();
+  const [chartDragCurrentDay, setChartDragCurrentDay] = useState<number | undefined>();
 
   const plotted: PlottedSeries[] = useMemo(() => {
     if (state.status !== "loaded") return [];
@@ -320,15 +328,16 @@ export function PriceHistoryChart({
 
   const yTicks = [0, 1 / 3, 2 / 3, 1].map((f) => Math.exp(logMin + f * (logMax - logMin)));
   const isZoomed = zoomDomain !== undefined;
+  const isChartDragging = chartDragStartDay !== undefined && chartDragCurrentDay !== undefined;
 
-  function handlePointerMove(e: React.PointerEvent<SVGRectElement>) {
+  function dayAtClientX(clientX: number): number {
     const svg = svgRef.current;
-    if (!svg) return;
+    if (!svg) return dayMin;
     const rect = svg.getBoundingClientRect();
-    const fraction = (e.clientX - rect.left) / rect.width;
+    const fraction = (clientX - rect.left) / rect.width;
     const viewX = fraction * VIEW_WIDTH;
-    const day = Math.round(dayMin + ((viewX - MARGIN.left) / PLOT_WIDTH) * dayRange);
-    setHoverDay(Math.min(dayMax, Math.max(dayMin, day)));
+    const day = dayMin + ((viewX - MARGIN.left) / PLOT_WIDTH) * dayRange;
+    return Math.min(dayMax, Math.max(dayMin, day));
   }
 
   function handleBrushChange(min: number, max: number) {
@@ -341,10 +350,38 @@ export function PriceHistoryChart({
     }
   }
 
+  function handleChartPointerDown(e: React.PointerEvent<SVGRectElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const day = dayAtClientX(e.clientX);
+    setChartDragStartDay(day);
+    setChartDragCurrentDay(day);
+  }
+
+  function handleChartPointerMove(e: React.PointerEvent<SVGRectElement>) {
+    const day = dayAtClientX(e.clientX);
+    if (chartDragStartDay !== undefined) {
+      setChartDragCurrentDay(day);
+    } else {
+      setHoverDay(Math.round(day));
+    }
+  }
+
+  function commitChartDrag() {
+    if (chartDragStartDay !== undefined && chartDragCurrentDay !== undefined) {
+      const from = Math.min(chartDragStartDay, chartDragCurrentDay);
+      const to = Math.max(chartDragStartDay, chartDragCurrentDay);
+      if (xScale(to) - xScale(from) >= MIN_CHART_DRAG_VIEW_WIDTH) {
+        handleBrushChange(from, to);
+      }
+    }
+    setChartDragStartDay(undefined);
+    setChartDragCurrentDay(undefined);
+  }
+
   // Nearest point per league to the hovered day, for the tooltip - not necessarily an exact day
   // match, since not every league has a recorded value on every single day.
   const hoverRows =
-    hoverDay === undefined
+    hoverDay === undefined || isChartDragging
       ? []
       : plotted
           .map((s) => {
@@ -415,7 +452,7 @@ export function PriceHistoryChart({
             )}
 
             {/* Hover crosshair */}
-            {hoverDay !== undefined && (
+            {hoverDay !== undefined && !isChartDragging && (
               <line
                 x1={xScale(hoverDay)}
                 x2={xScale(hoverDay)}
@@ -450,23 +487,44 @@ export function PriceHistoryChart({
                 )}
               </g>
             ))}
+
+            {/* Drag-to-zoom selection - dragging directly on the chart is a shortcut for the same
+                zoom the range brush below controls; both drive the same zoomDomain state. */}
+            {isChartDragging && chartDragStartDay !== undefined && chartDragCurrentDay !== undefined && (
+              <rect
+                x={Math.min(xScale(chartDragStartDay), xScale(chartDragCurrentDay))}
+                y={MARGIN.top}
+                width={Math.abs(xScale(chartDragCurrentDay) - xScale(chartDragStartDay))}
+                height={PLOT_HEIGHT}
+                fill="var(--primary)"
+                fillOpacity={0.15}
+                stroke="var(--foreground)"
+                strokeOpacity={0.4}
+              />
+            )}
           </g>
 
-          {/* Transparent overlay capturing pointer position for the hover tooltip. */}
+          {/* Transparent overlay capturing pointer position for hover + drag-to-zoom. */}
           <rect
             x={MARGIN.left}
             y={MARGIN.top}
             width={PLOT_WIDTH}
             height={PLOT_HEIGHT}
             fill="transparent"
-            onPointerMove={handlePointerMove}
-            onPointerLeave={() => setHoverDay(undefined)}
+            style={{ touchAction: "none", cursor: "crosshair" }}
+            onPointerDown={handleChartPointerDown}
+            onPointerMove={handleChartPointerMove}
+            onPointerUp={commitChartDrag}
+            onPointerLeave={() => {
+              setHoverDay(undefined);
+              if (isChartDragging) commitChartDrag();
+            }}
           />
         </svg>
 
-        {hoverDay !== undefined && hoverRows.length > 0 && (
+        {hoverDay !== undefined && !isChartDragging && hoverRows.length > 0 && (
           <div
-            className="pointer-events-none absolute top-2 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-popover p-2 text-xs shadow-sm"
+            className="pointer-events-none absolute top-2 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-popover/85 p-2 text-xs shadow-sm backdrop-blur-sm"
             style={{ left: `${((xScale(hoverDay) / VIEW_WIDTH) * 100).toFixed(2)}%` }}
           >
             <span className="font-medium text-popover-foreground">Day {hoverDay}</span>
