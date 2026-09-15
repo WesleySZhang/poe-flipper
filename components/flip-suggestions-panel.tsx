@@ -304,18 +304,22 @@ export function FlipSuggestionsPanel() {
                       {s.name}
                     </div>
                   </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
+                  <TableCell>
+                    <div className="flex justify-center">
+                      <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-center">
-                    {s.faustusTradeable ? (
-                      <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                  <TableCell>
+                    <div className="flex justify-center">
+                      {s.faustusTradeable ? (
+                        <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
@@ -323,12 +327,14 @@ export function FlipSuggestionsPanel() {
                   <TableCell className="text-right">
                     {formatPercentChange(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-center">
-                    <ConfidenceBadge
-                      score={activeConfidence(s.confidence, s.confidenceDivine, priceUnit)}
-                      upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
-                      leagueCount={priceUnit === "chaos" ? s.leagueCount : s.leagueCountDivine}
-                    />
+                  <TableCell>
+                    <div className="flex justify-center">
+                      <ConfidenceBadge
+                        score={activeConfidence(s.confidence, s.confidenceDivine, priceUnit)}
+                        upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
+                        leagueCount={priceUnit === "chaos" ? s.leagueCount : s.leagueCountDivine}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}

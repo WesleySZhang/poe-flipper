@@ -334,8 +334,10 @@ export function MirageSimulatorPanel() {
                       {r.name}
                     </div>
                   </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="secondary">{humanizeCategoryName(r.filterCategory)}</Badge>
+                  <TableCell>
+                    <div className="flex justify-center">
+                      <Badge variant="secondary">{humanizeCategoryName(r.filterCategory)}</Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(r.actualNowChaos, r.actualNowDivine, priceUnit)}
@@ -352,12 +354,14 @@ export function MirageSimulatorPanel() {
                   <TableCell className="text-right">
                     {formatPercentChange(r.actualRatio, r.actualRatioDivine, priceUnit)}
                   </TableCell>
-                  <TableCell className="text-center">
-                    <ConfidenceBadge
-                      score={activeConfidence(r.confidence, r.confidenceDivine, priceUnit)}
-                      upFraction={priceUnit === "chaos" ? r.upFraction : r.upFractionDivine}
-                      leagueCount={priceUnit === "chaos" ? r.leagueCount : r.leagueCountDivine}
-                    />
+                  <TableCell>
+                    <div className="flex justify-center">
+                      <ConfidenceBadge
+                        score={activeConfidence(r.confidence, r.confidenceDivine, priceUnit)}
+                        upFraction={priceUnit === "chaos" ? r.upFraction : r.upFractionDivine}
+                        leagueCount={priceUnit === "chaos" ? r.leagueCount : r.leagueCountDivine}
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
