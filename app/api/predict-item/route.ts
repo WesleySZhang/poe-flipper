@@ -1,6 +1,7 @@
 import {
   getCurrencyGrowthRatiosBatch,
   getItemGrowthRatiosBatch,
+  getNameDayCoverage,
   MIN_LEAGUES_WITH_DATA,
 } from "@/lib/growth-ratios";
 import { MEDIUM_TIER_MIN } from "@/lib/confidence";
@@ -46,13 +47,16 @@ export async function GET(request: Request) {
 
   const match = rows[0].find((r) => r.name === name && (r.variant ?? undefined) === variant);
   if (!match) {
-    return Response.json(
-      {
-        error:
-          "No historical price data for this item near this day at all - it may not have existed in past leagues, or exists under a slightly different name/variant.",
-      },
-      { status: 404 }
-    );
+    // A real, correctly-named item can still have no prediction at THIS day - e.g. poe.ninja started
+    // splitting Mageblood's price out by corrupted flask count partway through Mirage, so "Mageblood
+    // (4 Flasks)" only has data from around day 60 of that one league onward. That's a very different
+    // (and actionable) situation from a typo/nonexistent item, so check which one this actually is
+    // before blaming the name.
+    const coverage = await getNameDayCoverage(category, name, variant);
+    const error = coverage
+      ? `This item has price data from day ${coverage.minDay} to day ${coverage.maxDay} (in ${coverage.leagues.join(", ")}), but none close enough to day ${currentDay}/day ${currentDay + durationDays} to predict from. Try a Current day within that range.`
+      : "No historical price data for this item at all - it may not have existed in past leagues, or exists under a slightly different name/variant.";
+    return Response.json({ error }, { status: 404 });
   }
 
   // A single past league (or two) can't have demonstrated real reliability yet, no matter which

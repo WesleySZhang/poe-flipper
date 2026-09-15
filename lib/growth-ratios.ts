@@ -619,3 +619,45 @@ export async function getKnownNames(): Promise<KnownName[]> {
   }
   return names;
 }
+
+export interface NameDayCoverage {
+  /** Earliest/latest day_offset this exact (name[, variant]) has a price for, across every league
+   *  that has any. Not the same as "a prediction exists here" - getCurrencyGrowthRatios/
+   *  getItemGrowthRatios also need a second, nearby day to pair it with (see DEFAULT_TOLERANCE_DAYS)
+   *  and enough leagues to clear MIN_LEAGUES_WITH_DATA - this is just "does the name/variant exist
+   *  at all, and roughly when". */
+  minDay: number;
+  maxDay: number;
+  leagues: string[];
+}
+
+/**
+ * Diagnostic for the current-league tester's "no prediction" error: a specific (name, variant) can
+ * be real and correctly spelled but still have no match at the day the user picked - e.g. poe.ninja
+ * started splitting Mageblood's price out by corrupted flask count partway through Mirage, so
+ * "Mageblood (4 Flasks)" only has data from around day 60 of that one league onward, nothing earlier
+ * and nothing in any other league. Told apart from "doesn't exist"/"wrong name" so the error can
+ * point at an actual fix (pick a different Current day) instead of implying a typo.
+ */
+export async function getNameDayCoverage(
+  category: "currency" | "item",
+  name: string,
+  variant?: string
+): Promise<NameDayCoverage | undefined> {
+  const db = await getDb();
+  const variantClause = category === "item" ? (variant ? "AND variant = $variant" : "AND variant IS NULL") : "";
+  const reader = await db.runAndReadAll(
+    `SELECT league, MIN(day_offset) AS min_day, MAX(day_offset) AS max_day
+     FROM ${category === "currency" ? "currency_history_dayed" : "item_history_dayed"}
+     WHERE name = $name ${variantClause}
+     GROUP BY league`,
+    { name, ...(category === "item" && variant ? { variant } : {}) }
+  );
+  const rows = reader.getRowObjects();
+  if (rows.length === 0) return undefined;
+  return {
+    minDay: Math.min(...rows.map((r) => Number(r.min_day))),
+    maxDay: Math.max(...rows.map((r) => Number(r.max_day))),
+    leagues: rows.map((r) => String(r.league)),
+  };
+}
