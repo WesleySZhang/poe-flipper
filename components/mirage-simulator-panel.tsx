@@ -27,9 +27,16 @@ import {
   type PriceUnit,
 } from "@/lib/price-unit";
 import type { MirageSimulationRow } from "@/lib/mirage-simulator";
+import { rankKnownNameMatches, type KnownItemName } from "@/components/item-name-combobox";
 
 async function fetchMirageSimulation(currentDay: number, durationDays: number): Promise<MirageSimulationRow[]> {
   const res = await fetch(`/api/mirage-simulation?currentDay=${currentDay}&durationDays=${durationDays}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+async function fetchKnownNames(): Promise<KnownItemName[]> {
+  const res = await fetch("/api/item-names");
   if (!res.ok) return [];
   return res.json();
 }
@@ -42,6 +49,7 @@ export function MirageSimulatorPanel() {
   const [currentDay, setCurrentDay] = useState(2);
   const [durationDays, setDurationDays] = useState(3);
   const [rows, setRows] = useState<MirageSimulationRow[]>([]);
+  const [knownNames, setKnownNames] = useState<KnownItemName[]>([]);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
     () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
   );
@@ -58,6 +66,14 @@ export function MirageSimulatorPanel() {
       setPage(0);
     });
   }, [currentDay, durationDays]);
+
+  // Fetched once (not scenario-dependent) purely to explain an empty search result: a name can be
+  // real - always in the pricing data - and still be absent from `rows` for THIS specific day/
+  // duration, e.g. its Mirage price tracking started partway through the league (see
+  // missingKnownMatch below), which looks identical to a typo/nonexistent item without this check.
+  useEffect(() => {
+    fetchKnownNames().then(setKnownNames);
+  }, []);
 
   const targetDay = currentDay + durationDays;
   // Backtesting shows the model's predictions correlate well with what actually happens early in a
@@ -99,6 +115,18 @@ export function MirageSimulatorPanel() {
   const pageCount = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
   const pagedRows = visibleRows.slice(pageStart, pageStart + PAGE_SIZE);
+
+  // A search can come up empty for two very different reasons: the name genuinely isn't in this
+  // app's data at all, or it's a real item that just didn't make it into `rows` for THIS specific
+  // day/duration - e.g. its Mirage price tracking started partway through the league (a late-game
+  // unique's variant-count breakdown), or (for a name/variant that only ever existed in Mirage
+  // itself) there simply aren't enough OTHER leagues to train a prediction from, no matter the day.
+  // Checked against `rows` first (not just the search) so a name that's merely hidden by the
+  // category/cost filters still gets the plain "no rows match filters" message below, unchanged.
+  const missingKnownMatch =
+    normalizedSearch && rows.length > 0 && !rows.some((r) => r.name.toLowerCase().includes(normalizedSearch))
+      ? (rankKnownNameMatches(knownNames, normalizedSearch)[0] ?? null)
+      : null;
 
   function toggleCategory(category: string) {
     setHiddenCategories((prev) => {
@@ -232,7 +260,17 @@ export function MirageSimulatorPanel() {
             No historical matches for day {currentDay} to day {targetDay} - try an earlier day or shorter duration.
           </p>
         )}
-        {!isPending && rows.length > 0 && visibleRows.length === 0 && (
+        {!isPending && rows.length > 0 && visibleRows.length === 0 && missingKnownMatch && (
+          <p className="text-sm text-muted-foreground">
+            &quot;{missingKnownMatch.displayName}&quot; is real, always-tracked data - it&apos;s just not
+            available for day {currentDay} &rarr; day {targetDay} specifically. This happens when an item&apos;s
+            Mirage price tracking started partway through the league (common for late-game uniques and
+            corrupted-implicit variant breakdowns), or when a variant only ever existed in Mirage itself, leaving
+            too few other leagues to train a prediction from at any day. Try a different Current day, or search
+            without a variant.
+          </p>
+        )}
+        {!isPending && rows.length > 0 && visibleRows.length === 0 && !missingKnownMatch && (
           <p className="text-sm text-muted-foreground">No rows match the current filters.</p>
         )}
         {!isPending && pagedRows.length > 0 && (

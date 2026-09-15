@@ -15,6 +15,25 @@ export interface KnownItemName {
 const MAX_SUGGESTIONS = 50;
 
 /**
+ * Every name containing `normalizedQuery`, ranked so a name that STARTS WITH it (e.g. "Mageblood")
+ * leads one that merely contains it elsewhere (e.g. "Foulborn Mageblood", or "Ancestral Sector (Foil
+ * Stranglegasp)") - plain alphabetical order buries the plain/expected match under every longer name
+ * that happens to sort earlier. Array.sort is stable, so alphabetical order still holds within each
+ * of those two buckets. Exported so other callers needing "the one name a search was probably about"
+ * (see mirage-simulator-panel.tsx's missingKnownMatch) rank the same way the picker itself does,
+ * rather than a plain .find() picking whatever's alphabetically first.
+ */
+export function rankKnownNameMatches(names: KnownItemName[], normalizedQuery: string): KnownItemName[] {
+  const matches = names.filter((n) => n.displayName.toLowerCase().includes(normalizedQuery));
+  matches.sort((a, b) => {
+    const aStarts = a.displayName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
+    const bStarts = b.displayName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
+    return aStarts - bStarts;
+  });
+  return matches;
+}
+
+/**
  * Free-text search over every name this app has historical data for, that only ever resolves to an
  * exact (category, name[, variant]) triple - the prediction API matches on that triple exactly, so
  * a free-typed guess that's off by a variant or a word would otherwise just silently 404. Typing
@@ -37,17 +56,7 @@ export function ItemNameCombobox({
   const normalizedQuery = query.trim().toLowerCase();
   const suggestions = useMemo(() => {
     if (!normalizedQuery || selected) return [];
-    const matches = names.filter((n) => n.displayName.toLowerCase().includes(normalizedQuery));
-    // Plain alphabetical order buries an exact/prefix match under every longer name that happens to
-    // sort earlier - e.g. "Foulborn Mageblood" (corrupted-implicit variant) sorts before the plain
-    // "Mageblood" a search for "mageblood" is almost always actually after. Sort.() is stable, so
-    // this only reorders the two buckets - alphabetical order survives within each.
-    matches.sort((a, b) => {
-      const aStarts = a.displayName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
-      const bStarts = b.displayName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
-      return aStarts - bStarts;
-    });
-    return matches.slice(0, MAX_SUGGESTIONS);
+    return rankKnownNameMatches(names, normalizedQuery).slice(0, MAX_SUGGESTIONS);
   }, [names, normalizedQuery, selected]);
 
   // The dropdown is portaled to <body> (see the render below) specifically to escape Card's
