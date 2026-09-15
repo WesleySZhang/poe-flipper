@@ -289,20 +289,11 @@ export function MirageSimulatorPanel() {
             No historical matches for day {currentDay} to day {targetDay} - try an earlier day or shorter duration.
           </p>
         )}
-        {!isPending && rows.length > 0 && visibleRows.length === 0 && missingKnownMatch && (
-          <p className="text-sm text-muted-foreground">
-            &quot;{missingKnownMatch.displayName}&quot; is real, always-tracked data - it&apos;s just not
-            available for day {currentDay} &rarr; day {targetDay} specifically. This happens when an item&apos;s
-            Mirage price tracking started partway through the league (common for late-game uniques and
-            corrupted-implicit variant breakdowns), or when a variant only ever existed in Mirage itself, leaving
-            too few other leagues to train a prediction from at any day. Try a different Current day, or search
-            without a variant.
-          </p>
-        )}
-        {!isPending && rows.length > 0 && visibleRows.length === 0 && !missingKnownMatch && (
-          <p className="text-sm text-muted-foreground">No rows match the current filters.</p>
-        )}
-        {!isPending && pagedRows.length > 0 && (
+        {!isPending && rows.length > 0 && (
+          // Keyed on rows.length, not pagedRows.length - the header (and the Confidence column's
+          // tier filter it carries) must stay visible even when every row is currently filtered
+          // out, or there'd be no way to re-enable a hidden tier once all three are off and the
+          // table disappears out from under the controls that could undo it.
           <Table>
             <TableHeader>
               <TableRow>
@@ -372,6 +363,19 @@ export function MirageSimulatorPanel() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {!isPending && rows.length > 0 && visibleRows.length === 0 && missingKnownMatch && (
+          <p className="text-sm text-muted-foreground">
+            &quot;{missingKnownMatch.displayName}&quot; is real, always-tracked data - it&apos;s just not
+            available for day {currentDay} &rarr; day {targetDay} specifically. This happens when an item&apos;s
+            Mirage price tracking started partway through the league (common for late-game uniques and
+            corrupted-implicit variant breakdowns), or when a variant only ever existed in Mirage itself, leaving
+            too few other leagues to train a prediction from at any day. Try a different Current day, or search
+            without a variant.
+          </p>
+        )}
+        {!isPending && rows.length > 0 && visibleRows.length === 0 && !missingKnownMatch && (
+          <p className="text-sm text-muted-foreground">No rows match the current filters.</p>
         )}
         {!isPending && (
           <Pagination

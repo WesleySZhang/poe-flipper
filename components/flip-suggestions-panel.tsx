@@ -260,10 +260,11 @@ export function FlipSuggestionsPanel() {
         {!isPending && suggestions.length === 0 && (
           <p className="text-sm text-muted-foreground">No historical matches found for current live prices yet.</p>
         )}
-        {!isPending && suggestions.length > 0 && visibleSuggestions.length === 0 && (
-          <p className="text-sm text-muted-foreground">No suggestions match the current filters.</p>
-        )}
-        {pagedSuggestions.length > 0 && (
+        {!isPending && suggestions.length > 0 && (
+          // Keyed on suggestions.length, not pagedSuggestions.length - the header (and the
+          // Confidence column's tier filter it carries) must stay visible even when every row is
+          // currently filtered out, or there'd be no way to re-enable a hidden tier once all three
+          // are off and the table disappears out from under the controls that could undo it.
           <Table>
             <TableHeader>
               <TableRow>
@@ -333,6 +334,9 @@ export function FlipSuggestionsPanel() {
               ))}
             </TableBody>
           </Table>
+        )}
+        {!isPending && suggestions.length > 0 && visibleSuggestions.length === 0 && (
+          <p className="text-sm text-muted-foreground">No suggestions match the current filters.</p>
         )}
         <Pagination
           page={Math.min(page, pageCount - 1)}
