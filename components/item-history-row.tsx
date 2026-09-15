@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
@@ -72,9 +71,9 @@ export function ItemHistoryRow({
 
   return (
     <>
-      {/* The whole row toggles the chart, not just the chevron - the chevron is now purely a visual
-          indicator. tabIndex/onKeyDown make it keyboard-reachable (Enter/Space) without claiming
-          role="button" on a <tr>, which would strip its table-row semantics for screen readers. */}
+      {/* The whole row toggles the chart - tabIndex/onKeyDown make it keyboard-reachable
+          (Enter/Space) without claiming role="button" on a <tr>, which would strip its table-row
+          semantics for screen readers. */}
       <TableRow
         tabIndex={0}
         aria-expanded={expanded}
@@ -83,19 +82,12 @@ export function ItemHistoryRow({
         className={cn("cursor-pointer", expanded && "bg-muted/50")}
       >
         <TableCell>
-          <div className="flex items-center gap-1.5">
-            {expanded ? (
-              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            ) : (
-              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            )}
-            <div
-              tabIndex={0}
-              className="max-w-[140px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
-              title={displayName}
-            >
-              {displayName}
-            </div>
+          <div
+            tabIndex={0}
+            className="max-w-[140px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
+            title={displayName}
+          >
+            {displayName}
           </div>
         </TableCell>
         {children}

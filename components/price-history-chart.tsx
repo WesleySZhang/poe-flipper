@@ -524,17 +524,22 @@ export function PriceHistoryChart({
 
         {hoverDay !== undefined && !isChartDragging && hoverRows.length > 0 && (
           <div
-            className="pointer-events-none absolute top-2 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-popover/55 p-2 text-xs shadow-sm backdrop-blur-sm"
+            className="pointer-events-none absolute top-2 -translate-x-1/2 overflow-hidden rounded-md border border-border shadow-sm"
             style={{ left: `${((xScale(hoverDay) / VIEW_WIDTH) * 100).toFixed(2)}%` }}
           >
-            <span className="font-medium text-popover-foreground">Day {hoverDay}</span>
-            {hoverRows.map(({ league, color, point }) => (
-              <span key={league} className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="inline-block size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                {league}
-                <span className="font-medium text-popover-foreground">{formatTick(point.value, priceUnit)}</span>
-              </span>
-            ))}
+            {/* Translucent/blurred backdrop as its own layer, behind the text - keeps the text at
+                full opacity regardless of how transparent this background is. */}
+            <div className="absolute inset-0 bg-popover/55 backdrop-blur-[1px]" />
+            <div className="relative flex flex-col gap-0.5 p-2 text-xs">
+              <span className="font-medium text-popover-foreground">Day {hoverDay}</span>
+              {hoverRows.map(({ league, color, point }) => (
+                <span key={league} className="flex items-center gap-1.5 text-muted-foreground">
+                  <span className="inline-block size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                  {league}
+                  <span className="font-medium text-popover-foreground">{formatTick(point.value, priceUnit)}</span>
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>
