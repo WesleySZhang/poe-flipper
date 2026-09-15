@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { allKnownLeagues, CURRENT_LEAGUE } from "@/lib/league-recency";
 import { activePrice, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
@@ -18,6 +18,9 @@ const VIEW_HEIGHT = 240;
 const MARGIN = { top: 12, right: 16, bottom: 24, left: 44 };
 const PLOT_WIDTH = VIEW_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
+// A drag shorter than this (in view units) is treated as a click/hover, not a deliberate zoom
+// selection - otherwise every hover-then-slightly-move would accidentally trigger a 1-day zoom.
+const MIN_DRAG_VIEW_WIDTH = 8;
 
 const CHART_COLOR_VARS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 // Stable per-league color assignment - an index into whichever subset of leagues happen to have
@@ -51,6 +54,12 @@ interface PlottedSeries {
  * Per-item price history, one line per past league, with a vertical marker for the current day of
  * the league being predicted from. See lib/price-history.ts for why the live current league itself
  * never has a line here - only past, fully-ingested leagues do.
+ *
+ * A single item's leagues can have wildly different tracked lengths (a league that ran for a year
+ * vs. one that ran for 90 days) - defaulting to the full combined day range would squash every
+ * league's early, most-interesting action into a sliver at the left edge. Rather than guess a
+ * "reasonable" default window, the full range is always the default and the user can drag-select
+ * across the plot to zoom into whatever window they care about (reset via the button below).
  */
 export function PriceHistoryChart({
   state,
@@ -62,7 +71,11 @@ export function PriceHistoryChart({
   priceUnit: PriceUnit;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const clipId = useId();
   const [hoverDay, setHoverDay] = useState<number | undefined>();
+  const [zoomDomain, setZoomDomain] = useState<[number, number] | undefined>();
+  const [dragStartDay, setDragStartDay] = useState<number | undefined>();
+  const [dragCurrentDay, setDragCurrentDay] = useState<number | undefined>();
 
   const plotted: PlottedSeries[] = useMemo(() => {
     if (state.status !== "loaded") return [];
@@ -109,40 +122,80 @@ export function PriceHistoryChart({
     );
   }
 
-  // Log scale for Y - this app reasons about currency growth in log space throughout (see
-  // lib/growth-ratios.ts) since a linear scale would let one expensive tail dominate and make an
-  // early cheap price invisible next to a late expensive one.
-  let logMin = Math.log(Math.min(...allValues));
-  let logMax = Math.log(Math.max(...allValues));
+  const fullDayMin = Math.min(0, ...allDays, currentDay);
+  const fullDayMax = Math.max(...allDays, currentDay);
+  // The active (possibly zoomed) day domain - everything below scales against this, not the full
+  // range, so dragging to zoom actually changes what's drawn.
+  const dayMin = zoomDomain ? zoomDomain[0] : fullDayMin;
+  const dayMax = zoomDomain ? zoomDomain[1] : fullDayMax;
+  const dayRange = dayMax - dayMin || 1;
+
+  // Y auto-rescales to whatever's actually visible in the current window, not the full history -
+  // otherwise zooming into a flat stretch would still show it squashed against a scale set by a
+  // price spike outside the visible window. Falls back to the full range if the window happens to
+  // contain no points at all (e.g. mid-drag, before the drag has crossed any data).
+  const visibleValues = plotted.flatMap((s) =>
+    s.points.filter((p) => p.dayOffset >= dayMin && p.dayOffset <= dayMax).map((p) => p.value)
+  );
+  const valuesForScale = visibleValues.length > 0 ? visibleValues : allValues;
+  let logMin = Math.log(Math.min(...valuesForScale));
+  let logMax = Math.log(Math.max(...valuesForScale));
   if (logMin === logMax) {
     // Flat or single-point data - pad the domain so the line isn't drawn on a degenerate 0-height
     // scale (divide-by-zero guard).
     logMin -= 0.5;
     logMax += 0.5;
   }
-  const dayMin = Math.min(0, ...allDays, currentDay);
-  const dayMax = Math.max(...allDays, currentDay);
-  const dayRange = dayMax - dayMin || 1;
 
   const xScale = (day: number) => MARGIN.left + ((day - dayMin) / dayRange) * PLOT_WIDTH;
   const yScale = (value: number) => MARGIN.top + (1 - (Math.log(value) - logMin) / (logMax - logMin)) * PLOT_HEIGHT;
+  /** Inverse of xScale, clamped to the active domain - shared by hover and drag-to-zoom. */
+  function dayAtClientX(clientX: number): number {
+    const svg = svgRef.current;
+    if (!svg) return dayMin;
+    const rect = svg.getBoundingClientRect();
+    const fraction = (clientX - rect.left) / rect.width;
+    const viewX = fraction * VIEW_WIDTH;
+    const day = dayMin + ((viewX - MARGIN.left) / PLOT_WIDTH) * dayRange;
+    return Math.min(dayMax, Math.max(dayMin, day));
+  }
 
   const yTicks = [0, 1 / 3, 2 / 3, 1].map((f) => Math.exp(logMin + f * (logMax - logMin)));
+  const isZoomed = zoomDomain !== undefined;
+  const isDragging = dragStartDay !== undefined && dragCurrentDay !== undefined;
+
+  function handlePointerDown(e: React.PointerEvent<SVGRectElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const day = dayAtClientX(e.clientX);
+    setDragStartDay(day);
+    setDragCurrentDay(day);
+  }
 
   function handlePointerMove(e: React.PointerEvent<SVGRectElement>) {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const fraction = (e.clientX - rect.left) / rect.width;
-    const viewX = fraction * VIEW_WIDTH;
-    const day = Math.round(dayMin + ((viewX - MARGIN.left) / PLOT_WIDTH) * dayRange);
-    setHoverDay(Math.min(dayMax, Math.max(dayMin, day)));
+    const day = dayAtClientX(e.clientX);
+    if (dragStartDay !== undefined) {
+      setDragCurrentDay(day);
+    } else {
+      setHoverDay(Math.round(day));
+    }
+  }
+
+  function handlePointerUp() {
+    if (dragStartDay !== undefined && dragCurrentDay !== undefined) {
+      const from = Math.min(dragStartDay, dragCurrentDay);
+      const to = Math.max(dragStartDay, dragCurrentDay);
+      if (xScale(to) - xScale(from) >= MIN_DRAG_VIEW_WIDTH) {
+        setZoomDomain([from, to]);
+      }
+    }
+    setDragStartDay(undefined);
+    setDragCurrentDay(undefined);
   }
 
   // Nearest point per league to the hovered day, for the tooltip - not necessarily an exact day
   // match, since not every league has a recorded value on every single day.
   const hoverRows =
-    hoverDay === undefined
+    hoverDay === undefined || isDragging
       ? []
       : plotted
           .map((s) => {
@@ -157,6 +210,18 @@ export function PriceHistoryChart({
 
   return (
     <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">Drag across the chart to zoom in.</span>
+        {isZoomed && (
+          <button
+            type="button"
+            onClick={() => setZoomDomain(undefined)}
+            className="text-xs font-medium text-foreground underline-offset-2 hover:underline"
+          >
+            Reset zoom
+          </button>
+        )}
+      </div>
       <div className="relative h-56 w-full sm:h-64">
         <svg
           ref={svgRef}
@@ -164,6 +229,15 @@ export function PriceHistoryChart({
           preserveAspectRatio="none"
           className="h-full w-full overflow-visible"
         >
+          <defs>
+            {/* Unique per instance (useId) - multiple rows can be expanded at once, and an SVG id
+                reference resolves document-wide, not per-<svg>, so a shared literal id would let one
+                chart's clip accidentally apply to another's. */}
+            <clipPath id={clipId}>
+              <rect x={MARGIN.left} y={MARGIN.top} width={PLOT_WIDTH} height={PLOT_HEIGHT} />
+            </clipPath>
+          </defs>
+
           {/* Y-axis gridlines + labels */}
           {yTicks.map((value, i) => (
             <g key={i}>
@@ -189,74 +263,97 @@ export function PriceHistoryChart({
             Day {Math.round(dayMax)}
           </text>
 
-          {/* Vertical "current day" marker - dashed and muted since it's chrome, not a data series. */}
-          {currentDay >= dayMin && currentDay <= dayMax && (
-            <g>
+          <g clipPath={`url(#${clipId})`}>
+            {/* Vertical "current day" marker - dashed and muted since it's chrome, not a data series. */}
+            {currentDay >= dayMin && currentDay <= dayMax && (
+              <g>
+                <line
+                  x1={xScale(currentDay)}
+                  x2={xScale(currentDay)}
+                  y1={MARGIN.top}
+                  y2={VIEW_HEIGHT - MARGIN.bottom}
+                  stroke="var(--muted-foreground)"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                />
+                <text x={xScale(currentDay)} y={MARGIN.top + 9} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)">
+                  Today (Day {currentDay})
+                </text>
+              </g>
+            )}
+
+            {/* Hover crosshair */}
+            {hoverDay !== undefined && !isDragging && (
               <line
-                x1={xScale(currentDay)}
-                x2={xScale(currentDay)}
+                x1={xScale(hoverDay)}
+                x2={xScale(hoverDay)}
                 y1={MARGIN.top}
                 y2={VIEW_HEIGHT - MARGIN.bottom}
-                stroke="var(--muted-foreground)"
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
+                stroke="var(--foreground)"
+                strokeWidth={1}
+                strokeOpacity={0.3}
               />
-              <text x={xScale(currentDay)} y={MARGIN.top - 2} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)">
-                Today (Day {currentDay})
-              </text>
-            </g>
-          )}
+            )}
 
-          {/* Hover crosshair */}
-          {hoverDay !== undefined && (
-            <line
-              x1={xScale(hoverDay)}
-              x2={xScale(hoverDay)}
-              y1={MARGIN.top}
-              y2={VIEW_HEIGHT - MARGIN.bottom}
-              stroke="var(--foreground)"
-              strokeWidth={1}
-              strokeOpacity={0.3}
-            />
-          )}
-
-          {/* One line per league, plus an end-dot so the last point stays legible where lines cross. */}
-          {plotted.map((s) => (
-            <g key={s.league}>
-              <polyline
-                fill="none"
-                stroke={s.color}
-                strokeWidth={2}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                points={s.points.map((p) => `${xScale(p.dayOffset)},${yScale(p.value)}`).join(" ")}
-              />
-              {s.points.length > 0 && (
-                <circle
-                  cx={xScale(s.points[s.points.length - 1].dayOffset)}
-                  cy={yScale(s.points[s.points.length - 1].value)}
-                  r={3.5}
-                  fill={s.color}
-                  stroke="var(--card)"
+            {/* One line per league, plus an end-dot so the last point stays legible where lines cross. */}
+            {plotted.map((s) => (
+              <g key={s.league}>
+                <polyline
+                  fill="none"
+                  stroke={s.color}
                   strokeWidth={2}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                  points={s.points.map((p) => `${xScale(p.dayOffset)},${yScale(p.value)}`).join(" ")}
                 />
-              )}
-            </g>
-          ))}
+                {s.points.length > 0 && (
+                  <circle
+                    cx={xScale(s.points[s.points.length - 1].dayOffset)}
+                    cy={yScale(s.points[s.points.length - 1].value)}
+                    r={3.5}
+                    fill={s.color}
+                    stroke="var(--card)"
+                    strokeWidth={2}
+                  />
+                )}
+              </g>
+            ))}
 
-          {/* Transparent overlay capturing pointer position for the hover tooltip. */}
+            {/* Drag-to-zoom selection rectangle */}
+            {isDragging && dragStartDay !== undefined && dragCurrentDay !== undefined && (
+              <rect
+                x={Math.min(xScale(dragStartDay), xScale(dragCurrentDay))}
+                y={MARGIN.top}
+                width={Math.abs(xScale(dragCurrentDay) - xScale(dragStartDay))}
+                height={PLOT_HEIGHT}
+                fill="var(--foreground)"
+                fillOpacity={0.08}
+                stroke="var(--foreground)"
+                strokeOpacity={0.3}
+              />
+            )}
+          </g>
+
+          {/* Transparent overlay capturing pointer position for hover + drag-to-zoom. */}
           <rect
             x={MARGIN.left}
             y={MARGIN.top}
             width={PLOT_WIDTH}
             height={PLOT_HEIGHT}
             fill="transparent"
+            style={{ touchAction: "none", cursor: "crosshair" }}
+            onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
-            onPointerLeave={() => setHoverDay(undefined)}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={() => {
+              setHoverDay(undefined);
+              if (!isDragging) return;
+              handlePointerUp();
+            }}
           />
         </svg>
 
-        {hoverDay !== undefined && hoverRows.length > 0 && (
+        {hoverDay !== undefined && !isDragging && hoverRows.length > 0 && (
           <div
             className="pointer-events-none absolute top-2 flex -translate-x-1/2 flex-col gap-0.5 rounded-md border border-border bg-popover p-2 text-xs shadow-sm"
             style={{ left: `${((xScale(hoverDay) / VIEW_WIDTH) * 100).toFixed(2)}%` }}

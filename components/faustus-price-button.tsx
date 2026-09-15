@@ -21,7 +21,10 @@ type State = { status: "idle" } | { status: "loading" } | { status: "error" } | 
 export function FaustusPriceButton({ name, priceUnit }: { name: string; priceUnit: PriceUnit }) {
   const [state, setState] = useState<State>({ status: "idle" });
 
-  async function handleClick() {
+  async function handleClick(e: React.MouseEvent) {
+    // This can sit inside a row that's itself click-to-expand (see ItemHistoryRow) - stop the click
+    // from also toggling that row.
+    e.stopPropagation();
     setState({ status: "loading" });
     try {
       const res = await fetch(`/api/faustus-price?name=${encodeURIComponent(name)}`);
