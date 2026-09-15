@@ -511,6 +511,12 @@ export interface ActualValue {
   value: number;
   /** The same price in divines, using the Divine Orb rate from that same day. */
   valueDivine?: number;
+  /** The day this actually matched, within +/-toleranceDays of the day requested - lets a caller
+   *  fetching two days for the same name (a "now" and a "future") detect when both snapped to the
+   *  SAME single day (e.g. an item whose tracking starts partway through the league, after both
+   *  requested days) and reject that pairing, rather than silently reporting a spurious 0% change
+   *  from comparing a value against itself. See lib/mirage-simulator.ts. */
+  dayOffset: number;
 }
 
 /** Actual (not averaged/predicted) currency values for one specific league at a given day - used for backtesting. */
@@ -529,13 +535,17 @@ export async function getActualCurrencyValueAtDay(
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE d.league = $league AND d.day_offset BETWEEN $day - $tolerance AND $day + $tolerance
     )
-    SELECT name, value, rate FROM nearest WHERE rn = 1
+    SELECT name, value, rate, day_offset FROM nearest WHERE rn = 1
     `,
     { league, day, tolerance: toleranceDays }
   );
   const map = new Map<string, ActualValue>();
   for (const row of reader.getRowObjects()) {
-    map.set(String(row.name), { value: Number(row.value), valueDivine: divineValueFrom(row) });
+    map.set(String(row.name), {
+      value: Number(row.value),
+      valueDivine: divineValueFrom(row),
+      dayOffset: Number(row.day_offset),
+    });
   }
   return map;
 }
@@ -562,7 +572,7 @@ export async function getActualItemValueAtDay(
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE d.league = $league AND d.day_offset BETWEEN $day - $tolerance AND $day + $tolerance
     )
-    SELECT name, variant, value, type, rate FROM nearest WHERE rn = 1
+    SELECT name, variant, value, type, rate, day_offset FROM nearest WHERE rn = 1
     `,
     { league, day, tolerance: toleranceDays }
   );
@@ -573,6 +583,7 @@ export async function getActualItemValueAtDay(
     map.set(key, {
       value: Number(row.value),
       valueDivine: divineValueFrom(row),
+      dayOffset: Number(row.day_offset),
       type: row.type ? String(row.type) : undefined,
     });
   }
