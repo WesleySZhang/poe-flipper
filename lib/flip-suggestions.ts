@@ -29,6 +29,13 @@ function isThinMarketOutlier(ratio: number, sellerCount: number | undefined): bo
 
 export interface FlipSuggestion {
   name: string;
+  /** Raw, pre-display-formatting name - what lib/price-history.ts's queries key on. Equal to `name`
+   *  for currency (formatItemDisplayName is a no-op there); differs for items with a variant suffix
+   *  like "(21/23c)" appended to `name` for display. */
+  historyName: string;
+  /** Undefined for currency - present for an item/gem/unique with a distinct quality/level/links
+   *  variant, alongside historyName, so a caller can query its exact price history. */
+  variant?: string;
   category: "currency" | "item";
   /** What the category filter groups by: the item's or currency's poe.ninja type bucket (SkillGem, Scarab, Currency, ...). */
   filterCategory: string;
@@ -71,6 +78,8 @@ function buildSuggestion(
   const currentDivineValue = divineRate ? currentChaosValue / divineRate : undefined;
   return {
     name: displayName,
+    historyName: trend.name,
+    variant: trend.variant,
     category,
     filterCategory,
     // Faustus/Currency Exchange only ever covers plain evergreen currencies (see

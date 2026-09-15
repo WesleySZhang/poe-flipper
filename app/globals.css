@@ -67,11 +67,16 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Categorical palette for the price-history chart's per-league lines
+     (components/price-history-chart.tsx) - these were an unused grayscale shadcn leftover before
+     (5 shades of gray, useless for a multi-line legend). Hues spread across the wheel for maximum
+     distinction; avoids the destructive token's red/orange-red (hue ~27) since red is reserved for
+     warnings elsewhere in this app. */
+  --chart-1: oklch(0.55 0.18 250);
+  --chart-2: oklch(0.68 0.16 50);
+  --chart-3: oklch(0.6 0.14 165);
+  --chart-4: oklch(0.55 0.18 320);
+  --chart-5: oklch(0.75 0.15 90);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -102,11 +107,12 @@
   --border: oklch(1 0 0 / 14%);
   --input: oklch(1 0 0 / 20%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Same categorical palette as :root, lightened for visibility against a dark card. */
+  --chart-1: oklch(0.7 0.16 250);
+  --chart-2: oklch(0.75 0.15 50);
+  --chart-3: oklch(0.72 0.13 165);
+  --chart-4: oklch(0.7 0.16 320);
+  --chart-5: oklch(0.8 0.14 90);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

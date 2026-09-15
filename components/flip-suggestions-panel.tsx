@@ -12,6 +12,7 @@ import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
+import { ItemHistoryRow } from "@/components/item-history-row";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -294,16 +295,16 @@ export function FlipSuggestionsPanel() {
             </TableHeader>
             <TableBody>
               {pagedSuggestions.map((s) => (
-                <TableRow key={`${s.category}-${s.name}`}>
-                  <TableCell>
-                    <div
-                      tabIndex={0}
-                      className="max-w-[140px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
-                      title={s.name}
-                    >
-                      {s.name}
-                    </div>
-                  </TableCell>
+                <ItemHistoryRow
+                  key={`${s.category}-${s.name}`}
+                  displayName={s.name}
+                  category={s.category}
+                  historyName={s.historyName}
+                  variant={s.variant}
+                  currentDay={currentDay}
+                  priceUnit={priceUnit}
+                  colSpan={7}
+                >
                   <TableCell>
                     <div className="flex justify-center">
                       <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
@@ -336,7 +337,7 @@ export function FlipSuggestionsPanel() {
                       />
                     </div>
                   </TableCell>
-                </TableRow>
+                </ItemHistoryRow>
               ))}
             </TableBody>
           </Table>

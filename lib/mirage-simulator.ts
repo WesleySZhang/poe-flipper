@@ -21,6 +21,13 @@ const ACTUAL_VALUE_TOLERANCE_DAYS = 10;
 
 export interface MirageSimulationRow {
   name: string;
+  /** Raw, pre-display-formatting name - what lib/price-history.ts's queries key on. Equal to `name`
+   *  for currency (formatItemDisplayName is a no-op there); differs for items with a variant suffix
+   *  like "(21/23c)" appended to `name` for display. */
+  historyName: string;
+  /** Undefined for currency - present for an item/gem/unique with a distinct quality/level/links
+   *  variant, alongside historyName, so a caller can query its exact price history. */
+  variant?: string;
   category: "currency" | "item";
   /** What the category filter groups by: the item's or currency's poe.ninja type bucket (SkillGem, Scarab, Currency, ...). */
   filterCategory: string;
@@ -102,6 +109,8 @@ export async function simulateMirageLeague(
     if (actualNow.dayOffset === actualFuture.dayOffset) continue;
     rows.push({
       name: trend.name,
+      historyName: trend.name,
+      variant: trend.variant,
       category: "currency",
       filterCategory: currencyTypes.get(trend.name)?.type ?? "Currency",
       leagueCount: trend.leagueCount,
@@ -135,6 +144,8 @@ export async function simulateMirageLeague(
     if (actualNow.dayOffset === actualFuture.dayOffset) continue;
     rows.push({
       name: formatItemDisplayName(trend.name, trend.variant),
+      historyName: trend.name,
+      variant: trend.variant,
       category: "item",
       filterCategory: actualNow.type || trend.name,
       leagueCount: trend.leagueCount,

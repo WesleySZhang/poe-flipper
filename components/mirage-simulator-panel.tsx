@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
+import { ItemHistoryRow } from "@/components/item-history-row";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -324,16 +325,16 @@ export function MirageSimulatorPanel() {
             </TableHeader>
             <TableBody>
               {pagedRows.map((r) => (
-                <TableRow key={`${r.category}-${r.name}`}>
-                  <TableCell>
-                    <div
-                      tabIndex={0}
-                      className="max-w-[140px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
-                      title={r.name}
-                    >
-                      {r.name}
-                    </div>
-                  </TableCell>
+                <ItemHistoryRow
+                  key={`${r.category}-${r.name}`}
+                  displayName={r.name}
+                  category={r.category}
+                  historyName={r.historyName}
+                  variant={r.variant}
+                  currentDay={currentDay}
+                  priceUnit={priceUnit}
+                  colSpan={8}
+                >
                   <TableCell>
                     <div className="flex justify-center">
                       <Badge variant="secondary">{humanizeCategoryName(r.filterCategory)}</Badge>
@@ -363,7 +364,7 @@ export function MirageSimulatorPanel() {
                       />
                     </div>
                   </TableCell>
-                </TableRow>
+                </ItemHistoryRow>
               ))}
             </TableBody>
           </Table>
