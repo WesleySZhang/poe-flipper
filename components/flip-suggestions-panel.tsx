@@ -269,14 +269,14 @@ export function FlipSuggestionsPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[280px]">Item</TableHead>
-                <TableHead className="text-center">Category</TableHead>
+                <TableHead>Category</TableHead>
                 <SortableHeader
                   label={`Current (${priceUnitLabel(priceUnit)})`}
                   sortKey="current"
                   sort={sort}
                   onSort={handleSort}
                 />
-                <TableHead className="text-center">Exchange Price</TableHead>
+                <TableHead className="text-right">Exchange Price</TableHead>
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
                   sortKey="predicted"
