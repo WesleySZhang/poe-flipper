@@ -73,8 +73,11 @@ export function isUniqueCategory(category: string): boolean {
   return UNIQUE_CATEGORIES.has(category);
 }
 
-// Reliable and meta-items categories are enabled by default; "Etc." (everything outside both
-// tiers - the least-curated, catch-all group) is off by default.
+// Only the reliable-categories tier is enabled by default. Meta items and "Etc." both start
+// disabled - Meta items because every category in it shifts with the league's meta in a way the
+// historical growth ratio can't see coming (see UNIQUE_CATEGORIES_ORDERED above), so it's opt-in
+// rather than something a first-time view leads with; "Etc." because it's the least-curated,
+// catch-all group.
 export function isDefaultEnabledCategory(category: string): boolean {
-  return isReliableCategory(category) || isUniqueCategory(category);
+  return isReliableCategory(category);
 }
