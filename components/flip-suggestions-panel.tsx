@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
+import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -230,6 +231,7 @@ export function FlipSuggestionsPanel() {
                 />
                 <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
                 <SortableHeader label="Confidence" sortKey="confidence" sort={sort} onSort={handleSort} />
+                <TableHead>Faustus</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -262,6 +264,13 @@ export function FlipSuggestionsPanel() {
                       upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
                       leagueCount={priceUnit === "chaos" ? s.leagueCount : s.leagueCountDivine}
                     />
+                  </TableCell>
+                  <TableCell>
+                    {s.faustusTradeable ? (
+                      <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

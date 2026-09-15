@@ -1,12 +1,17 @@
 import "server-only";
 import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey, formatItemDisplayName } from "./poe-ninja";
 import { getCurrencyGrowthRatios, getItemGrowthRatios, type GrowthRatioRow } from "./growth-ratios";
+import { getFaustusPrices, isFaustusTradeable } from "./faustus";
 
 export interface FlipSuggestion {
   name: string;
   category: "currency" | "item";
   /** What the category filter groups by: the item's or currency's poe.ninja type bucket (SkillGem, Scarab, Currency, ...). */
   filterCategory: string;
+  /** Whether GGG's Currency Exchange (Faustus) covers this exact name at all - see lib/faustus.ts.
+   *  Only ever true for a small, evergreen currency subset; drives whether the "Faustus Price"
+   *  on-demand button renders for this row at all. */
+  faustusTradeable: boolean;
   currentChaosValue: number;
   /** Undefined only if the live Divine Orb price itself couldn't be fetched. */
   currentDivineValue?: number;
@@ -44,6 +49,10 @@ function buildSuggestion(
     name: displayName,
     category,
     filterCategory,
+    // Faustus/Currency Exchange only ever covers plain evergreen currencies (see
+    // FAUSTUS_NAME_TO_ID) - guarding on category defends against a coincidental name collision with
+    // an item/unique, even though isFaustusTradeable would already return false for those today.
+    faustusTradeable: category === "currency" && isFaustusTradeable(trend.name),
     currentChaosValue,
     currentDivineValue,
     predictedChaosValue: currentChaosValue * trend.avgRatio,
@@ -76,25 +85,37 @@ export async function getFlipSuggestions(
   currentDay: number,
   durationDays: number
 ): Promise<FlipSuggestion[]> {
-  const [currencyTrends, itemTrends, currencyPrices, itemPrices] = await Promise.all([
+  const [currencyTrends, itemTrends, currencyPrices, itemPrices, faustusPrices] = await Promise.all([
     getCurrencyGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
     getItemGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
     getAllCurrentCurrencyPrices(league),
     getAllCurrentItemPrices(league),
+    getFaustusPrices(league),
   ]);
 
   // Expensive items are really priced (by traders) in Divine Orbs, not chaos - a chaos-only price
   // for one of those drifts with the Divine Orb exchange rate (which inflates a lot over a league)
   // as much as with the item's own value, which is misleading. Divine Orb's own live chaos price is
-  // just another entry in currencyPrices, fetched the same way as everything else.
-  const divineRate = currencyPrices.get("Divine Orb")?.chaosValue;
+  // just another entry in currencyPrices, fetched the same way as everything else - falls back to
+  // Faustus on the same terms as every other currency below, though in practice Divine Orb is about
+  // the least likely price to ever be missing from poe.ninja.
+  const divineRate = currencyPrices.get("Divine Orb")?.chaosValue ?? faustusPrices.get("Divine Orb")?.chaosValue;
 
   const suggestions: FlipSuggestion[] = [];
 
   for (const trend of currencyTrends) {
     const price = currencyPrices.get(trend.name);
-    if (price === undefined || price.chaosValue <= 0) continue;
-    suggestions.push(buildSuggestion(trend, "currency", price.type, price.chaosValue, durationDays, divineRate));
+    if (price !== undefined && price.chaosValue > 0) {
+      suggestions.push(buildSuggestion(trend, "currency", price.type, price.chaosValue, durationDays, divineRate));
+      continue;
+    }
+    // poe.ninja hasn't listed a live price for this currency at all yet (common for a brand-new or
+    // low-volume item early in a league) - GGG's own Currency Exchange (Faustus) trade data covers a
+    // small, evergreen subset of currencies (see lib/faustus.ts) and can fill this gap when it does.
+    const faustusPrice = faustusPrices.get(trend.name);
+    if (faustusPrice !== undefined && faustusPrice.chaosValue > 0) {
+      suggestions.push(buildSuggestion(trend, "currency", "Currency", faustusPrice.chaosValue, durationDays, divineRate));
+    }
   }
 
   for (const trend of itemTrends) {
