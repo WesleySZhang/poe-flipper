@@ -41,7 +41,10 @@ export const DEFAULT_TOLERANCE_DAYS = 3;
 // always excluded on top of that, leaving at most a few training leagues - so 5 (tuned back when
 // ~20 leagues were ingested) is often unreachable. 3 was already shown to perform about as well as
 // 5 did in that earlier tuning pass.
-const MIN_LEAGUES_WITH_DATA = 3;
+// Exported so a caller that deliberately overrides this via GrowthRatioBatchOptions (currently only
+// app/api/predict-item/route.ts, which lets the spot-checker surface thin-data items the normal
+// tables hide) can still tell how thin a result actually is, e.g. to badge it as low-confidence.
+export const MIN_LEAGUES_WITH_DATA = 3;
 // Bulk-flipping cheap, high-liquidity currency (Orb of Alteration, Orb of Fusing, etc.) is a real,
 // deliberate trading strategy, not noise - buy a stack at a low price, sell it later at a better
 // one. This used to sit at 0.2c on the theory that anything cheaper gets too thin/glitchy to trust,
