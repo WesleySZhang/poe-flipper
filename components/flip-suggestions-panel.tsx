@@ -250,7 +250,6 @@ export function FlipSuggestionsPanel() {
           >
             Exchange price available
           </Badge>
-          <ConfidenceTierFilter className="ml-auto" hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -284,7 +283,13 @@ export function FlipSuggestionsPanel() {
                   onSort={handleSort}
                 />
                 <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
-                <SortableHeader label="Confidence" sortKey="confidence" sort={sort} onSort={handleSort} />
+                <SortableHeader
+                  label="Confidence"
+                  sortKey="confidence"
+                  sort={sort}
+                  onSort={handleSort}
+                  extra={<ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />}
+                />
               </TableRow>
             </TableHeader>
             <TableBody>

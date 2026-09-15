@@ -12,29 +12,36 @@ export function SortableHeader<K extends string>({
   sort,
   onSort,
   className,
+  extra,
 }: {
   label: React.ReactNode;
   sortKey: K;
   sort: SortState<K>;
   onSort: (key: K) => void;
   className?: string;
+  /** Extra content (e.g. a filter) rendered below the sort button, inside the same header cell but
+   *  outside the button itself - so a click there doesn't also toggle the sort. */
+  extra?: React.ReactNode;
 }) {
   const isActive = sort.key === sortKey;
   const Icon = isActive ? (sort.direction === "asc" ? ArrowUp : ArrowDown) : ChevronsUpDown;
 
   return (
     <TableHead className={cn("text-right", className)}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={cn(
-          "inline-flex items-center gap-1 hover:text-foreground",
-          isActive ? "text-foreground" : "text-muted-foreground"
-        )}
-      >
-        {label}
-        <Icon className="size-3.5" />
-      </button>
+      <div className="flex flex-col items-end gap-1">
+        <button
+          type="button"
+          onClick={() => onSort(sortKey)}
+          className={cn(
+            "inline-flex items-center gap-1 hover:text-foreground",
+            isActive ? "text-foreground" : "text-muted-foreground"
+          )}
+        >
+          {label}
+          <Icon className="size-3.5" />
+        </button>
+        {extra}
+      </div>
     </TableHead>
   );
 }

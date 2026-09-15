@@ -8,9 +8,6 @@ export function Dashboard() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-sans text-2xl font-semibold">PoE Flipper</h1>
-          <p className="text-sm text-muted-foreground">
-            Unofficial tool - not affiliated with or endorsed by Grinding Gear Games.
-          </p>
         </div>
         <div className="flex items-center gap-4">
           <Link
