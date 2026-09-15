@@ -37,8 +37,8 @@ const MIN_CHART_DRAG_VIEW_WIDTH = 8;
 // Default zoom padding around [currentDay, targetDay] (or just currentDay, absent a targetDay) -
 // proportional to that span rather than a fixed number of days, so Today/Target sit close to the
 // window's edges regardless of whether the prediction is a few days or a few months.
-const DEFAULT_ZOOM_PADDING_FRACTION = 0.15;
-const DEFAULT_ZOOM_MIN_PADDING_DAYS = 2;
+const DEFAULT_ZOOM_PADDING_FRACTION = 0.25;
+const DEFAULT_ZOOM_MIN_PADDING_DAYS = 4;
 // Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
 // via a 0-100 viewBox, since the track is already positioned with percentages).
 const BRUSH_VIEW_HEIGHT = 40;
@@ -472,7 +472,7 @@ export function PriceHistoryChart({
           )}
           {targetDay !== undefined && targetDay >= dayMin && targetDay <= dayMax && (
             <text x={xScale(targetDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={9} fill="var(--foreground)">
-              Target (Day {targetDay})
+              Day {targetDay}
             </text>
           )}
           <text x={MARGIN.left} y={VIEW_HEIGHT - 6} textAnchor="start" fontSize={9} fill="var(--muted-foreground)">
@@ -527,7 +527,7 @@ export function PriceHistoryChart({
                 <polyline
                   fill="none"
                   stroke={s.color}
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                   points={s.points.map((p) => `${xScale(p.dayOffset)},${yScale(p.value)}`).join(" ")}
