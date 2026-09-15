@@ -250,7 +250,7 @@ export function FlipSuggestionsPanel() {
           >
             Exchange price available
           </Badge>
-          <ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
+          <ConfidenceTierFilter className="ml-auto" hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">

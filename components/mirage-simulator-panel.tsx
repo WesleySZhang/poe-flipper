@@ -274,7 +274,7 @@ export function MirageSimulatorPanel() {
             onChange={changeNowRange}
             initialMin={priceUnit === "divine" ? 1 : undefined}
           />
-          <ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
+          <ConfidenceTierFilter className="ml-auto" hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">

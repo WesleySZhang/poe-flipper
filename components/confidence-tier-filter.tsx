@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import type { ConfidenceTier } from "@/lib/confidence";
@@ -16,12 +17,15 @@ const TIER_LABEL: Record<ConfidenceTier, string> = { high: "High", medium: "Medi
 export function ConfidenceTierFilter({
   hidden,
   onToggle,
+  className,
 }: {
   hidden: Set<ConfidenceTier>;
   onToggle: (tier: ConfidenceTier) => void;
+  /** e.g. "ml-auto" to push this to the right, lining it up above the Confidence column. */
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn("flex flex-col gap-1.5", className)}>
       <Label>Confidence</Label>
       <div className="flex h-8 items-center gap-1.5">
         {TIERS.map((tier) => (
