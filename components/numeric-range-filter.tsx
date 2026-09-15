@@ -23,11 +23,17 @@ export function isWithinRange(value: number, range: NumericRange): boolean {
 export function NumericRangeFilter({
   label,
   onChange,
+  initialMin,
 }: {
   label: string;
   onChange: (range: NumericRange) => void;
+  /** Pre-fills the Min field on mount (e.g. defaulting to 1 when a caller switches to divine mode -
+   *  see flip-suggestions-panel.tsx/mirage-simulator-panel.tsx, which key this component on the
+   *  price unit so it remounts, rather than fighting this component's own typing state via an
+   *  effect). Only read once, at mount - never overwrites what the user is actively typing. */
+  initialMin?: number;
 }) {
-  const [minText, setMinText] = useState("");
+  const [minText, setMinText] = useState(initialMin !== undefined ? String(initialMin) : "");
   const [maxText, setMaxText] = useState("");
 
   function emit(min: string, max: string) {

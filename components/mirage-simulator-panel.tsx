@@ -166,6 +166,16 @@ export function MirageSimulatorPanel() {
     setPage(0);
   }
 
+  function changePriceUnit(unit: PriceUnit) {
+    setPriceUnit(unit);
+    // Whatever the cost filter meant in the old unit doesn't carry over - a chaos max of 500 is
+    // meaningless as a divine max. Divine mode specifically defaults to a minimum of 1: chaos-scale
+    // noise (a fraction of a divine) otherwise clutters the table with items too cheap to matter at
+    // divine granularity.
+    setNowRange(unit === "divine" ? { min: 1 } : {});
+    setPage(0);
+  }
+
   function handleSort(key: SortKey) {
     setSort((prev) => toggleSort(prev, key));
     setPage(0);
@@ -219,7 +229,7 @@ export function MirageSimulatorPanel() {
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex flex-col gap-1.5">
             <Label>Prices in</Label>
-            <Tabs value={priceUnit} onValueChange={(value) => setPriceUnit(value as PriceUnit)}>
+            <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
               <TabsList>
                 <TabsTrigger value="chaos">Chaos</TabsTrigger>
                 <TabsTrigger value="divine">Divine</TabsTrigger>
@@ -244,7 +254,12 @@ export function MirageSimulatorPanel() {
         />
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} />
-          <NumericRangeFilter label={`cost (${priceUnitLabel(priceUnit)})`} onChange={changeNowRange} />
+          <NumericRangeFilter
+            key={priceUnit}
+            label={`cost (${priceUnitLabel(priceUnit)})`}
+            onChange={changeNowRange}
+            initialMin={priceUnit === "divine" ? 1 : undefined}
+          />
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
