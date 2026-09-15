@@ -298,7 +298,7 @@ export function MirageSimulatorPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[280px]">Item</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead className="text-center">Category</TableHead>
                 <SortableHeader label={`Now (${priceUnitLabel(priceUnit)})`} sortKey="now" sort={sort} onSort={handleSort} />
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
