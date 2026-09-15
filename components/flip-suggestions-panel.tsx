@@ -302,6 +302,7 @@ export function FlipSuggestionsPanel() {
                   historyName={s.historyName}
                   variant={s.variant}
                   currentDay={currentDay}
+                  targetDay={currentDay + durationDays}
                   priceUnit={priceUnit}
                   colSpan={7}
                 >

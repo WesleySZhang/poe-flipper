@@ -15,6 +15,8 @@ interface ItemHistoryRowProps {
   historyName: string;
   variant?: string;
   currentDay: number;
+  /** currentDay + the prediction's duration - see PriceHistoryChart's targetDay prop. */
+  targetDay?: number;
   priceUnit: PriceUnit;
   /** Total column count of the table this row lives in, so the expanded chart row can span all of them. */
   colSpan: number;
@@ -36,6 +38,7 @@ export function ItemHistoryRow({
   historyName,
   variant,
   currentDay,
+  targetDay,
   priceUnit,
   colSpan,
   children,
@@ -95,7 +98,12 @@ export function ItemHistoryRow({
       {expanded && (
         <TableRow>
           <TableCell colSpan={colSpan} className="bg-muted/20">
-            <PriceHistoryChart state={state ?? { status: "loading" }} currentDay={currentDay} priceUnit={priceUnit} />
+            <PriceHistoryChart
+              state={state ?? { status: "loading" }}
+              currentDay={currentDay}
+              targetDay={targetDay}
+              priceUnit={priceUnit}
+            />
           </TableCell>
         </TableRow>
       )}

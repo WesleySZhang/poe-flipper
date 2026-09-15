@@ -18,7 +18,10 @@ export type PriceHistoryFetchState =
 // chart vertically/horizontally out of proportion on a wide row.
 const VIEW_WIDTH = 600;
 const VIEW_HEIGHT = 240;
-const MARGIN = { top: 12, right: 16, bottom: 24, left: 44 };
+// left is small (not sized for tick labels) - the Y axis has no numeric labels, just gridlines;
+// exact values are read via the hover tooltip instead. bottom fits two stacked rows of x-axis text:
+// the current/target day labels, and below them the plotted day-range labels.
+const MARGIN = { top: 12, right: 16, bottom: 34, left: 8 };
 const PLOT_WIDTH = VIEW_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
 const CHART_ASPECT_RATIO = `${VIEW_WIDTH} / ${VIEW_HEIGHT}`;
@@ -27,6 +30,15 @@ const MIN_ZOOM_DAYS = 1;
 // A drag shorter than this (in view units) on the main chart is treated as a click/hover, not a
 // deliberate zoom selection - otherwise every hover-then-slightly-move would zoom by accident.
 const MIN_CHART_DRAG_VIEW_WIDTH = 8;
+// The chart opens already zoomed to [currentDay - this, currentDay + this] (clamped to the actual
+// data range) rather than the full history - a multi-hundred-day league squashes the trend around
+// "now" into an unreadable sliver otherwise, and that's the window a trader actually cares about
+// first. Still fully adjustable via the brush/drag afterward.
+// Default zoom padding around [currentDay, targetDay] (or just currentDay, absent a targetDay) -
+// proportional to that span rather than a fixed number of days, so Today/Target sit close to the
+// window's edges regardless of whether the prediction is a few days or a few months.
+const DEFAULT_ZOOM_PADDING_FRACTION = 0.15;
+const DEFAULT_ZOOM_MIN_PADDING_DAYS = 2;
 // Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
 // via a 0-100 viewBox, since the track is already positioned with percentages).
 const BRUSH_VIEW_HEIGHT = 40;
@@ -232,10 +244,14 @@ function RangeBrush({
 export function PriceHistoryChart({
   state,
   currentDay,
+  targetDay,
   priceUnit,
 }: {
   state: PriceHistoryFetchState;
   currentDay: number;
+  /** currentDay + the prediction's duration - drawn as a second marker line, the "end" to
+   *  currentDay's "start". Undefined skips drawing it (no duration concept for this caller). */
+  targetDay?: number;
   priceUnit: PriceUnit;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -244,6 +260,7 @@ export function PriceHistoryChart({
   const [zoomDomain, setZoomDomain] = useState<[number, number] | undefined>();
   const [chartDragStartDay, setChartDragStartDay] = useState<number | undefined>();
   const [chartDragCurrentDay, setChartDragCurrentDay] = useState<number | undefined>();
+  const [hasAutoZoomed, setHasAutoZoomed] = useState(false);
 
   const plotted: PlottedSeries[] = useMemo(() => {
     if (state.status !== "loaded") return [];
@@ -262,6 +279,31 @@ export function PriceHistoryChart({
 
   const allValues = plotted.flatMap((s) => s.points.map((p) => p.value));
   const allDays = plotted.flatMap((s) => s.points.map((p) => p.dayOffset));
+
+  // Default zoom to a tight window around [currentDay, targetDay], once, the first time real data
+  // shows up - a guarded setState call during render (React's documented "adjust state during
+  // rendering" pattern: https://react.dev/learn/you-might-not-need-an-effect), not an effect, so it
+  // takes effect in the same render pass instead of causing an extra one. The hasAutoZoomed guard
+  // means a later user-driven zoom, including an explicit reset back to the full range, is never
+  // overridden by this again for this chart instance. Skipped entirely if the window wouldn't
+  // actually be smaller than the full data range anyway.
+  if (!hasAutoZoomed && plotted.length > 0) {
+    setHasAutoZoomed(true);
+    const fullMin = Math.min(0, ...allDays, currentDay, targetDay ?? currentDay);
+    const fullMax = Math.max(...allDays, currentDay, targetDay ?? currentDay);
+    // Padding proportional to the currentDay->targetDay span (with a small floor) rather than a
+    // fixed number of days - keeps Today near the left edge and Target near the right edge
+    // regardless of whether the prediction window is a few days or a few months, instead of a fixed
+    // padding either overwhelming a short window or barely denting a long one.
+    const coreMin = Math.min(currentDay, targetDay ?? currentDay);
+    const coreMax = Math.max(currentDay, targetDay ?? currentDay);
+    const padding = Math.max(DEFAULT_ZOOM_MIN_PADDING_DAYS, (coreMax - coreMin) * DEFAULT_ZOOM_PADDING_FRACTION);
+    const desiredMin = Math.max(fullMin, coreMin - padding);
+    const desiredMax = Math.min(fullMax, coreMax + padding);
+    if (desiredMin > fullMin || desiredMax < fullMax) {
+      setZoomDomain([desiredMin, desiredMax]);
+    }
+  }
 
   if (state.status === "loading") {
     return (
@@ -290,8 +332,8 @@ export function PriceHistoryChart({
     );
   }
 
-  const fullDayMin = Math.min(0, ...allDays, currentDay);
-  const fullDayMax = Math.max(...allDays, currentDay);
+  const fullDayMin = Math.min(0, ...allDays, currentDay, targetDay ?? currentDay);
+  const fullDayMax = Math.max(...allDays, currentDay, targetDay ?? currentDay);
   // The active (possibly zoomed) day domain, driven by the range brush below the chart - everything
   // else scales against this, not the full range.
   const dayMin = zoomDomain ? zoomDomain[0] : fullDayMin;
@@ -407,24 +449,32 @@ export function PriceHistoryChart({
             </clipPath>
           </defs>
 
-          {/* Y-axis gridlines + labels */}
+          {/* Y-axis gridlines - no numeric labels; exact values are read via the hover tooltip. */}
           {yTicks.map((value, i) => (
-            <g key={i}>
-              <line
-                x1={MARGIN.left}
-                x2={VIEW_WIDTH - MARGIN.right}
-                y1={yScale(value)}
-                y2={yScale(value)}
-                stroke="var(--border)"
-                strokeWidth={1}
-              />
-              <text x={MARGIN.left - 6} y={yScale(value)} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="var(--muted-foreground)">
-                {formatTick(value, priceUnit)}
-              </text>
-            </g>
+            <line
+              key={i}
+              x1={MARGIN.left}
+              x2={VIEW_WIDTH - MARGIN.right}
+              y1={yScale(value)}
+              y2={yScale(value)}
+              stroke="var(--border)"
+              strokeWidth={1}
+            />
           ))}
 
-          {/* X-axis min/max day labels */}
+          {/* X-axis labels - current/target day markers on the row closest to the plot, the
+              plotted day-range underneath. Rendered outside the clipped group below (which only
+              covers the plot area itself) since these live in the bottom margin. */}
+          {currentDay >= dayMin && currentDay <= dayMax && (
+            <text x={xScale(currentDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)">
+              Today (Day {currentDay})
+            </text>
+          )}
+          {targetDay !== undefined && targetDay >= dayMin && targetDay <= dayMax && (
+            <text x={xScale(targetDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={9} fill="var(--foreground)">
+              Target (Day {targetDay})
+            </text>
+          )}
           <text x={MARGIN.left} y={VIEW_HEIGHT - 6} textAnchor="start" fontSize={9} fill="var(--muted-foreground)">
             Day {Math.round(dayMin)}
           </text>
@@ -433,22 +483,29 @@ export function PriceHistoryChart({
           </text>
 
           <g clipPath={`url(#${clipId})`}>
-            {/* Vertical "current day" marker - dashed and muted since it's chrome, not a data series. */}
+            {/* Vertical "current day" / "target day" markers - the start and end of the prediction
+                window being checked against history. Solid (not dashed) so they read as firm
+                reference lines rather than a stylistic hint; muted vs. full foreground tells the two
+                apart. Their labels are above, outside this clipped group. */}
             {currentDay >= dayMin && currentDay <= dayMax && (
-              <g>
-                <line
-                  x1={xScale(currentDay)}
-                  x2={xScale(currentDay)}
-                  y1={MARGIN.top}
-                  y2={VIEW_HEIGHT - MARGIN.bottom}
-                  stroke="var(--muted-foreground)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                />
-                <text x={xScale(currentDay)} y={MARGIN.top + 9} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)">
-                  Today (Day {currentDay})
-                </text>
-              </g>
+              <line
+                x1={xScale(currentDay)}
+                x2={xScale(currentDay)}
+                y1={MARGIN.top}
+                y2={VIEW_HEIGHT - MARGIN.bottom}
+                stroke="var(--muted-foreground)"
+                strokeWidth={1.5}
+              />
+            )}
+            {targetDay !== undefined && targetDay >= dayMin && targetDay <= dayMax && (
+              <line
+                x1={xScale(targetDay)}
+                x2={xScale(targetDay)}
+                y1={MARGIN.top}
+                y2={VIEW_HEIGHT - MARGIN.bottom}
+                stroke="var(--foreground)"
+                strokeWidth={1.5}
+              />
             )}
 
             {/* Hover crosshair */}
@@ -533,9 +590,9 @@ export function PriceHistoryChart({
             <div className="relative flex flex-col gap-0.5 p-2 text-xs">
               <span className="font-medium text-popover-foreground">Day {hoverDay}</span>
               {hoverRows.map(({ league, color, point }) => (
-                <span key={league} className="flex items-center gap-1.5 text-muted-foreground">
+                <span key={league} className="flex items-center gap-1.5">
                   <span className="inline-block size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                  {league}
+                  <span className="text-popover-foreground">{league}</span>
                   <span className="font-medium text-popover-foreground">{formatTick(point.value, priceUnit)}</span>
                 </span>
               ))}

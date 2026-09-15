@@ -332,6 +332,7 @@ export function MirageSimulatorPanel() {
                   historyName={r.historyName}
                   variant={r.variant}
                   currentDay={currentDay}
+                  targetDay={currentDay + durationDays}
                   priceUnit={priceUnit}
                   colSpan={8}
                 >
