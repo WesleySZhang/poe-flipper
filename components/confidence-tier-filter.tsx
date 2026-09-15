@@ -11,12 +11,10 @@ const TIER_LETTER: Record<ConfidenceTier, string> = { high: "H", medium: "M", lo
 const TIER_NAME: Record<ConfidenceTier, string> = { high: "High", medium: "Medium", low: "Low" };
 
 /**
- * Toggle-badge filter for the Confidence column - lives inside that column's own header (see
- * SortableHeader's `extra` prop), so no label of its own; the "Confidence" sort label right above it
- * already says what these filter. Matches the same Badge-as-checkbox pattern category-filter.tsx
- * uses - a tier starts shown (selected/"default" variant) and clicking it hides that tier, rather
- * than the more common "click to select" sense, so the default (nothing clicked) shows everything,
- * same as the category filter starting fully selected.
+ * Toggle-badge filter for the Confidence column - lives inside that column's own header, centered
+ * under the "Confidence" label, so no label of its own is needed. Matches the same Badge-as-checkbox
+ * pattern category-filter.tsx uses - a tier starts shown (selected/"default" variant) and clicking
+ * it hides that tier, rather than the more common "click to select" sense.
  */
 export function ConfidenceTierFilter({
   hidden,
@@ -28,7 +26,7 @@ export function ConfidenceTierFilter({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center gap-1", className)}>
+    <div className={cn("flex items-center gap-1.5", className)}>
       {TIERS.map((tier) => (
         <Badge
           key={tier}
@@ -37,8 +35,8 @@ export function ConfidenceTierFilter({
           tabIndex={0}
           title={`${TIER_NAME[tier]} confidence - click to ${hidden.has(tier) ? "show" : "hide"}`}
           onClick={(e) => {
-            // This sits inside SortableHeader's cell, right below its sort button - stop the click
-            // from also bubbling up into that button and flipping the sort.
+            // This sits inside the Confidence column's own header cell - stop the click from
+            // bubbling any further than the badge itself.
             e.stopPropagation();
             onToggle(tier);
           }}
@@ -49,7 +47,7 @@ export function ConfidenceTierFilter({
               onToggle(tier);
             }
           }}
-          className="h-4 w-4 cursor-pointer select-none px-0 py-0 text-[0.6rem] leading-none"
+          className="size-6 shrink-0 cursor-pointer select-none justify-center rounded-full p-0 text-xs"
         >
           {TIER_LETTER[tier]}
         </Badge>

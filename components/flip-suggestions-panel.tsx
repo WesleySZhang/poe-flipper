@@ -33,7 +33,7 @@ import {
 
 const PAGE_SIZE = 25;
 
-type SortKey = "current" | "predicted" | "change" | "confidence";
+type SortKey = "current" | "predicted" | "change";
 
 async function fetchFlipSuggestions(durationDays: number): Promise<FlipSuggestion[]> {
   const res = await fetch(`/api/flip-suggestions?durationDays=${durationDays}`);
@@ -53,7 +53,9 @@ export function FlipSuggestionsPanel() {
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "change", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [faustusOnly, setFaustusOnly] = useState(false);
-  const [hiddenConfidenceTiers, setHiddenConfidenceTiers] = useState<Set<ConfidenceTier>>(new Set());
+  // Low starts hidden - High/Medium only by default, same "curated by default" philosophy as the
+  // category filter (see lib/category-reliability.ts's isDefaultEnabledCategory).
+  const [hiddenConfidenceTiers, setHiddenConfidenceTiers] = useState<Set<ConfidenceTier>>(() => new Set(["low"]));
   const [isPending, startTransition] = useTransition();
 
   const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
@@ -80,8 +82,6 @@ export function FlipSuggestionsPanel() {
             return activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit);
           case "change":
             return activeRatio(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit);
-          case "confidence":
-            return activeConfidence(s.confidence, s.confidenceDivine, priceUnit);
         }
       }),
     [suggestions, sort, priceUnit]
@@ -283,13 +283,12 @@ export function FlipSuggestionsPanel() {
                   onSort={handleSort}
                 />
                 <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
-                <SortableHeader
-                  label="Confidence"
-                  sortKey="confidence"
-                  sort={sort}
-                  onSort={handleSort}
-                  extra={<ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />}
-                />
+                <TableHead>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-muted-foreground">Confidence</span>
+                    <ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

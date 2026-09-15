@@ -44,7 +44,7 @@ async function fetchKnownNames(): Promise<KnownItemName[]> {
 
 const PAGE_SIZE = 25;
 
-type SortKey = "now" | "predicted" | "actualFuture" | "predictedX" | "actualX" | "confidence";
+type SortKey = "now" | "predicted" | "actualFuture" | "predictedX" | "actualX";
 
 export function MirageSimulatorPanel() {
   const [currentDay, setCurrentDay] = useState(3);
@@ -59,7 +59,9 @@ export function MirageSimulatorPanel() {
   const [nowRange, setNowRange] = useState<NumericRange>({});
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "predictedX", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
-  const [hiddenConfidenceTiers, setHiddenConfidenceTiers] = useState<Set<ConfidenceTier>>(new Set());
+  // Low starts hidden - High/Medium only by default, same "curated by default" philosophy as the
+  // category filter (see lib/category-reliability.ts's isDefaultEnabledCategory).
+  const [hiddenConfidenceTiers, setHiddenConfidenceTiers] = useState<Set<ConfidenceTier>>(() => new Set(["low"]));
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -97,8 +99,6 @@ export function MirageSimulatorPanel() {
             return activeRatio(r.predictedRatio, r.predictedRatioDivine, priceUnit);
           case "actualX":
             return activeRatio(r.actualRatio, r.actualRatioDivine, priceUnit);
-          case "confidence":
-            return activeConfidence(r.confidence, r.confidenceDivine, priceUnit);
         }
       }),
     [rows, sort, priceUnit]
@@ -323,13 +323,12 @@ export function MirageSimulatorPanel() {
                 />
                 <SortableHeader label="Predicted %" sortKey="predictedX" sort={sort} onSort={handleSort} />
                 <SortableHeader label="Actual %" sortKey="actualX" sort={sort} onSort={handleSort} />
-                <SortableHeader
-                  label="Confidence"
-                  sortKey="confidence"
-                  sort={sort}
-                  onSort={handleSort}
-                  extra={<ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />}
-                />
+                <TableHead>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-muted-foreground">Confidence</span>
+                    <ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
