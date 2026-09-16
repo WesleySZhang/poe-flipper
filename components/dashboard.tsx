@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cn } from "cn";
+import { buttonVariants } from "@/components/ui/button";
 import { FlipSuggestionsPanel } from "@/components/flip-suggestions-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -22,10 +24,10 @@ export function Dashboard() {
           >
             League tester
           </Link>
-          <Link
-            href="/faustus"
-            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-          >
+          {/* Solid button, not a muted text link like the other two - this is the tool's primary
+              same-day-actionable feature (real, live exchange spreads), not a secondary testing/
+              simulation utility, so it earns the visual weight. */}
+          <Link href="/currency_exchange_flip" className={cn(buttonVariants({ variant: "default", size: "sm" }))}>
             Currency Exchange Flip
           </Link>
           <ThemeToggle />
