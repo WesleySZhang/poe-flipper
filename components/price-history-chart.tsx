@@ -42,6 +42,9 @@ const DEFAULT_ZOOM_MIN_PADDING_DAYS = 4;
 // Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
 // via a 0-100 viewBox, since the track is already positioned with percentages).
 const BRUSH_VIEW_HEIGHT = 40;
+// Fraction of the data's log range added above and below the Y-axis domain, so a line sitting at
+// the actual min/max isn't drawn flush against the plot edge (or the top/bottom gridline label).
+const Y_AXIS_PADDING_FRACTION = 0.08;
 
 const CHART_COLOR_VARS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 // Stable per-league color assignment - an index into whichever subset of leagues happen to have
@@ -355,6 +358,13 @@ export function PriceHistoryChart({
     // scale (divide-by-zero guard).
     logMin -= 0.5;
     logMax += 0.5;
+  } else {
+    // Headroom above/below the actual min/max so a line touching the top or bottom of its range
+    // isn't drawn flush against the plot edge (or hidden behind the axis labels) - same idea as
+    // the flat-data guard above, just proportional instead of a fixed padding.
+    const padding = (logMax - logMin) * Y_AXIS_PADDING_FRACTION;
+    logMin -= padding;
+    logMax += padding;
   }
   // Separate, full-history log domain for the brush's own mini-preview, which always shows
   // everything regardless of the main chart's current zoom.
@@ -363,6 +373,10 @@ export function PriceHistoryChart({
   if (fullLogMin === fullLogMax) {
     fullLogMin -= 0.5;
     fullLogMax += 0.5;
+  } else {
+    const fullPadding = (fullLogMax - fullLogMin) * Y_AXIS_PADDING_FRACTION;
+    fullLogMin -= fullPadding;
+    fullLogMax += fullPadding;
   }
 
   const xScale = (day: number) => MARGIN.left + ((day - dayMin) / dayRange) * PLOT_WIDTH;
@@ -420,6 +434,12 @@ export function PriceHistoryChart({
     setChartDragCurrentDay(undefined);
   }
 
+  // The +/- change badge only makes sense for a day genuinely ahead of "today" (comparing today's
+  // price to itself, or to the past, isn't the "is this prediction playing out" question the badge
+  // answers) - but not restricted to exactly the target day, so dragging the hover anywhere in the
+  // future keeps it live.
+  const showChangeBadge = hoverDay !== undefined && hoverDay > currentDay;
+
   // Nearest point per league to the hovered day, for the tooltip - not necessarily an exact day
   // match, since not every league has a recorded value on every single day.
   const hoverRows =
@@ -430,7 +450,18 @@ export function PriceHistoryChart({
             const nearest = s.points.reduce((best, p) =>
               Math.abs(p.dayOffset - hoverDay) < Math.abs(best.dayOffset - hoverDay) ? p : best
             );
-            return { league: s.league, color: s.color, point: nearest };
+            let changePercent: number | undefined;
+            if (showChangeBadge) {
+              const atCurrentDay = s.points.reduce((best, p) =>
+                Math.abs(p.dayOffset - currentDay) < Math.abs(best.dayOffset - currentDay) ? p : best
+              );
+              // Same "don't trust a distant nearest point" guard as the hover match below - a
+              // league with no data anywhere near currentDay shouldn't get a fabricated baseline.
+              if (Math.abs(atCurrentDay.dayOffset - currentDay) <= 5) {
+                changePercent = (nearest.value / atCurrentDay.value - 1) * 100;
+              }
+            }
+            return { league: s.league, color: s.color, point: nearest, changePercent };
           })
           // Ignore a "nearest" point that's actually far away - a league whose tracking doesn't
           // reach anywhere near the hovered day shouldn't show a misleading value.
@@ -601,11 +632,22 @@ export function PriceHistoryChart({
             <div className="absolute inset-0 bg-popover/55 backdrop-blur-[1px]" />
             <div className="relative flex flex-col gap-0.5 p-2 text-xs">
               <span className="font-medium text-popover-foreground">Day {hoverDay}</span>
-              {hoverRows.map(({ league, color, point }) => (
+              {hoverRows.map(({ league, color, point, changePercent }) => (
                 <span key={league} className="flex items-center gap-1.5">
                   <span className="inline-block size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                   <span className="text-popover-foreground">{league}</span>
                   <span className="font-medium text-popover-foreground">{formatTick(point.value, priceUnit)}</span>
+                  {changePercent !== undefined && (
+                    <span
+                      className={cn(
+                        "font-medium",
+                        changePercent >= 0 ? "text-green-600 dark:text-green-500" : "text-red-600 dark:text-red-500"
+                      )}
+                    >
+                      {changePercent >= 0 ? "+" : ""}
+                      {changePercent.toFixed(0)}%
+                    </span>
+                  )}
                 </span>
               ))}
             </div>
