@@ -115,6 +115,103 @@ const CONFIDENCE_AGGREGATE_SQL = `
       SUM(weight * CASE WHEN ratio > 1 THEN 1 ELSE 0 END) / NULLIF(SUM(weight), 0) AS up_fraction,
       STDDEV_SAMP(LN(ratio)) AS ratio_spread`;
 
+// Blends each item's own noisy few-league average toward its peer group's average (poe.ninja type
+// bucket for items, all currency pooled as one group - currency_history_dayed has no type column
+// of its own). A single item's training sample (currently up to 5 leagues, often fewer) is thin
+// enough that its own estimation noise dominates; borrowing strength from a broader peer group
+// trades a little bias for a lot less variance. Validated in scripts/discover-peer-shrinkage.ts
+// (Mirage holdout: MAE -8%, directional accuracy +3pp, Pearson flat) and reconfirmed in
+// scripts/discover-training-leagues.ts across all five leagues, including on recent-only holdouts.
+// Exported so scripts/backtest-mirage.ts can sweep it the same way it sweeps league weighting and
+// confidence weights - weight 0 reproduces the pre-shrinkage baseline exactly.
+export const PEER_SHRINK_WEIGHT = 0.5;
+
+/**
+ * Weighted mean of `logRatio` values in log space (i.e. the log of what would be a weighted
+ * geometric mean of the underlying ratios) - the same aggregation growth-ratios.ts's SQL already
+ * does for a single item's own leagues, applied here across a peer group's items instead.
+ */
+function weightedLogMean(entries: Array<{ logRatio: number; weight: number }>): number | undefined {
+  let sumWeight = 0;
+  let sumWeightedLog = 0;
+  for (const { logRatio, weight } of entries) {
+    if (!(weight > 0) || !Number.isFinite(logRatio)) continue;
+    sumWeight += weight;
+    sumWeightedLog += weight * logRatio;
+  }
+  return sumWeight > 0 ? sumWeightedLog / sumWeight : undefined;
+}
+
+interface ShrinkableRow {
+  avgRatio: number;
+  leagueCount: number;
+  avgRatioDivine?: number;
+  leagueCountDivine: number;
+}
+
+/**
+ * Blends each row's avgRatio/avgRatioDivine toward its peer group's weighted-log-mean ratio, at
+ * `weight` (see PEER_SHRINK_WEIGHT) - weight 1 keeps the row's own value unchanged, 0 replaces it
+ * entirely with the peer average. Peer weighting uses each row's own leagueCount/leagueCountDivine
+ * as its contribution to the group average, which is mathematically identical to pooling every
+ * underlying (league, item) pair directly PROVIDED league weighting is flat (weight 1 per league -
+ * true of production today, see allLeagueRecencyWeights): a weighted mean of group members' means,
+ * weighted by each member's own total weight, associates into the same value as one pooled mean
+ * over every row. If league weighting is ever made non-flat again, this would need to weight by
+ * each row's actual SUM(weight) instead of its plain leagueCount.
+ *
+ * Confidence/upFraction/leagueCount are left untouched - those describe how consistently the item
+ * ITSELF has performed, which shrinkage doesn't change; only the point-estimate ratio is blended.
+ */
+function shrinkToPeers<T extends ShrinkableRow>(rows: T[], categoryOf: (row: T) => string, weight: number): T[] {
+  if (weight >= 1) return rows;
+  const byCategory = new Map<string, T[]>();
+  for (const row of rows) {
+    const category = categoryOf(row);
+    const group = byCategory.get(category) ?? [];
+    group.push(row);
+    byCategory.set(category, group);
+  }
+  const categoryLogRatio = new Map<string, number | undefined>();
+  const categoryLogRatioDivine = new Map<string, number | undefined>();
+  for (const [category, group] of byCategory) {
+    categoryLogRatio.set(
+      category,
+      weightedLogMean(group.map((r) => ({ logRatio: Math.log(r.avgRatio), weight: r.leagueCount })))
+    );
+    categoryLogRatioDivine.set(
+      category,
+      weightedLogMean(
+        group
+          .filter((r): r is T & { avgRatioDivine: number } => r.avgRatioDivine !== undefined)
+          .map((r) => ({ logRatio: Math.log(r.avgRatioDivine), weight: r.leagueCountDivine }))
+      )
+    );
+  }
+  return rows.map((row) => {
+    const category = categoryOf(row);
+    const peerLog = categoryLogRatio.get(category);
+    const avgRatio =
+      peerLog === undefined ? row.avgRatio : Math.exp(weight * Math.log(row.avgRatio) + (1 - weight) * peerLog);
+    let avgRatioDivine = row.avgRatioDivine;
+    if (avgRatioDivine !== undefined) {
+      const peerLogDivine = categoryLogRatioDivine.get(category);
+      if (peerLogDivine !== undefined) {
+        avgRatioDivine = Math.exp(weight * Math.log(avgRatioDivine) + (1 - weight) * peerLogDivine);
+      }
+    }
+    return { ...row, avgRatio, avgRatioDivine };
+  });
+}
+
+/** Strips the internal-only peerCategory field shrinkToPeers needs back off before returning a
+ *  GrowthRatioRow - callers never need to know an item's peer group, only the final blended ratio. */
+function omitPeerCategory<T extends { peerCategory: string }>(row: T): Omit<T, "peerCategory"> {
+  const clone: Partial<T> = { ...row };
+  delete clone.peerCategory;
+  return clone as Omit<T, "peerCategory">;
+}
+
 /** A divine ratio backed by fewer leagues than the chaos one is too thin to trust - drop it. */
 function divineRatioFrom(row: Record<string, unknown>): number | undefined {
   if (Number(row.league_count_divine ?? 0) < MIN_LEAGUES_WITH_DATA) return undefined;
@@ -155,11 +252,19 @@ export interface GrowthRatioOptions extends GrowthRatioScenario {
   /** Exclude this league from the training data (e.g. the player's own active league, or a backtest holdout). */
   excludeLeague?: string;
   toleranceDays?: number;
+  /** Override PEER_SHRINK_WEIGHT - e.g. the backtest sweeping it, or 0 to disable shrinkage entirely. */
+  shrinkWeight?: number;
 }
 
 /** Historical growth ratio (price at currentDay+duration / price at currentDay) for currencies, averaged across leagues. */
 export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Promise<GrowthRatioRow[]> {
-  const { currentDay, durationDays, excludeLeague, toleranceDays = DEFAULT_TOLERANCE_DAYS } = options;
+  const {
+    currentDay,
+    durationDays,
+    excludeLeague,
+    toleranceDays = DEFAULT_TOLERANCE_DAYS,
+    shrinkWeight = PEER_SHRINK_WEIGHT,
+  } = options;
   const targetDay = currentDay + durationDays;
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
@@ -209,7 +314,7 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
       ...(excludeLeague ? { excludeLeague } : {}),
     }
   );
-  return reader.getRowObjects().map((row) => ({
+  const rows = reader.getRowObjects().map((row) => ({
     name: String(row.name),
     avgRatio: Number(row.avg_ratio),
     leagueCount: Number(row.league_count),
@@ -220,11 +325,20 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
     upFraction: Number(row.up_fraction ?? 0),
     upFractionDivine: upFractionDivineFrom(row),
   }));
+  // Currency has no type/category column of its own (see currency_history_dayed's schema) - all
+  // currency is pooled as a single peer group, validated the same way in discover-peer-shrinkage.ts.
+  return shrinkToPeers(rows, () => "currency", shrinkWeight);
 }
 
 /** Same as getCurrencyGrowthRatios but for items/uniques/gems, keyed by (name, variant). */
 export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<GrowthRatioRow[]> {
-  const { currentDay, durationDays, excludeLeague, toleranceDays = DEFAULT_TOLERANCE_DAYS } = options;
+  const {
+    currentDay,
+    durationDays,
+    excludeLeague,
+    toleranceDays = DEFAULT_TOLERANCE_DAYS,
+    shrinkWeight = PEER_SHRINK_WEIGHT,
+  } = options;
   const targetDay = currentDay + durationDays;
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
@@ -234,7 +348,7 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
       VALUES ${leagueWeightsValuesSql()}
     ),
     nearest_now AS (
-      SELECT d.league, d.name, d.variant, d.value AS value_now, dr.chaos_per_divine AS rate_now, d.day_offset,
+      SELECT d.league, d.name, d.variant, d.type, d.value AS value_now, dr.chaos_per_divine AS rate_now, d.day_offset,
              ROW_NUMBER() OVER (
                PARTITION BY d.league, d.name, d.variant ORDER BY ABS(d.day_offset - $currentDay)
              ) AS rn
@@ -252,7 +366,7 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
       WHERE d.day_offset BETWEEN $targetDay - $tolerance AND $targetDay + $tolerance ${excludeClause}
     ),
     matched AS (
-      SELECT n.name, n.variant, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+      SELECT n.name, n.variant, n.type, f.value_future / NULLIF(n.value_now, 0) AS ratio,
              ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
@@ -266,7 +380,10 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
     -- Ratios are multiplicative (a 10x league and a 0.1x league should cancel out), so average
     -- in log space - a plain average would also let one outlier league dominate. Weighted by
     -- league recency on top of that, so a recent league's ratio counts far more than an old one's.
-    SELECT name, variant, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
+    -- ANY_VALUE(type) is only for peer-group shrinkage below (see shrinkToPeers) - poe.ninja's type
+    -- bucket is expected stable per name/variant, so any single occurrence represents it fine.
+    SELECT name, variant, ANY_VALUE(type) AS peer_category,
+           EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
 ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
     FROM matched
     GROUP BY name, variant
@@ -279,7 +396,7 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
       ...(excludeLeague ? { excludeLeague } : {}),
     }
   );
-  return reader.getRowObjects().map((row) => ({
+  const rows = reader.getRowObjects().map((row) => ({
     name: String(row.name),
     variant: row.variant ? String(row.variant) : undefined,
     avgRatio: Number(row.avg_ratio),
@@ -290,7 +407,9 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
     confidenceDivine: confidenceDivineFrom(row),
     upFraction: Number(row.up_fraction ?? 0),
     upFractionDivine: upFractionDivineFrom(row),
+    peerCategory: row.peer_category ? String(row.peer_category) : "Unknown",
   }));
+  return shrinkToPeers(rows, (r) => r.peerCategory, shrinkWeight).map(omitPeerCategory);
 }
 
 // Scenario (current_day, target_day) pairs are internal, numeric, and never user-supplied, so
@@ -312,6 +431,8 @@ export interface GrowthRatioBatchOptions {
   /** Override MIN_LEAGUES_WITH_DATA - e.g. to test training on a single league (with weight 0 on
    *  every other league, since omitting them would just fall back to weight 1 - see above). */
   minLeaguesWithData?: number;
+  /** Override PEER_SHRINK_WEIGHT - e.g. the backtest sweeping it, or 0 to disable shrinkage entirely. */
+  shrinkWeight?: number;
 }
 
 /**
@@ -329,6 +450,7 @@ export async function getCurrencyGrowthRatiosBatch(
     toleranceDays = DEFAULT_TOLERANCE_DAYS,
     leagueWeights,
     minLeaguesWithData = MIN_LEAGUES_WITH_DATA,
+    shrinkWeight = PEER_SHRINK_WEIGHT,
   } = options;
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
@@ -406,7 +528,9 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
     });
     byScenario.set(scenarioId, list);
   }
-  return scenarios.map((_, i) => byScenario.get(i) ?? []);
+  // See getCurrencyGrowthRatios - all currency is one peer group, computed per scenario since
+  // different (currentDay, durationDays) scenarios have different ratios to shrink toward.
+  return scenarios.map((_, i) => shrinkToPeers(byScenario.get(i) ?? [], () => "currency", shrinkWeight));
 }
 
 /** Same as getCurrencyGrowthRatiosBatch but for items/uniques/gems, keyed by (name, variant). */
@@ -419,6 +543,7 @@ export async function getItemGrowthRatiosBatch(
     toleranceDays = DEFAULT_TOLERANCE_DAYS,
     leagueWeights,
     minLeaguesWithData = MIN_LEAGUES_WITH_DATA,
+    shrinkWeight = PEER_SHRINK_WEIGHT,
   } = options;
   const db = await getDb();
   const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
@@ -433,7 +558,7 @@ export async function getItemGrowthRatiosBatch(
     -- Narrow the cross join to only the day range each scenario could ever match, before it
     -- multiplies the dayed table's row count by the scenario count.
     expanded AS (
-      SELECT s.scenario_id, s.current_day, s.target_day, d.league, d.name, d.variant, d.day_offset, d.value,
+      SELECT s.scenario_id, s.current_day, s.target_day, d.league, d.name, d.variant, d.type, d.day_offset, d.value,
              dr.chaos_per_divine AS rate
       FROM scenarios s
       JOIN item_history_dayed d
@@ -442,7 +567,7 @@ export async function getItemGrowthRatiosBatch(
       WHERE TRUE ${excludeClause}
     ),
     nearest_now AS (
-      SELECT scenario_id, current_day, target_day, league, name, variant, value AS value_now,
+      SELECT scenario_id, current_day, target_day, league, name, variant, type, value AS value_now,
              rate AS rate_now, day_offset,
              ROW_NUMBER() OVER (
                PARTITION BY scenario_id, league, name, variant ORDER BY ABS(day_offset - current_day)
@@ -459,7 +584,7 @@ export async function getItemGrowthRatiosBatch(
       WHERE day_offset BETWEEN target_day - $tolerance AND target_day + $tolerance
     ),
     matched AS (
-      SELECT n.scenario_id, n.name, n.variant, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+      SELECT n.scenario_id, n.name, n.variant, n.type, f.value_future / NULLIF(n.value_now, 0) AS ratio,
              ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
@@ -471,7 +596,9 @@ export async function getItemGrowthRatiosBatch(
         AND n.value_now >= ${MIN_STARTING_VALUE_ITEM}
         AND f.value_future > 0
     )
-    SELECT scenario_id, name, variant, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio,
+    -- ANY_VALUE(type) - see getItemGrowthRatios's identical comment.
+    SELECT scenario_id, name, variant, ANY_VALUE(type) AS peer_category,
+           EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio,
            COUNT(*) AS league_count,
 ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
     FROM matched
@@ -485,7 +612,7 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
       ...(excludeLeague ? { excludeLeague } : {}),
     }
   );
-  const byScenario = new Map<number, GrowthRatioRow[]>();
+  const byScenario = new Map<number, Array<GrowthRatioRow & { peerCategory: string }>>();
   for (const row of reader.getRowObjects()) {
     const scenarioId = Number(row.scenario_id);
     const list = byScenario.get(scenarioId) ?? [];
@@ -500,10 +627,14 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
       confidenceDivine: confidenceDivineFrom(row),
       upFraction: Number(row.up_fraction ?? 0),
       upFractionDivine: upFractionDivineFrom(row),
+      peerCategory: row.peer_category ? String(row.peer_category) : "Unknown",
     });
     byScenario.set(scenarioId, list);
   }
-  return scenarios.map((_, i) => byScenario.get(i) ?? []);
+  return scenarios.map((_, i) => {
+    const rows = byScenario.get(i) ?? [];
+    return shrinkToPeers(rows, (r) => r.peerCategory, shrinkWeight).map(omitPeerCategory);
+  });
 }
 
 export interface ActualValue {

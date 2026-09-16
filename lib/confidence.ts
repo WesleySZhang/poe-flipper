@@ -10,10 +10,11 @@ import type { PriceUnit } from "./price-unit";
  * because reliable gainers move further. The question a trader is asking is the former.
  *
  * Validated against the Mirage holdout (see scripts/backtest-mirage.ts's confidence table, which
- * re-checks this on every run): High-tier rows went on to actually gain 70.7% of the time (median
- * 1.30x), Medium 60.8%, Low 42.5%. It also carries information the predicted ratio doesn't -
- * correlation between the two is only ~0.64, and a high-confidence/modest-gain row paid off about
- * as often (63.3%) as a low-confidence/big-gain one (64.2%).
+ * re-checks this on every run): High-tier rows went on to actually gain 71% of the time (median
+ * 1.27x), Medium 57%, Low 35% - separates cleanly, so the tier stays meaningful. (Numbers as of
+ * peer-group shrinkage on the predicted ratio itself - see growth-ratios.ts's shrinkToPeers -
+ * which shifted the exact percentages down a few points from the pre-shrinkage baseline without
+ * changing the ordering or the underlying point: confidence tracks something the ratio doesn't.)
  */
 
 // Weights for the three inputs, from strongest to weakest signal in backtesting. Exported so
