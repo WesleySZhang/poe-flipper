@@ -45,6 +45,10 @@ const BRUSH_VIEW_HEIGHT = 40;
 // Fraction of the data's log range added above and below the Y-axis domain, so a line sitting at
 // the actual min/max isn't drawn flush against the plot edge (or the top/bottom gridline label).
 const Y_AXIS_PADDING_FRACTION = 0.08;
+// Shared size/color for every axis label (Y-axis price ticks and X-axis day labels alike), so they
+// read as one consistent axis style rather than two different-looking sets of text.
+const AXIS_FONT_SIZE = 7;
+const AXIS_LABEL_COLOR = "var(--muted-foreground)";
 
 const CHART_COLOR_VARS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 // Stable per-league color assignment - an index into whichever subset of leagues happen to have
@@ -497,8 +501,8 @@ export function PriceHistoryChart({
                 y={yScale(value)}
                 textAnchor="end"
                 dominantBaseline="middle"
-                fontSize={9}
-                fill="var(--muted-foreground)"
+                fontSize={AXIS_FONT_SIZE}
+                fill={AXIS_LABEL_COLOR}
               >
                 {formatTick(value, priceUnit)}
               </text>
@@ -509,34 +513,34 @@ export function PriceHistoryChart({
               plotted day-range underneath. Rendered outside the clipped group below (which only
               covers the plot area itself) since these live in the bottom margin. */}
           {currentDay >= dayMin && currentDay <= dayMax && (
-            <text x={xScale(currentDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={9} fill="var(--muted-foreground)">
+            <text x={xScale(currentDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
               Today (Day {currentDay})
             </text>
           )}
           {targetDay !== undefined && targetDay >= dayMin && targetDay <= dayMax && (
-            <text x={xScale(targetDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={9} fill="var(--foreground)">
+            <text x={xScale(targetDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
               Day {targetDay}
             </text>
           )}
-          <text x={MARGIN.left} y={VIEW_HEIGHT - 6} textAnchor="start" fontSize={9} fill="var(--muted-foreground)">
+          <text x={MARGIN.left} y={VIEW_HEIGHT - 6} textAnchor="start" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
             Day {Math.round(dayMin)}
           </text>
-          <text x={VIEW_WIDTH - MARGIN.right} y={VIEW_HEIGHT - 6} textAnchor="end" fontSize={9} fill="var(--muted-foreground)">
+          <text x={VIEW_WIDTH - MARGIN.right} y={VIEW_HEIGHT - 6} textAnchor="end" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
             Day {Math.round(dayMax)}
           </text>
 
           <g clipPath={`url(#${clipId})`}>
             {/* Vertical "current day" / "target day" markers - the start and end of the prediction
                 window being checked against history. Solid (not dashed) so they read as firm
-                reference lines rather than a stylistic hint; muted vs. full foreground tells the two
-                apart. Their labels are above, outside this clipped group. */}
+                reference lines; identical styling for both since their text labels above (outside
+                this clipped group) already say which is which. */}
             {currentDay >= dayMin && currentDay <= dayMax && (
               <line
                 x1={xScale(currentDay)}
                 x2={xScale(currentDay)}
                 y1={MARGIN.top}
                 y2={VIEW_HEIGHT - MARGIN.bottom}
-                stroke="var(--muted-foreground)"
+                stroke="var(--destructive)"
                 strokeWidth={1.5}
               />
             )}
@@ -546,7 +550,7 @@ export function PriceHistoryChart({
                 x2={xScale(targetDay)}
                 y1={MARGIN.top}
                 y2={VIEW_HEIGHT - MARGIN.bottom}
-                stroke="var(--foreground)"
+                stroke="var(--destructive)"
                 strokeWidth={1.5}
               />
             )}
