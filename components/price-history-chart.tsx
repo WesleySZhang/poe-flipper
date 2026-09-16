@@ -18,10 +18,10 @@ export type PriceHistoryFetchState =
 // chart vertically/horizontally out of proportion on a wide row.
 const VIEW_WIDTH = 600;
 const VIEW_HEIGHT = 240;
-// left is small (not sized for tick labels) - the Y axis has no numeric labels, just gridlines;
-// exact values are read via the hover tooltip instead. bottom fits two stacked rows of x-axis text:
-// the current/target day labels, and below them the plotted day-range labels.
-const MARGIN = { top: 12, right: 16, bottom: 34, left: 8 };
+// left is sized to fit the Y-axis price labels drawn next to each gridline (formatTick's longest
+// typical output, e.g. "123.4c"). bottom fits two stacked rows of x-axis text: the current/target
+// day labels, and below them the plotted day-range labels.
+const MARGIN = { top: 12, right: 16, bottom: 34, left: 38 };
 const PLOT_WIDTH = VIEW_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
 const CHART_ASPECT_RATIO = `${VIEW_WIDTH} / ${VIEW_HEIGHT}`;
@@ -449,17 +449,29 @@ export function PriceHistoryChart({
             </clipPath>
           </defs>
 
-          {/* Y-axis gridlines - no numeric labels; exact values are read via the hover tooltip. */}
+          {/* Y-axis gridlines with their price labels - exact values at a specific day are still
+              read via the hover tooltip, but these give a sense of scale at a glance. */}
           {yTicks.map((value, i) => (
-            <line
-              key={i}
-              x1={MARGIN.left}
-              x2={VIEW_WIDTH - MARGIN.right}
-              y1={yScale(value)}
-              y2={yScale(value)}
-              stroke="var(--border)"
-              strokeWidth={1}
-            />
+            <g key={i}>
+              <line
+                x1={MARGIN.left}
+                x2={VIEW_WIDTH - MARGIN.right}
+                y1={yScale(value)}
+                y2={yScale(value)}
+                stroke="var(--border)"
+                strokeWidth={1}
+              />
+              <text
+                x={MARGIN.left - 4}
+                y={yScale(value)}
+                textAnchor="end"
+                dominantBaseline="middle"
+                fontSize={9}
+                fill="var(--muted-foreground)"
+              >
+                {formatTick(value, priceUnit)}
+              </text>
+            </g>
           ))}
 
           {/* X-axis labels - current/target day markers on the row closest to the plot, the
