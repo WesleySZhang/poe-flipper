@@ -3,26 +3,21 @@
  *
  * GGG's exchange API carries no gold/fee field at all (checked every key across every market in
  * the live response), and there's no machine-readable source for it either, so this table is
- * transcribed by hand. Primary source: poedb.tw's Currency Exchange page
- * (https://poedb.tw/us/Currency_Exchange), which lists a specific per-item gold cost rather than a
- * family range - used for every category it covers (Currency, Eldritch currency, Currency Shards,
- * Quality/Influenced/Tainted currency, Astrolabes, Memories, Breach, Essences, Fossils, Resonators,
- * Scarabs, Divination Cards). Fallback source: the PoE wiki's Currency Exchange page, for the
- * categories poedb's page didn't yield when fetched (Oils, Catalysts, Omens, Tattoos, Delirium
- * Orbs, and most Fragments) - the wiki only gives a RANGE for these, not a per-item value, and it
- * sits behind a bot-detection challenge (Anubis) so it can't be scraped for anything more precise.
- * Both sources need updating by hand if their numbers change.
+ * transcribed by hand from poedb.tw's Currency Exchange page
+ * (https://poedb.tw/us/Currency_Exchange), which lists a specific per-item gold cost for
+ * essentially every exchange-tradeable item - the user pulled the page's full, untruncated content
+ * directly (an earlier automated fetch of the same page cut off partway through, before Oils/
+ * Catalysts/Omens/Tattoos/Delirium Orbs/most Fragments - those categories are now filled in from
+ * that same complete pull). Needs updating by hand if poedb's numbers change.
  *
  * Every mapping below is grounded in a real display name from docs/faustus-mapping.md (generated
  * from RePoE - see lib/faustus.ts's header) - nothing here is a guess about which name a value
- * applies to; a source name that doesn't match a real name here is simply never used. Two honest
- * gaps are marked explicitly rather than papered over:
- *   - `approximate: true` - only the wiki-fallback categories still hit this: a family range
- *     (Oils 25-125, Delirium Orbs 75-250, ...), not a per-item tier, so the returned value is a
- *     representative estimate, not the real number for that specific item.
- *   - `undefined` (no gold shown at all) - neither source covers this item. Notably this includes
- *     Chromatic Orb was resolved (poedb: 20) but several Allflame-league Deepwater/Ducat and
- *     Zorath's Eye items, plus "Echo of X" (see the Memory Lines note below), remain uncovered.
+ * applies to; a source name that doesn't match a real name here is simply never used (poedb's own
+ * page lists a handful of names from removed/old content that don't match anything current). Two
+ * honest gaps are marked explicitly rather than papered over:
+ *   - `approximate: true` - a handful of Divination Cards poedb's page doesn't cover fall back to
+ *     the PoE wiki's 15-1850 family range (a full per-card cross-reference wasn't completed).
+ *   - `undefined` (no gold shown at all) - neither source names this item at all.
  */
 
 export interface GoldCost {
@@ -88,8 +83,10 @@ const EXACT_COSTS: Readonly<Record<string, number>> = {
 
   // --- Currency Shards ---
   "Transmutation Shard": 1 / 4,
+  "Alchemy Shard": 1,
   "Fracturing Shard": 25,
   "Mirror Shard": 1250,
+  "Simulacrum Splinter": 1,
 
   // --- Eldritch currency (base orbs; tiered ichor/ember handled by pattern below) ---
   "Eldritch Chaos Orb": 525,
@@ -179,9 +176,66 @@ const EXACT_COSTS: Readonly<Record<string, number>> = {
   "Reverent Fragment": 500,
   "Synthesising Fragment": 500,
   "Traumatic Fragment": 500,
-  // NOTE: "Memory lines" on the wiki is now resolved to the "Memory of X" items above via poedb.
-  // "Echo of X" (MapFragments/AtlasMemory/..Key - a distinct boss-access-key item) is still
-  // unmapped: neither source names it, so guessing would risk mispricing it. Left with no gold data.
+  // "Echo of X" - the Atlas Memory boss-access keys, distinct from the "Memory of X" currency
+  // above (previously left unmapped pending this disambiguation - poedb prices them separately).
+  "Echo of Loneliness": 500,
+  "Echo of Reverence": 500,
+  "Echo of Trauma": 500,
+  "Ritual Splinter": 2,
+  "Crescent Splinter": 100,
+
+  // --- Legion splinters (distinct from the emblems below - see LEGION_EMBLEM_COSTS) ---
+  "Timeless Karui Splinter": 5,
+  "Timeless Eternal Empire Splinter": 5,
+  "Timeless Vaal Splinter": 5,
+  "Timeless Maraketh Splinter": 8,
+  "Timeless Templar Splinter": 8,
+
+  // --- Enshrouding Crystals (Legion mechanic) ---
+  "Karui Enshrouding Crystal": 1000,
+  "Imperial Enshrouding Crystal": 1000,
+  "Vaal Enshrouding Crystal": 1000,
+  "Templar Enshrouding Crystal": 1000,
+  "Maraketh Enshrouding Crystal": 1000,
+
+  // --- Zorath's Eyes (Abyss mechanic boss keys) ---
+  "Zorath's Eye of Authority": 500,
+  "Zorath's Eye of Malevolence": 500,
+  "Zorath's Eye of the Endless": 500,
+  "Zorath's Eye of the Inevitable": 500,
+
+  // --- Allflame Embers ---
+  "Allflame Ember of Kulemak": 500,
+  "Allflame Ember of Resplendence": 500,
+  "Allflame Ember of Propagation": 500,
+  "Allflame Ember of Flesh": 500,
+  "Allflame Ember of the Wildwood": 350,
+  "Allflame Ember of the Ethereal": 350,
+  "Allflame Ember of the Gilded": 350,
+  "Allflame Ember of Toads": 350,
+
+  // --- Allflame-league Deepwater/misc items ---
+  "Dead Man's Sulphur": 1 / 1000,
+  "Message in a Bottle": 1000,
+  "Exotic Coinage": 25,
+  "Burial Medallion": 50,
+  "Crystallised Rancour": 125,
+  "Wild Crystallised Lifeforce": 1 / 8,
+  "Vivid Crystallised Lifeforce": 1 / 8,
+  "Primal Crystallised Lifeforce": 1 / 8,
+
+  // --- Ducats (Allflame mechanic - all flat 500) ---
+  "Merrick's Ducat": 500,
+  "Cyaxan's Ducat": 500,
+  "The Genteel's Ducat": 500,
+  "Kishara's Ducat": 500,
+  "Telesia's Ducat": 500,
+  "Tzamoto's Ducat": 500,
+  "The Changeling's Ducat": 500,
+  "Rotmother's Ducat": 500,
+  "Brinehook's Ducat": 500,
+  "Katakohi's Ducat": 500,
+  "Ukatoa's Ducat": 500,
 };
 
 /** Eldritch ichor/ember tiers (35, 50, 75, 200 ascending) - same across both item families. */
@@ -572,6 +626,482 @@ const DIVINATION_CARD_COSTS: Readonly<Record<string, number>> = {
   Remembrance: 650,
   "Shard of Fate": 125,
   "Silence and Frost": 625,
+  "Squandered Prosperity": 675,
+  "Struck by Lightning": 95,
+  "The Academic": 400,
+  "The Apothecary": 1100,
+  "The Awakened": 925,
+  "The Brittle Emperor": 450,
+  "The Cache": 100,
+  "The Celestial Stone": 700,
+  "The Craving": 500,
+  "The Cursed King": 250,
+  "The Deceiver": 175,
+  "The Demon": 1850,
+  "The Destination": 925,
+  "The Doctor": 925,
+  "The Dungeon Master": 300,
+  "The Endurance": 125,
+  "The Eternal War": 950,
+  "The Eye of the Dragon": 575,
+  "The Feast": 150,
+  "The Fiend": 1350,
+  "The Forgotten Treasure": 325,
+  "The Forsaken": 150,
+  "The Garish Power": 500,
+  "The Gulf": 650,
+  "The Last Laugh": 650,
+  "The Life Thief": 575,
+  "The Lord in Black": 200,
+  "The Lover": 10,
+  "The Mayor": 425,
+  "The Metalsmith's Gift": 20,
+  "The Mind's Eyes": 275,
+  "The Mountain": 125,
+  "The Offspring": 325,
+  "The One That Got Away": 1450,
+  "The One With All": 150,
+  "The Opulent": 55,
+  "The Penitent": 115,
+  "The Polymath": 375,
+  "The Price of Devotion": 1850,
+  "The Primordial": 200,
+  "The Prince of Darkness": 375,
+  "The Return of the Rat": 200,
+  "The Risk": 125,
+  "The Ruthless Ceinture": 150,
+  "The Samurai's Eye": 525,
+  "The Sigil": 90,
+  "The Spark and the Flame": 250,
+  "The Standoff": 110,
+  "The Strategist": 700,
+  "The Sword King's Salute": 45,
+  "The Thaumaturgist": 450,
+  "The Tumbleweed": 725,
+  "The Unexpected Prize": 275,
+  "The Warden": 70,
+  "The Wretched": 125,
+  "Thirst for Knowledge": 90,
+  "Turn the Other Cheek": 250,
+  "Void of the Elements": 875,
+  "When Currents Blaze": 875,
+  "Winter's Embrace": 600,
+  "Abandoned Wealth": 275,
+  Acclimatisation: 125,
+  "Alluring Bounty": 375,
+  "Ambitious Obsession": 1850,
+  "A Sea of Blue": 90,
+  "Brother's Gift": 600,
+  "Brother's Stash": 600,
+  "Cartographer's Delight": 125,
+  "Chaotic Disposition": 125,
+  Checkmate: 325,
+  "Coveted Possession": 150,
+  "Darker Half": 750,
+  Dementophobia: 500,
+  "Demigod's Wager": 225,
+  Disdain: 300,
+  "Divine Beauty": 275,
+  "Echoes of Love": 275,
+  "Emperor's Luck": 10,
+  "Ever-Changing": 175,
+  "Harmony of Souls": 375,
+  History: 1850,
+  "House of Mirrors": 1850,
+  "I See Brothers": 775,
+  Loyalty: 20,
+  "Lucky Connections": 95,
+  "Lucky Deck": 350,
+  Monochrome: 275,
+  "No Traces": 150,
+  Outfoxed: 1000,
+  "Parasitic Passengers": 250,
+  "Rain of Chaos": 5,
+  "Runic Luck": 550,
+  "Seven Years Bad Luck": 550,
+  "Society's Remorse": 125,
+  "The Cacophony": 375,
+  "The Catalyst": 25,
+  "The Finishing Touch": 275,
+  "The Fishmonger": 825,
+  "The Fool": 125,
+  "The Fortunate": 175,
+  "The Gemcutter": 125,
+  "The Heroic Shot": 150,
+  "The Hoarder": 150,
+  "The Innocent": 200,
+  "The Inventor": 105,
+  "The Rusted Bard": 425,
+  "The Journey": 225,
+  "The Lake": 1500,
+  "The Long Con": 600,
+  "The Master Artisan": 125,
+  "The Rabbit's Foot": 575,
+  "The Saint's Treasure": 200,
+  "The Scholar": 15,
+  "The Scout": 325,
+  "The Seeker": 325,
+  "The Sephirot": 325,
+  "The Side Quest": 250,
+  "The Slumbering Beast": 500,
+  "The Survivalist": 90,
+  "The Tinkerer's Table": 350,
+  "The Tireless Extractor": 70,
+  "The Transformation": 325,
+  "The Union": 175,
+  "The Wrath": 85,
+  "Three Faces in the Dark": 25,
+  "Three Voices": 55,
+  "Underground Forest": 350,
+  "Unrequited Love": 1450,
+  "Vinia's Token": 60,
+  "A Chilling Wind": 325,
+  "Bound by Flame": 325,
+  "Deathly Designs": 375,
+  "Desecrated Virtue": 775,
+  "Dialla's Subjugation": 175,
+  "Doryani's Epiphany": 450,
+  "Dying Anguish": 150,
+  "Gemcutter's Mercy": 450,
+  "Gemcutter's Promise": 85,
+  "Gift of the Gemling Queen": 150,
+  "Grave Knowledge": 125,
+  Home: 475,
+  "Terrible Secret of Space": 1250,
+  "The Artist": 675,
+  "The Bitter Blossom": 450,
+  "The Blessing of Moosh": 375,
+  "The Bones": 275,
+  "The Cataclysm": 150,
+  "The Doppelganger": 35,
+  "The Dragon's Heart": 675,
+  "The Emptiness": 775,
+  "The Enlightened": 525,
+  "The Fox": 150,
+  "The Hook": 475,
+  "The Magma Crab": 275,
+  "The Miracle": 750,
+  "The Realm": 200,
+  "The Rite of Elements": 150,
+  "The Skeleton": 125,
+  "The Summoner": 110,
+  "The Wilted Rose": 150,
+  "Volatile Power": 110,
+  "Wealth and Power": 675,
+  "A Fate Worse Than Death": 525,
+  "Altered Perception": 725,
+  "Avian Pursuit": 500,
+  "Azure Rage": 125,
+  "Boon of Justice": 85,
+  "Boundless Realms": 125,
+  "Buried Treasure": 250,
+  "Cameria's Cut": 125,
+  "Divine Shard": 250,
+  "Eternal Bonds": 725,
+  "Guardian's Challenge": 175,
+  "Her Mask": 70,
+  "Justified Ambition": 275,
+  "Last Hope": 110,
+  "Left to Fate": 125,
+  "Lingering Remnants": 200,
+  "Lost Worlds": 80,
+  "Man With Bear": 250,
+  "More is Never Enough": 30,
+  "Rain Tempter": 55,
+  "Rebirth and Renewal": 250,
+  "Sambodhi's Vow": 125,
+  "Scholar of the Seas": 150,
+  "Something Dark": 250,
+  "The Arena Champion": 55,
+  "The Card Sharp": 275,
+  "The Deal": 200,
+  "The Dreamland": 200,
+  "The Easy Stroll": 175,
+  "The Eldritch Decay": 250,
+  "The Encroaching Darkness": 200,
+  "The Explorer": 85,
+  "The Eye of Terror": 1150,
+  "The Forbidden Fruit": 1150,
+  "The Price of Prescience": 375,
+  "The Price of Protection": 175,
+  "The Professor": 400,
+  "The Silly Boy": 700,
+  "The Surveyor": 125,
+  "The Trial": 115,
+  "The Twilight Moon": 275,
+  "The Wolf's Legacy": 150,
+  "Treasure Hunter": 225,
+  Triskaidekaphobia: 200,
+  "Earth Drinker": 175,
+  "Pearls Before Swine": 1000,
+  "Succor of the Sinless": 775,
+  "The Damned": 775,
+  "The Dragon": 110,
+  "The Drunken Aristocrat": 150,
+  "The Hunger": 250,
+  "The Progeny of Lunaris": 725,
+  "The Shortcut": 425,
+  "The Surgeon": 125,
+  "The Witch": 40,
+  "A Dusty Memory": 325,
+  "Alone in the Darkness": 100,
+  "Arrogance of the Vaal": 250,
+  "Auspicious Ambitions": 1150,
+  "Baited Expectations": 275,
+  "Boon of the First Ones": 225,
+  "Brush, Paint and Palette": 250,
+  "Chasing Risk": 350,
+  "Costly Curio": 275,
+  "Council of Cats": 350,
+  Damnation: 1350,
+  "Doedre's Madness": 50,
+  "Eldritch Perfection": 575,
+  "Fateful Meeting": 1150,
+  "Haunting Shadows": 225,
+  "Jack in the Box": 125,
+  "Magnum Opus": 575,
+  Prejudice: 150,
+  Temperance: 525,
+  "The Admirer": 175,
+  "The Aesthete": 120,
+  "The Aspirant": 925,
+  "The Breach": 350,
+  "The Calling": 125,
+  "The Dreamer": 425,
+  "The Everlasting": 775,
+  "The Forward Gaze": 200,
+  "The Gambler": 125,
+  "The Hale Heart": 650,
+  "The Immortal": 825,
+  "The Leviathan": 775,
+  "The Lion": 125,
+  "The Mad King": 300,
+  "The Messenger": 300,
+  "The Nurse": 450,
+  "The Patient": 225,
+  "The Undaunted": 200,
+  "The Valkyrie": 125,
+  "The Void": 125,
+  "The Wolf": 125,
+  "Time-Lost Relic": 105,
+};
+
+/** Every Oil name against its exact poedb cost. */
+const OIL_COSTS: Readonly<Record<string, number>> = {
+  "Clear Oil": 25,
+  "Sepia Oil": 25,
+  "Amber Oil": 25,
+  "Verdant Oil": 50,
+  "Teal Oil": 50,
+  "Azure Oil": 50,
+  "Indigo Oil": 75,
+  "Violet Oil": 75,
+  "Crimson Oil": 75,
+  "Black Oil": 100,
+  "Opalescent Oil": 125,
+  "Silver Oil": 125,
+  "Golden Oil": 125,
+  "Tainted Oil": 500,
+  "Reflective Oil": 500,
+  "Prismatic Oil": 500,
+};
+
+/** Every Catalyst name against its exact poedb cost. */
+const CATALYST_COSTS: Readonly<Record<string, number>> = {
+  "Intrinsic Catalyst": 25,
+  "Turbulent Catalyst": 25,
+  "Imbued Catalyst": 25,
+  "Abrasive Catalyst": 25,
+  "Noxious Catalyst": 25,
+  "Tempering Catalyst": 50,
+  "Fertile Catalyst": 50,
+  "Prismatic Catalyst": 50,
+  "Accelerating Catalyst": 50,
+  "Unstable Catalyst": 50,
+  "Tainted Catalyst": 150,
+  "Sinistral Catalyst": 150,
+  "Dextral Catalyst": 150,
+};
+
+/** Every Omen name against its exact poedb cost. */
+const OMEN_COSTS: Readonly<Record<string, number>> = {
+  "Omen of Return": 25,
+  "Omen of Death-dancing": 25,
+  "Omen of Refreshment": 25,
+  "Omen of the Soul Devourer": 25,
+  "Omen of Adrenaline": 25,
+  "Omen of Death's Door": 50,
+  "Omen of Brilliance": 50,
+  "Omen of Amelioration": 50,
+  "Omen of the Jeweller": 50,
+  "Omen of Trichromatism": 50,
+  "Omen of Connections": 125,
+  "Omen of Fortune": 125,
+};
+
+/**
+ * Every Tattoo name against its exact poedb cost - the Dexterity/Intelligence/Strength/Special
+ * tribe tattoos plus the tiered "Loyalty"/"Honoured"/"Journey"/"Forbidden" variants.
+ */
+const TATTOO_COSTS: Readonly<Record<string, number>> = {
+  "Tattoo of the Arohongui Moonwarden": 25,
+  "Tattoo of the Arohongui Scout": 25,
+  "Tattoo of the Arohongui Warrior": 25,
+  "Loyalty Tattoo of Ikiaho": 100,
+  "Tattoo of the Arohongui Makanga": 100,
+  "Tattoo of the Ramako Scout": 25,
+  "Tattoo of the Ramako Archer": 25,
+  "Tattoo of the Ramako Sniper": 25,
+  "Tattoo of the Ramako Fleetfoot": 50,
+  "Tattoo of the Ramako Shaman": 50,
+  "Loyalty Tattoo of Ahuana": 100,
+  "Tattoo of the Ramako Makanga": 100,
+  "Tattoo of the Tawhoa Naturalist": 25,
+  "Tattoo of the Tawhoa Scout": 25,
+  "Tattoo of the Tawhoa Herbalist": 50,
+  "Tattoo of the Tawhoa Makanga": 100,
+  "Tattoo of the Tasalio Tideshifter": 25,
+  "Tattoo of the Tasalio Warrior": 50,
+  "Tattoo of the Tasalio Scout": 50,
+  "Loyalty Tattoo of Rakiata": 100,
+  "Tattoo of the Arohongui Warmonger": 50,
+  "Tattoo of the Arohongui Shaman": 50,
+  "Tattoo of the Hinekora Warrior": 25,
+  "Tattoo of the Hinekora Deathwarden": 25,
+  "Tattoo of the Hinekora Shaman": 25,
+  "Tattoo of the Hinekora Storyteller": 50,
+  "Tattoo of the Hinekora Warmonger": 50,
+  "Loyalty Tattoo of Tawhanuku": 100,
+  "Tattoo of the Hinekora Makanga": 100,
+  "Tattoo of the Tawhoa Warrior": 25,
+  "Tattoo of the Tawhoa Shaman": 50,
+  "Loyalty Tattoo of Maata": 100,
+  "Tattoo of the Rongokurai Turtle": 50,
+  "Tattoo of the Tasalio Shaman": 25,
+  "Tattoo of the Tasalio Makanga": 100,
+  "Tattoo of the Kitava Heart Eater": 50,
+  "Tattoo of the Valako Stormrider": 25,
+  "Tattoo of the Valako Scout": 25,
+  "Tattoo of the Valako Warrior": 25,
+  "Tattoo of the Valako Shaman": 50,
+  "Loyalty Tattoo of Kiloava": 100,
+  "Tattoo of the Valako Makanga": 100,
+  "Tattoo of the Ngamahu Firewalker": 25,
+  "Tattoo of the Ngamahu Shaman": 25,
+  "Tattoo of the Ngamahu Warrior": 25,
+  "Tattoo of the Ngamahu Warmonger": 50,
+  "Tattoo of the Ngamahu Woodcarver": 50,
+  "Loyalty Tattoo of Kaom": 100,
+  "Tattoo of the Ngamahu Makanga": 100,
+  "Tattoo of the Rongokurai Warrior": 25,
+  "Tattoo of the Rongokurai Brute": 25,
+  "Tattoo of the Rongokurai Goliath": 25,
+  "Tattoo of the Rongokurai Guard": 50,
+  "Loyalty Tattoo of Kahuturoa": 100,
+  "Tattoo of the Rongokurai Makanga": 100,
+  "Tattoo of the Tasalio Bladedancer": 25,
+  "Tattoo of the Kitava Blood Drinker": 25,
+  "Tattoo of the Kitava Rebel": 25,
+  "Tattoo of the Kitava Warrior": 25,
+  "Tattoo of the Kitava Shaman": 50,
+  "Loyalty Tattoo of Utula": 100,
+  "Tattoo of the Kitava Makanga": 100,
+  "Tattoo of the Tukohama Shaman": 25,
+  "Tattoo of the Tukohama Warrior": 25,
+  "Tattoo of the Tukohama Brawler": 25,
+  "Tattoo of the Tukohama Warmonger": 50,
+  "Tattoo of the Tukohama Warcaller": 50,
+  "Loyalty Tattoo of Akoya": 100,
+  "Tattoo of the Tukohama Makanga": 100,
+  "Tattoo of the Valako Shieldbearer": 50,
+  "Honoured Tattoo of the Dove": 125,
+  "Honoured Tattoo of the Sky": 125,
+  "Honoured Tattoo of the Tuatara": 125,
+  "Honoured Tattoo of the Pillager": 125,
+  "Honoured Tattoo of the Turtle": 125,
+  "Honoured Tattoo of the Oak": 125,
+  "Honoured Tattoo of the Hatungo": 125,
+  "Honoured Tattoo of the Flock": 125,
+  "Honoured Tattoo of the Warlord": 125,
+  "Honoured Tattoo of the Mountain": 125,
+  "Honoured Tattoo of the Pa": 125,
+  "Honoured Tattoo of the Hunter": 125,
+  "Honoured Tattoo of the Barbarian": 125,
+  "Honoured Tattoo of the Berserker": 125,
+  "Honoured Tattoo of the Wise": 125,
+  "Honoured Tattoo of the Storm": 125,
+  "Honoured Tattoo of the Flood": 125,
+  "Ancestral Tattoo of Bloodlines": 125,
+  "Honoured Tattoo of the Makanga": 125,
+  "Journey Tattoo of the Body": 125,
+  "Journey Tattoo of the Mind": 125,
+  "Journey Tattoo of the Soul": 125,
+  "Journey Tattoo of Makanui": 125,
+  "Forbidden Tattoo of the Ranger": 125,
+  "Forbidden Tattoo of the Duelist": 125,
+  "Forbidden Tattoo of the Marauder": 125,
+  "Forbidden Tattoo of the Templar": 125,
+  "Forbidden Tattoo of the Witch": 125,
+  "Forbidden Tattoo of the Shadow": 125,
+  "Forbidden Tattoo of the Scion": 125,
+};
+
+/** Every named Delirium Orb against its exact poedb cost. */
+const DELIRIUM_ORB_COSTS: Readonly<Record<string, number>> = {
+  "Delirium Orb": 250,
+  "Blacksmith's Delirium Orb": 75,
+  "Armoursmith's Delirium Orb": 75,
+  "Jeweller's Delirium Orb": 75,
+  "Fine Delirium Orb": 100,
+  "Diviner's Delirium Orb": 150,
+  "Cartographer's Delirium Orb": 175,
+  "Whispering Delirium Orb": 175,
+  "Singular Delirium Orb": 175,
+  "Thaumaturge's Delirium Orb": 225,
+  "Abyssal Delirium Orb": 225,
+  "Obscured Delirium Orb": 225,
+  "Fragmented Delirium Orb": 225,
+  "Fossilised Delirium Orb": 225,
+  "Timeless Delirium Orb": 225,
+  "Blighted Delirium Orb": 225,
+  "Kalguuran Delirium Orb": 75,
+  "Skittering Delirium Orb": 250,
+  "Primal Delirium Orb": 75,
+  "Imperial Delirium Orb": 75,
+  "Challenging Delirium Orb": 75,
+};
+
+/** Legion emblems - NOT a uniform value across tiers, unlike most other tiered families. */
+const LEGION_EMBLEM_COSTS: Readonly<Record<string, number>> = {
+  "Timeless Karui Emblem": 500,
+  "Timeless Maraketh Emblem": 750,
+  "Timeless Eternal Emblem": 500,
+  "Timeless Templar Emblem": 750,
+  "Timeless Vaal Emblem": 500,
+};
+
+/** Runegrafts - flat 500 except the Angler variant. */
+const RUNEGRAFT_ANGLER_COST = 5000;
+const RUNEGRAFT_DEFAULT_COST = 500;
+
+/** Vaal fragments (Atziri sacrifice pieces and their Uber Atziri "Mortal" counterparts). */
+const VAAL_FRAGMENT_COSTS: Readonly<Record<string, number>> = {
+  "Sacrifice at Dusk": 15,
+  "Sacrifice at Noon": 30,
+  "Sacrifice at Midnight": 75,
+  "Sacrifice at Dawn": 20,
+  "Mortal Grief": 40,
+  "Mortal Ignorance": 75,
+  "Mortal Rage": 190,
+  "Mortal Hope": 50,
+};
+
+/** The Labyrinth's four Goddess offerings. */
+const GODDESS_OFFERING_COSTS: Readonly<Record<string, number>> = {
+  "Offering to the Goddess": 30,
+  "Tribute to the Goddess": 180,
+  "Gift to the Goddess": 180,
+  "Dedication to the Goddess": 180,
 };
 
 const DIVINATION_CARD_ID_PREFIX = "Metadata/Items/DivinationCards/";
@@ -612,25 +1142,34 @@ export function goldCostFor(name: string, id?: string): GoldCost | undefined {
   if (essenceTierCost !== undefined && name.includes("Essence of ")) return exact(essenceTierCost);
   if (name.startsWith("Essence of ")) return exact(SPECIAL_ESSENCE_COST);
 
-  // Everything below is the wiki-fallback range for a category poedb's page didn't cover at all.
-  if (name.endsWith(" Catalyst")) return approx(38, "Catalysts are 25 or 50 gold");
-  if (name.endsWith(" Oil")) return approx(75, "Oils range 25-125 gold");
-  if (name.startsWith("Omen of ")) return approx(50, "Omens are 25, 50 or 125 gold");
-  if (name.includes("Tattoo of")) return approx(50, "Tattoos are 25, 50 or 125 gold");
-  if (name === "Delirium Orb" || name.endsWith(" Delirium Orb")) return approx(150, "Delirium orbs range 75-250 gold");
-  if (name.includes("Runegraft")) return approx(500, "Runegrafts are 500 gold (angler is 5000)");
-  if (/^Timeless \w+ Emblem$/.test(name)) return approx(350, "Legion emblems range 50-750 gold by tier");
-  if (name.endsWith(" Astrolabe")) return exact(1000);
+  const oilCost = OIL_COSTS[name];
+  if (oilCost !== undefined) return exact(oilCost);
 
-  if (/^Sacrifice at (Dawn|Dusk|Midnight|Noon)$/.test(name)) {
-    return approx(35, "Atziri fragments range 15-75 gold");
+  const catalystCost = CATALYST_COSTS[name];
+  if (catalystCost !== undefined) return exact(catalystCost);
+
+  const omenCost = OMEN_COSTS[name];
+  if (omenCost !== undefined) return exact(omenCost);
+
+  const tattooCost = TATTOO_COSTS[name];
+  if (tattooCost !== undefined) return exact(tattooCost);
+
+  const deliriumOrbCost = DELIRIUM_ORB_COSTS[name];
+  if (deliriumOrbCost !== undefined) return exact(deliriumOrbCost);
+
+  const legionEmblemCost = LEGION_EMBLEM_COSTS[name];
+  if (legionEmblemCost !== undefined) return exact(legionEmblemCost);
+
+  const vaalFragmentCost = VAAL_FRAGMENT_COSTS[name];
+  if (vaalFragmentCost !== undefined) return exact(vaalFragmentCost);
+
+  const goddessOfferingCost = GODDESS_OFFERING_COSTS[name];
+  if (goddessOfferingCost !== undefined) return exact(goddessOfferingCost);
+
+  if (name.includes("Runegraft")) {
+    return exact(name.includes("the Angler") ? RUNEGRAFT_ANGLER_COST : RUNEGRAFT_DEFAULT_COST);
   }
-  if (/^Mortal (Grief|Hope|Ignorance|Rage)$/.test(name)) {
-    return approx(90, "Uber Atziri fragments range 40-190 gold");
-  }
-  if (name.includes("Offering to the Goddess") || name.endsWith("to the Goddess")) {
-    return approx(105, "Goddess offerings are 30 or 180 gold");
-  }
+  if (name.endsWith(" Astrolabe")) return exact(1000);
 
   return undefined;
 }
