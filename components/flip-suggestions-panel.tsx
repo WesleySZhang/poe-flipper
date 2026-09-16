@@ -270,17 +270,16 @@ export function FlipSuggestionsPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[280px]">Item</TableHead>
-                {/* Category/Current/Exchange Price/Predicted are dropped below `sm` - mobile keeps
-                    only what's needed for a quick scan (Item/Change/Confidence), same reasoning as
-                    the mirage-simulator table below. The full set is always one tap away: expanding
-                    a row's chart doesn't lose anything, it just isn't visible in the row itself. */}
+                {/* Category/Exchange Price are dropped below `sm` - mobile keeps the actual prices
+                    (Current/Predicted) alongside Change/Confidence, same reasoning as the
+                    mirage-simulator table below. The full set is always one tap away: expanding a
+                    row's chart doesn't lose anything, it just isn't visible in the row itself. */}
                 <TableHead className="hidden text-center sm:table-cell">Category</TableHead>
                 <SortableHeader
                   label={`Current (${priceUnitLabel(priceUnit)})`}
                   sortKey="current"
                   sort={sort}
                   onSort={handleSort}
-                  className="hidden sm:table-cell"
                 />
                 <TableHead className="hidden text-center sm:table-cell">Exchange Price</TableHead>
                 <SortableHeader
@@ -288,7 +287,6 @@ export function FlipSuggestionsPanel() {
                   sortKey="predicted"
                   sort={sort}
                   onSort={handleSort}
-                  className="hidden sm:table-cell"
                 />
                 <SortableHeader label="Change" sortKey="change" sort={sort} onSort={handleSort} />
                 <TableHead>
@@ -317,7 +315,7 @@ export function FlipSuggestionsPanel() {
                       <Badge variant="secondary">{humanizeCategoryName(s.filterCategory)}</Badge>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell">
+                  <TableCell className="text-right">
                     {formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
@@ -329,7 +327,7 @@ export function FlipSuggestionsPanel() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell">
+                  <TableCell className="text-right">
                     {formatPriceValue(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell className="text-right">

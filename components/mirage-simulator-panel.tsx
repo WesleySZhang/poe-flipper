@@ -299,24 +299,22 @@ export function MirageSimulatorPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[280px]">Item</TableHead>
-                {/* Category/Now/Predicted/Actual future are dropped below `sm` - this tool's whole
-                    point is comparing Predicted % against Actual %, so both of those (plus
-                    Item/Confidence) are what mobile keeps for a quick scan. The absolute prices
-                    behind them are still one tap away in the expanded row's chart. */}
+                {/* Category/Actual future are dropped below `sm` - mobile keeps Now/Predicted (the
+                    actual prices) plus Predicted %/Actual % (this tool's whole point: comparing the
+                    two) and Confidence. Actual future's absolute price is still one tap away in the
+                    expanded row's chart, same as Category. */}
                 <TableHead className="hidden text-center sm:table-cell">Category</TableHead>
                 <SortableHeader
                   label={`Now (${priceUnitLabel(priceUnit)})`}
                   sortKey="now"
                   sort={sort}
                   onSort={handleSort}
-                  className="hidden sm:table-cell"
                 />
                 <SortableHeader
                   label={`Predicted (${priceUnitLabel(priceUnit)})`}
                   sortKey="predicted"
                   sort={sort}
                   onSort={handleSort}
-                  className="hidden sm:table-cell"
                 />
                 <SortableHeader
                   label={`Actual future (${priceUnitLabel(priceUnit)})`}
@@ -353,10 +351,10 @@ export function MirageSimulatorPanel() {
                       <Badge variant="secondary">{humanizeCategoryName(r.filterCategory)}</Badge>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell">
+                  <TableCell className="text-right">
                     {formatPriceValue(r.actualNowChaos, r.actualNowDivine, priceUnit)}
                   </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell">
+                  <TableCell className="text-right">
                     {formatPriceValue(r.predictedChaosValue, r.predictedDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell className="hidden text-right sm:table-cell">
