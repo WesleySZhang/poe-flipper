@@ -26,7 +26,15 @@ const DB_PATH = process.env.POE_DB_PATH
 // hardened enough to catch that specific class of bug (verified against the actual glitch that
 // prompted the exclusion). Plain "Phrecia" (the original, non-2.0 event) stays out - noisier and
 // never included to begin with.
-const INCLUDED_LEAGUES = ["Mirage", "Keepers", "Mercenaries", "Settlers", "Phrecia 2.0"];
+// POE_INCLUDED_LEAGUES (comma-separated) overrides this for an experiment, the same way POE_DB_PATH
+// overrides the destination - so evaluating a different training set means building a separate DB,
+// never editing this list and rebuilding the real one by accident.
+const PRODUCTION_LEAGUES = ["Mirage", "Keepers", "Mercenaries", "Settlers", "Phrecia 2.0"];
+const INCLUDED_LEAGUES = process.env.POE_INCLUDED_LEAGUES
+  ? process.env.POE_INCLUDED_LEAGUES.split(",")
+      .map((league) => league.trim())
+      .filter(Boolean)
+  : PRODUCTION_LEAGUES;
 
 // Each main league folder can also have an "extras" subfolder holding private/community leagues
 // that ran during that league's era (streamer leagues, restart leagues, "search party" events,
