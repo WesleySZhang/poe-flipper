@@ -37,8 +37,8 @@ const MIN_CHART_DRAG_VIEW_WIDTH = 8;
 // Default zoom padding around [currentDay, targetDay] (or just currentDay, absent a targetDay) -
 // proportional to that span rather than a fixed number of days, so Today/Target sit close to the
 // window's edges regardless of whether the prediction is a few days or a few months.
-const DEFAULT_ZOOM_PADDING_FRACTION = 0.25;
-const DEFAULT_ZOOM_MIN_PADDING_DAYS = 4;
+const DEFAULT_ZOOM_PADDING_FRACTION = 0.1;
+const DEFAULT_ZOOM_MIN_PADDING_DAYS = 2;
 // Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
 // via a 0-100 viewBox, since the track is already positioned with percentages).
 const BRUSH_VIEW_HEIGHT = 40;
