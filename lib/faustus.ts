@@ -754,7 +754,16 @@ function rateFromPair(market: ExchangeMarket, id: string, chaosSideId: string): 
   const chaosLow = market.lowest_ratio[chaosSideId];
   const chaosHigh = market.highest_ratio[chaosSideId];
   if (!idLow || !idHigh || !chaosLow || !chaosHigh) return undefined;
-  return (chaosLow / idHigh + chaosHigh / idLow) / 2;
+  // lowest_ratio and highest_ratio are each a SELF-CONTAINED quote (both sides describe one
+  // observed ratio), not independent per-side extremes to mix across - confirmed against a live
+  // in-game quote (Dead Man's Sulphur, a bulk currency GGG bug report traced this to): the API's
+  // lowest_ratio {chaos:1, sulphur:135} and highest_ratio {chaos:71, sulphur:6800} match the
+  // in-game instant-sell (~137 sulphur/chaos) and instant-buy (~101 sulphur/chaos) prices closely
+  // when each pair's OWN two sides are divided together. Cross-matching them instead (chaosLow
+  // against idHigh, as this used to do) is only harmless when one side happens to always be
+  // normalized to 1 (e.g. Divine Orb) - for anything whose ratio scales on both sides, it produces
+  // a rate off by orders of magnitude (0.0001c-0.5c here, against a real ~0.007c-0.01c).
+  return (chaosLow / idLow + chaosHigh / idHigh) / 2;
 }
 
 export interface FaustusPrice {
@@ -882,10 +891,11 @@ export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]
       const chaosLow = m.lowest_ratio[CHAOS_ID];
       const chaosHigh = m.highest_ratio[CHAOS_ID];
       if (!idLow || !idHigh || !chaosLow || !chaosHigh) continue;
-      // Two chaos-per-unit bounds from the hour's observed ratio range - see rateFromPair's
-      // midpoint version of this same math for the non-spread price.
-      const a = chaosLow / idHigh;
-      const b = chaosHigh / idLow;
+      // Two chaos-per-unit bounds from the hour's observed ratio range - each of lowest_ratio/
+      // highest_ratio is its own self-contained quote (divide its two sides together), never
+      // cross-matched against the other extremum's sides - see rateFromPair's comment for why.
+      const a = chaosLow / idLow;
+      const b = chaosHigh / idHigh;
       const volumeChaos = m.volume_traded[CHAOS_ID] ?? 0;
       // Prefer whichever pair saw the most Chaos volume, same tie-break as getFaustusPrices.
       if (!best || volumeChaos > best.volumeChaos) {
