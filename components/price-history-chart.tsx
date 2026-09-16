@@ -70,45 +70,31 @@ function formatTick(value: number, unit: PriceUnit): string {
   return `${numeric}${priceUnitLabel(unit) === "div" ? "d" : "c"}`;
 }
 
-// The 1-2-5 sequence - the same "nice number" convention most charting libraries (d3, matplotlib,
-// ...) use for axis ticks, so gridlines land on values a person would actually round to (1, 2, 5,
-// 10, 20, 50, ...; or 0.1, 0.2, 0.5, ... for cheap items) instead of an arbitrary fraction of the
-// data's log range.
-const NICE_TICK_MULTIPLIERS = [1, 2, 5];
 const TARGET_TICK_COUNT = 4;
 
 /**
- * "Nice" round Y-axis tick values for a log-scale price axis - evenly dividing the log range (the
- * previous approach) produces gridlines like 5.69/3.05/1.64/0.879 that don't read as real price
- * points a trader would recognize. Picks from the 1-2-5-per-decade sequence instead, so a tick is
- * always a value like 1, 2, 5, 10, or 0.1, 0.2, 0.5 for a cheap item's chart.
+ * "Nice" round Y-axis tick values for a linear price axis - the same "nice number" convention most
+ * charting libraries (d3, matplotlib, ...) use: pick a round step (1, 2, 5, or 10x/100x/... of
+ * those) closest to dividing [min, max] into TARGET_TICK_COUNT pieces, then take every multiple of
+ * that step landing inside the range. Produces gridlines like 1/2/3/4/5 or 100/200/300 instead of
+ * an arbitrary fraction of the raw range (e.g. 1.2/2.4/3.6/4.8).
  */
-function niceLogTicks(min: number, max: number): number[] {
-  if (!(min > 0) || !(max > min)) return [min, max].filter((v) => v > 0);
+function niceLinearTicks(min: number, max: number): number[] {
+  if (!(max > min)) return [min];
 
-  const minExp = Math.floor(Math.log10(min));
-  const maxExp = Math.ceil(Math.log10(max));
-  const candidates: number[] = [];
-  for (let exp = minExp; exp <= maxExp; exp++) {
-    for (const m of NICE_TICK_MULTIPLIERS) candidates.push(m * 10 ** exp);
+  const rawStep = (max - min) / TARGET_TICK_COUNT;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude; // in [1, 10)
+  const niceStep = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+
+  const start = Math.ceil(min / niceStep) * niceStep;
+  const ticks: number[] = [];
+  // Small epsilon guard against floating-point step accumulation drifting just past max.
+  for (let v = start; v <= max + niceStep * 1e-9; v += niceStep) {
+    // Snap away from float drift (e.g. 0.30000000000000004) by rounding to the step's own precision.
+    ticks.push(Math.round(v / niceStep) * niceStep);
   }
-
-  // Small tolerance so a nice value that lands (almost) exactly on min/max isn't dropped by
-  // floating-point rounding from the log/exp round-trip that produced the padded domain.
-  const eps = (max - min) * 1e-9;
-  let ticks = candidates.filter((c) => c >= min - eps && c <= max + eps);
-
-  // A wide range can produce a dozen+ 1-2-5 candidates - thin them out toward a readable count
-  // rather than cramming every one onto the axis.
-  if (ticks.length > TARGET_TICK_COUNT + 1) {
-    const step = Math.ceil(ticks.length / TARGET_TICK_COUNT);
-    ticks = ticks.filter((_, i) => i % step === 0);
-  }
-  // A narrow range can land no 1-2-5 candidate inside it at all (e.g. min/max both between 3 and
-  // 4) - fall back to the range's own endpoints rather than showing no ticks.
-  if (ticks.length < 2) ticks = [min, max];
-
-  return ticks;
+  return ticks.length > 0 ? ticks : [min, max];
 }
 
 interface PlottedPoint {
@@ -141,7 +127,7 @@ function RangeBrush({
   valueMax,
   onChange,
   series,
-  logDomain,
+  priceDomain,
 }: {
   fullMin: number;
   fullMax: number;
@@ -149,15 +135,15 @@ function RangeBrush({
   valueMax: number;
   onChange: (min: number, max: number) => void;
   series: PlottedSeries[];
-  /** [logMin, logMax] over the FULL, unzoomed data - the preview always shows the whole history,
-   *  regardless of the main chart's current zoom. */
-  logDomain: [number, number];
+  /** [priceMin, priceMax] over the FULL, unzoomed data - the preview always shows the whole
+   *  history, regardless of the main chart's current zoom. */
+  priceDomain: [number, number];
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ mode: BrushDragMode; startClientX: number; startMin: number; startMax: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fullRange = fullMax - fullMin || 1;
-  const [logMin, logMax] = logDomain;
+  const [priceMin, priceMax] = priceDomain;
 
   function valueAtClientX(clientX: number): number {
     const track = trackRef.current;
@@ -224,7 +210,7 @@ function RangeBrush({
   const leftPct = ((valueMin - fullMin) / fullRange) * 100;
   const rightPct = ((valueMax - fullMin) / fullRange) * 100;
   const miniX = (day: number) => ((day - fullMin) / fullRange) * 100;
-  const miniY = (value: number) => BRUSH_VIEW_HEIGHT * (1 - (Math.log(value) - logMin) / (logMax - logMin || 1));
+  const miniY = (value: number) => BRUSH_VIEW_HEIGHT * (1 - (value - priceMin) / (priceMax - priceMin || 1));
 
   return (
     <div
@@ -399,38 +385,41 @@ export function PriceHistoryChart({
     s.points.filter((p) => p.dayOffset >= dayMin && p.dayOffset <= dayMax).map((p) => p.value)
   );
   const valuesForScale = visibleValues.length > 0 ? visibleValues : allValues;
-  let logMin = Math.log(Math.min(...valuesForScale));
-  let logMax = Math.log(Math.max(...valuesForScale));
-  if (logMin === logMax) {
+  let valueMin = Math.min(...valuesForScale);
+  let valueMax = Math.max(...valuesForScale);
+  if (valueMin === valueMax) {
     // Flat or single-point data - pad the domain so the line isn't drawn on a degenerate 0-height
-    // scale (divide-by-zero guard).
-    logMin -= 0.5;
-    logMax += 0.5;
+    // scale (divide-by-zero guard). A fraction of the value itself, not a fixed amount, since prices
+    // in this app range from a fraction of a chaos to hundreds of thousands.
+    const pad = Math.max(Math.abs(valueMin) * 0.1, 1e-6);
+    valueMin -= pad;
+    valueMax += pad;
   } else {
     // Headroom above/below the actual min/max so a line touching the top or bottom of its range
     // isn't drawn flush against the plot edge (or hidden behind the axis labels) - same idea as
     // the flat-data guard above, just proportional instead of a fixed padding.
-    const padding = (logMax - logMin) * Y_AXIS_PADDING_FRACTION;
-    logMin -= padding;
-    logMax += padding;
+    const padding = (valueMax - valueMin) * Y_AXIS_PADDING_FRACTION;
+    valueMin -= padding;
+    valueMax += padding;
   }
-  // Separate, full-history log domain for the brush's own mini-preview, which always shows
-  // everything regardless of the main chart's current zoom.
-  let fullLogMin = Math.log(Math.min(...allValues));
-  let fullLogMax = Math.log(Math.max(...allValues));
-  if (fullLogMin === fullLogMax) {
-    fullLogMin -= 0.5;
-    fullLogMax += 0.5;
+  // Separate, full-history domain for the brush's own mini-preview, which always shows everything
+  // regardless of the main chart's current zoom.
+  let fullValueMin = Math.min(...allValues);
+  let fullValueMax = Math.max(...allValues);
+  if (fullValueMin === fullValueMax) {
+    const fullPad = Math.max(Math.abs(fullValueMin) * 0.1, 1e-6);
+    fullValueMin -= fullPad;
+    fullValueMax += fullPad;
   } else {
-    const fullPadding = (fullLogMax - fullLogMin) * Y_AXIS_PADDING_FRACTION;
-    fullLogMin -= fullPadding;
-    fullLogMax += fullPadding;
+    const fullPadding = (fullValueMax - fullValueMin) * Y_AXIS_PADDING_FRACTION;
+    fullValueMin -= fullPadding;
+    fullValueMax += fullPadding;
   }
 
   const xScale = (day: number) => MARGIN.left + ((day - dayMin) / dayRange) * PLOT_WIDTH;
-  const yScale = (value: number) => MARGIN.top + (1 - (Math.log(value) - logMin) / (logMax - logMin)) * PLOT_HEIGHT;
+  const yScale = (value: number) => MARGIN.top + (1 - (value - valueMin) / (valueMax - valueMin)) * PLOT_HEIGHT;
 
-  const yTicks = niceLogTicks(Math.exp(logMin), Math.exp(logMax));
+  const yTicks = niceLinearTicks(valueMin, valueMax);
   const isZoomed = zoomDomain !== undefined;
   const isChartDragging = chartDragStartDay !== undefined && chartDragCurrentDay !== undefined;
 
@@ -722,7 +711,7 @@ export function PriceHistoryChart({
           valueMax={dayMax}
           onChange={handleBrushChange}
           series={plotted}
-          logDomain={[fullLogMin, fullLogMax]}
+          priceDomain={[fullValueMin, fullValueMax]}
         />
       </div>
       <div className="flex items-center justify-between px-1">
