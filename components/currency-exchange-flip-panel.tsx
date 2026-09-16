@@ -22,7 +22,7 @@ import { activePrice, activeRatio, formatPercentChange, formatPriceValue, priceU
 
 const PAGE_SIZE = 25;
 
-type SortKey = "buy" | "sell" | "spreadPercent" | "spreadAbs" | "gold" | "profitPerGold";
+type SortKey = "buy" | "sell" | "profitPercent" | "profitAbs" | "gold" | "profitPerGold";
 
 // Same variant-as-state vocabulary as ConfidenceBadge - no green/amber, red stays reserved for warnings.
 const LIQUIDITY_VARIANT = { high: "default", medium: "secondary", low: "outline" } as const;
@@ -59,7 +59,7 @@ export function CurrencyExchangeFlipPanel() {
   const [searchText, setSearchText] = useState("");
   const [buyRange, setBuyRange] = useState<NumericRange>({});
   const [page, setPage] = useState(0);
-  const [sort, setSort] = useState<SortState<SortKey>>({ key: "spreadPercent", direction: "desc" });
+  const [sort, setSort] = useState<SortState<SortKey>>({ key: "profitPercent", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   // Starts empty (show every tier) rather than hiding Low by default - unlike the flip-suggestions
   // table's confidence filter, this page's whole point is showing raw spreads and letting the
@@ -112,9 +112,9 @@ export function CurrencyExchangeFlipPanel() {
             return activePrice(s.buyChaosValue, s.buyDivineValue, priceUnit);
           case "sell":
             return activePrice(s.sellChaosValue, s.sellDivineValue, priceUnit);
-          case "spreadPercent":
+          case "profitPercent":
             return activeRatio(s.chaosRatio, s.divineRatio, priceUnit);
-          case "spreadAbs":
+          case "profitAbs":
             return activePrice(s.spreadChaosValue, s.spreadDivineValue, priceUnit);
           case "gold":
             return s.goldCost?.perItem;
@@ -199,7 +199,7 @@ export function CurrencyExchangeFlipPanel() {
         )}
         <p className="text-xs text-muted-foreground">
           GGG&apos;s exchange data is purely historical - roughly 2 hours stale, and Buy/Sell are the low/high ends of
-          the last closed hour&apos;s trade range, not two live standing orders right now. A wide spread on a Low
+          the last closed hour&apos;s trade range, not two live standing orders right now. A wide profit % on a Low
           liquidity item is usually just a couple of trades, not a real opportunity - check Liquidity before acting.
         </p>
         <div className="flex flex-wrap items-end gap-4">
@@ -230,16 +230,25 @@ export function CurrencyExchangeFlipPanel() {
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[240px]">Item</TableHead>
                 <SortableHeader label={`Buy (${priceUnitLabel(priceUnit)})`} sortKey="buy" sort={sort} onSort={handleSort} />
                 <SortableHeader label={`Sell (${priceUnitLabel(priceUnit)})`} sortKey="sell" sort={sort} onSort={handleSort} />
-                <SortableHeader label="Spread %" sortKey="spreadPercent" sort={sort} onSort={handleSort} />
-                {/* Absolute spread/gold/profit-per-gold are dropped below `sm` - mobile keeps
-                    Buy/Sell/Spread %/Liquidity, the "should I even look at this" essentials, same
-                    reasoning as the other tables' mobile column set. */}
+                <SortableHeader label="Profit %" sortKey="profitPercent" sort={sort} onSort={handleSort} />
+                {/* Absolute profit/gold/profit-per-gold are dropped below `sm` - mobile keeps
+                    Buy/Sell/Profit %/Liquidity, the "should I even look at this" essentials, same
+                    reasoning as the other tables' mobile column set. Liquidity sits last so it stays
+                    the rightmost column at every width, not just on mobile. */}
                 <SortableHeader
-                  label={`Spread (${priceUnitLabel(priceUnit)})`}
-                  sortKey="spreadAbs"
+                  label={`Profit (${priceUnitLabel(priceUnit)})`}
+                  sortKey="profitAbs"
                   sort={sort}
                   onSort={handleSort}
                   className="hidden sm:table-cell"
+                />
+                <SortableHeader label="Gold" sortKey="gold" sort={sort} onSort={handleSort} className="hidden sm:table-cell" />
+                <SortableHeader
+                  label="Profit / 1k gold"
+                  sortKey="profitPerGold"
+                  sort={sort}
+                  onSort={handleSort}
+                  className="hidden max-w-[90px] sm:table-cell"
                 />
                 <TableHead>
                   <div className="flex flex-col items-center gap-1">
@@ -247,14 +256,6 @@ export function CurrencyExchangeFlipPanel() {
                     <LiquidityTierFilter hidden={hiddenLiquidityTiers} onToggle={toggleLiquidityTier} />
                   </div>
                 </TableHead>
-                <SortableHeader label="Gold" sortKey="gold" sort={sort} onSort={handleSort} className="hidden sm:table-cell" />
-                <SortableHeader
-                  label="Profit / 1k gold"
-                  sortKey="profitPerGold"
-                  sort={sort}
-                  onSort={handleSort}
-                  className="hidden sm:table-cell"
-                />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -271,6 +272,19 @@ export function CurrencyExchangeFlipPanel() {
                   <TableCell className="hidden text-right sm:table-cell">
                     {formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, priceUnit)}
                   </TableCell>
+                  <TableCell className="hidden text-right sm:table-cell" title={goldTitle(s.goldCost)}>
+                    {formatGold(s.goldCost)}
+                  </TableCell>
+                  <TableCell className="hidden max-w-[90px] text-right sm:table-cell">
+                    {s.profitPer1000Gold !== undefined ? (
+                      <span title={s.goldCost?.approximate ? "Estimated - gold cost for this item is a family estimate, not a confirmed value" : undefined}>
+                        {s.goldCost?.approximate ? "~" : ""}
+                        {formatPriceValue(s.profitPer1000Gold, undefined, "chaos")}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
                   <TableCell>
                     <div className="flex justify-center">
                       <Badge
@@ -280,19 +294,6 @@ export function CurrencyExchangeFlipPanel() {
                         {LIQUIDITY_LABEL[s.liquidity]}
                       </Badge>
                     </div>
-                  </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell" title={goldTitle(s.goldCost)}>
-                    {formatGold(s.goldCost)}
-                  </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell">
-                    {s.profitPer1000Gold !== undefined ? (
-                      <span title={s.goldCost?.approximate ? "Estimated - gold cost for this item is a family estimate, not a confirmed value" : undefined}>
-                        {s.goldCost?.approximate ? "~" : ""}
-                        {formatPriceValue(s.profitPer1000Gold, undefined, "chaos")}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
                   </TableCell>
                 </TableRow>
               ))}
