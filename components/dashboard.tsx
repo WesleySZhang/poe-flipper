@@ -22,6 +22,12 @@ export function Dashboard() {
           >
             League tester
           </Link>
+          <Link
+            href="/faustus"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            Faustus spreads
+          </Link>
           <ThemeToggle />
         </div>
       </header>

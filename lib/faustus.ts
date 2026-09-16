@@ -29,6 +29,7 @@
  * stackable/exchange-tradeable at all, so they never appear in GGG's exchange data to begin with.
  */
 import "server-only";
+import { goldCostFor, type GoldCost } from "./faustus-gold";
 
 const EXCHANGE_URL = "https://web.poecdn.com/api/currency-exchange";
 const CACHE_TTL_MS = 20 * 60 * 1000; // same cadence as poe-ninja.ts's other overview caches
@@ -706,6 +707,8 @@ interface ExchangeMarket {
   league: string;
   market_pair: [string, string];
   volume_traded: Record<string, number>;
+  lowest_stock: Record<string, number>;
+  highest_stock: Record<string, number>;
   lowest_ratio: Record<string, number>;
   highest_ratio: Record<string, number>;
 }
@@ -812,4 +815,104 @@ export async function getFaustusPrice(name: string, league: string): Promise<Fau
   if (!isFaustusTradeable(name)) return undefined;
   const prices = await getFaustusPrices(league);
   return prices.get(name);
+}
+
+export interface FaustusSpread {
+  name: string;
+  /** Cheapest chaos-per-unit rate this pair traded at during the hour - the price you'd have paid
+   *  to acquire one. */
+  buyChaosValue: number;
+  /** Priciest chaos-per-unit rate this pair traded at the same hour - the price you'd have gotten
+   *  selling one. Same "purely historical, ~2h stale" caveat as getFaustusPrices - this is the
+   *  range trades actually occurred at within one closed hour, not two live standing orders, so a
+   *  wide spread is a real signal the price moved, not a guaranteed instant round-trip today. */
+  sellChaosValue: number;
+  buyDivineValue?: number;
+  sellDivineValue?: number;
+  /** (sell/buy - 1) * 100. */
+  spreadPercent: number;
+  /** sell - buy, in chaos, per unit. */
+  spreadChaosValue: number;
+  /** Chaos Orb volume traded on this pair that hour - how much value actually changed hands, the
+   *  primary liquidity signal (a wide spread on a market with near-zero volume isn't fillable). */
+  volumeChaos: number;
+  /** The item's own unit volume traded that hour. */
+  volumeItem: number;
+  /** Units of the item listed (highest_stock reached that hour) - a depth signal distinct from
+   *  volume: volume is what actually traded, stock is what's sitting there available to trade against. */
+  stock: number;
+  /** Gold cost to place a buy order for one unit - see lib/faustus-gold.ts. Undefined when that
+   *  table doesn't cover this item at all (a genuine gap, not a zero cost). */
+  goldCost?: GoldCost;
+}
+
+/**
+ * Buy/sell spread for every Faustus-tradeable item that has a direct market against Chaos Orb this
+ * league - the same "steady price, real market" question getFaustusPrices already answers, but
+ * keeping both ends of the hour's trade range instead of collapsing them to one midpoint. Scoped to
+ * chaos-paired markets only (not the getFaustusPrices fallback through Divine) - a spread computed
+ * by converting both ends through a second pair's own low/high range would compound two markets'
+ * uncertainty into one number, and the vast majority of mapped items (515 of 657, checked live) do
+ * have a direct Chaos pair, so that scope covers everything a same-day flip realistically needs.
+ */
+export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]> {
+  const markets = await fetchExchangeMarkets(league);
+  if (markets.length === 0) return [];
+
+  let divineChaosRate: number | undefined;
+  for (const m of markets) {
+    const rate = rateFromPair(m, DIVINE_ID, CHAOS_ID);
+    if (rate !== undefined) {
+      divineChaosRate = rate;
+      break;
+    }
+  }
+
+  const results: FaustusSpread[] = [];
+  for (const [name, id] of Object.entries(FAUSTUS_NAME_TO_ID)) {
+    if (id === CHAOS_ID) continue; // Chaos Orb has no spread against itself.
+
+    let best:
+      | { buy: number; sell: number; volumeChaos: number; volumeItem: number; stock: number }
+      | undefined;
+    for (const m of markets) {
+      if (!m.market_pair.includes(id) || !m.market_pair.includes(CHAOS_ID)) continue;
+      const idLow = m.lowest_ratio[id];
+      const idHigh = m.highest_ratio[id];
+      const chaosLow = m.lowest_ratio[CHAOS_ID];
+      const chaosHigh = m.highest_ratio[CHAOS_ID];
+      if (!idLow || !idHigh || !chaosLow || !chaosHigh) continue;
+      // Two chaos-per-unit bounds from the hour's observed ratio range - see rateFromPair's
+      // midpoint version of this same math for the non-spread price.
+      const a = chaosLow / idHigh;
+      const b = chaosHigh / idLow;
+      const volumeChaos = m.volume_traded[CHAOS_ID] ?? 0;
+      // Prefer whichever pair saw the most Chaos volume, same tie-break as getFaustusPrices.
+      if (!best || volumeChaos > best.volumeChaos) {
+        best = {
+          buy: Math.min(a, b),
+          sell: Math.max(a, b),
+          volumeChaos,
+          volumeItem: m.volume_traded[id] ?? 0,
+          stock: m.highest_stock[id] ?? 0,
+        };
+      }
+    }
+    if (!best || !(best.buy > 0)) continue;
+
+    results.push({
+      name,
+      buyChaosValue: best.buy,
+      sellChaosValue: best.sell,
+      buyDivineValue: divineChaosRate ? best.buy / divineChaosRate : undefined,
+      sellDivineValue: divineChaosRate ? best.sell / divineChaosRate : undefined,
+      spreadPercent: (best.sell / best.buy - 1) * 100,
+      spreadChaosValue: best.sell - best.buy,
+      volumeChaos: best.volumeChaos,
+      volumeItem: best.volumeItem,
+      stock: best.stock,
+      goldCost: goldCostFor(name, id),
+    });
+  }
+  return results;
 }
