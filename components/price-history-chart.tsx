@@ -64,7 +64,51 @@ function leagueColor(league: string): string {
 
 function formatTick(value: number, unit: PriceUnit): string {
   const decimals = value < 1 ? (value < 0.01 ? 4 : 3) : value < 10 ? 2 : 1;
-  return `${value.toFixed(decimals)}${priceUnitLabel(unit) === "div" ? "d" : "c"}`;
+  // Trailing zeros stripped - a "nice" axis tick like 0.1 or 5 should read as "0.1c"/"5c", not
+  // "0.100c"/"5.0c" just because the magnitude bucket above allows more decimal places.
+  const numeric = value.toFixed(decimals).replace(/\.?0+$/, "");
+  return `${numeric}${priceUnitLabel(unit) === "div" ? "d" : "c"}`;
+}
+
+// The 1-2-5 sequence - the same "nice number" convention most charting libraries (d3, matplotlib,
+// ...) use for axis ticks, so gridlines land on values a person would actually round to (1, 2, 5,
+// 10, 20, 50, ...; or 0.1, 0.2, 0.5, ... for cheap items) instead of an arbitrary fraction of the
+// data's log range.
+const NICE_TICK_MULTIPLIERS = [1, 2, 5];
+const TARGET_TICK_COUNT = 4;
+
+/**
+ * "Nice" round Y-axis tick values for a log-scale price axis - evenly dividing the log range (the
+ * previous approach) produces gridlines like 5.69/3.05/1.64/0.879 that don't read as real price
+ * points a trader would recognize. Picks from the 1-2-5-per-decade sequence instead, so a tick is
+ * always a value like 1, 2, 5, 10, or 0.1, 0.2, 0.5 for a cheap item's chart.
+ */
+function niceLogTicks(min: number, max: number): number[] {
+  if (!(min > 0) || !(max > min)) return [min, max].filter((v) => v > 0);
+
+  const minExp = Math.floor(Math.log10(min));
+  const maxExp = Math.ceil(Math.log10(max));
+  const candidates: number[] = [];
+  for (let exp = minExp; exp <= maxExp; exp++) {
+    for (const m of NICE_TICK_MULTIPLIERS) candidates.push(m * 10 ** exp);
+  }
+
+  // Small tolerance so a nice value that lands (almost) exactly on min/max isn't dropped by
+  // floating-point rounding from the log/exp round-trip that produced the padded domain.
+  const eps = (max - min) * 1e-9;
+  let ticks = candidates.filter((c) => c >= min - eps && c <= max + eps);
+
+  // A wide range can produce a dozen+ 1-2-5 candidates - thin them out toward a readable count
+  // rather than cramming every one onto the axis.
+  if (ticks.length > TARGET_TICK_COUNT + 1) {
+    const step = Math.ceil(ticks.length / TARGET_TICK_COUNT);
+    ticks = ticks.filter((_, i) => i % step === 0);
+  }
+  // A narrow range can land no 1-2-5 candidate inside it at all (e.g. min/max both between 3 and
+  // 4) - fall back to the range's own endpoints rather than showing no ticks.
+  if (ticks.length < 2) ticks = [min, max];
+
+  return ticks;
 }
 
 interface PlottedPoint {
@@ -386,7 +430,7 @@ export function PriceHistoryChart({
   const xScale = (day: number) => MARGIN.left + ((day - dayMin) / dayRange) * PLOT_WIDTH;
   const yScale = (value: number) => MARGIN.top + (1 - (Math.log(value) - logMin) / (logMax - logMin)) * PLOT_HEIGHT;
 
-  const yTicks = [0, 1 / 3, 2 / 3, 1].map((f) => Math.exp(logMin + f * (logMax - logMin)));
+  const yTicks = niceLogTicks(Math.exp(logMin), Math.exp(logMax));
   const isZoomed = zoomDomain !== undefined;
   const isChartDragging = chartDragStartDay !== undefined && chartDragCurrentDay !== undefined;
 
