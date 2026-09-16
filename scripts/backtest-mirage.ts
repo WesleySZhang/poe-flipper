@@ -3,6 +3,7 @@ import {
   getItemGrowthRatiosBatch,
   getActualCurrencyValueAtDay,
   getActualItemValueAtDay,
+  PEER_SHRINK_WEIGHT,
   type GrowthRatioRow,
   type GrowthRatioBatchOptions,
 } from "../lib/growth-ratios";
@@ -175,6 +176,7 @@ function summarize(pairs: RatioPair[]) {
 }
 
 async function runScenario(
+  holdout: string,
   currentDay: number,
   durationDays: number,
   currencyRatios: GrowthRatioRow[],
@@ -184,10 +186,10 @@ async function runScenario(
   const targetDay = currentDay + durationDays;
 
   const [actualNowCurrency, actualFutureCurrency, actualNowItem, actualFutureItem] = await Promise.all([
-    getActualCurrencyValueAtDay(HOLDOUT_LEAGUE, currentDay),
-    getActualCurrencyValueAtDay(HOLDOUT_LEAGUE, targetDay),
-    getActualItemValueAtDay(HOLDOUT_LEAGUE, currentDay),
-    getActualItemValueAtDay(HOLDOUT_LEAGUE, targetDay),
+    getActualCurrencyValueAtDay(holdout, currentDay),
+    getActualCurrencyValueAtDay(holdout, targetDay),
+    getActualItemValueAtDay(holdout, currentDay),
+    getActualItemValueAtDay(holdout, targetDay),
   ]);
 
   const matched: MatchedRow[] = [];
@@ -240,6 +242,7 @@ function divineRatio(now: number | undefined, future: number | undefined): numbe
 /** Runs every scenario under one weighting scheme, returning every matched row pooled together
  *  (per-scenario/per-category breakdowns are only printed for the baseline scheme - see main()). */
 async function runBacktest(
+  holdout: string,
   batchOptions: GrowthRatioBatchOptions,
   currencyTypes: Map<string, { type: string }>,
   logSkips: boolean
@@ -255,6 +258,7 @@ async function runBacktest(
   for (let i = 0; i < SCENARIOS.length; i++) {
     const { currentDay, durationDays } = SCENARIOS[i];
     const matched = await runScenario(
+      holdout,
       currentDay,
       durationDays,
       currencyRatiosByScenario[i],
@@ -319,6 +323,7 @@ async function main() {
   // end, since running the full breakdown for all 7 schemes would be far more output than useful.
   const baseline = WEIGHTING_SCHEMES[0];
   const { allMatched: baselineMatched, perScenarioSummary } = await runBacktest(
+    HOLDOUT_LEAGUE,
     { excludeLeague: HOLDOUT_LEAGUE, leagueWeights: baseline.weights, minLeaguesWithData: baseline.minLeaguesWithData },
     currencyTypes,
     true
@@ -420,6 +425,7 @@ async function main() {
   const comparisonRows = [weightingComparisonRow(baseline.label, baselineMatched)];
   for (const scheme of WEIGHTING_SCHEMES.slice(1)) {
     const { allMatched } = await runBacktest(
+      HOLDOUT_LEAGUE,
       { excludeLeague: HOLDOUT_LEAGUE, leagueWeights: scheme.weights, minLeaguesWithData: scheme.minLeaguesWithData },
       currencyTypes,
       false
@@ -427,6 +433,66 @@ async function main() {
     comparisonRows.push(weightingComparisonRow(scheme.label, allMatched));
   }
   console.table(comparisonRows);
+
+  // --- Peer-shrink weight sweep: does blending each item's own ratio toward its peer group's
+  // (poe.ninja type bucket; all currency pooled as one group - see lib/growth-ratios.ts's
+  // shrinkToPeers) actually help, and is PEER_SHRINK_WEIGHT the right amount? Weight 0 reproduces
+  // the pre-shrinkage model exactly, so it's the fair "no shrinkage" baseline for this comparison. ---
+  console.log(
+    `\n--- Peer-shrink weight sweep, pooled across every scenario, "${baseline.label}" ---\n` +
+      `0 = no shrinkage (the model before this feature); 1 = ignore the item's own history entirely\n` +
+      `and use only its peer group. See scripts/discover-peer-shrinkage.ts for how ${PEER_SHRINK_WEIGHT}\n` +
+      `(the shipped default) was chosen.\n`
+  );
+  const shrinkRows: ReturnType<typeof weightingComparisonRow>[] = [];
+  for (const w of [0, 0.25, 0.5, 0.75, 1]) {
+    const { allMatched } = await runBacktest(HOLDOUT_LEAGUE, { excludeLeague: HOLDOUT_LEAGUE, shrinkWeight: w }, currencyTypes, false);
+    shrinkRows.push(weightingComparisonRow(`shrink w=${w}${w === PEER_SHRINK_WEIGHT ? " (shipped default)" : ""}`, allMatched));
+  }
+  console.table(shrinkRows);
+
+  // --- Cross-league validation: does peer shrinkage hold up against every trained league as its
+  // own holdout, not just Mirage? A change that only looks good against a single holdout is exactly
+  // what disqualified the earlier momentum signal (see branch trend-momentum) - so this re-runs the
+  // full backtest with each other trained league swapped in as the holdout in turn, both without
+  // and with shrinkage, and pools the result. ---
+  const crossLeagueHoldouts = allKnownLeagues().filter((l) => l !== CURRENT_LEAGUE);
+  console.log(
+    `\n--- Cross-league validation: shrink off vs on, every trained league (${crossLeagueHoldouts.join(", ")}) as its own holdout ---\n`
+  );
+  const perHoldoutRows: Record<string, unknown>[] = [];
+  const pooledNoShrink: MatchedRow[] = [];
+  const pooledShrink: MatchedRow[] = [];
+  for (const holdout of crossLeagueHoldouts) {
+    const [{ allMatched: noShrink }, { allMatched: withShrink }] = await Promise.all([
+      runBacktest(holdout, { excludeLeague: holdout, shrinkWeight: 0 }, currencyTypes, false),
+      runBacktest(holdout, { excludeLeague: holdout, shrinkWeight: PEER_SHRINK_WEIGHT }, currencyTypes, false),
+    ]);
+    // Not push(...array) - these arrays can exceed the JS engine's max call-stack argument count.
+    for (const row of noShrink) pooledNoShrink.push(row);
+    for (const row of withShrink) pooledShrink.push(row);
+    const a = summarize(chaosPairs(noShrink));
+    const b = summarize(chaosPairs(withShrink));
+    perHoldoutRows.push({
+      holdout,
+      n: a.n,
+      "Pearson (no shrink)": a.pearson.toFixed(3),
+      "Pearson (shrink)": b.pearson.toFixed(3),
+      "MAE (no shrink)": a.mae.toFixed(3),
+      "MAE (shrink)": b.mae.toFixed(3),
+      "dir% (no shrink)": Math.round(a.directionalAccuracy * 100),
+      "dir% (shrink)": Math.round(b.directionalAccuracy * 100),
+    });
+  }
+  console.table(perHoldoutRows);
+
+  const pooledA = summarize(chaosPairs(pooledNoShrink));
+  const pooledB = summarize(chaosPairs(pooledShrink));
+  console.log(`\n--- Pooled across all ${crossLeagueHoldouts.length} holdouts above ---`);
+  console.table([
+    { variant: "no shrink (pooled)", n: pooledA.n, pearson_r: pooledA.pearson.toFixed(3), MAE: pooledA.mae.toFixed(3), "dir. accuracy%": Math.round(pooledA.directionalAccuracy * 100) },
+    { variant: "with shrink (pooled)", n: pooledB.n, pearson_r: pooledB.pearson.toFixed(3), MAE: pooledB.mae.toFixed(3), "dir. accuracy%": Math.round(pooledB.directionalAccuracy * 100) },
+  ]);
 
   // --- Confidence tiers: does the badge the UI shows actually mean anything? ---
   // The gate for shipping the confidence column. Each row's score came from the training leagues
