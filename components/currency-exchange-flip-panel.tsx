@@ -61,10 +61,10 @@ export function CurrencyExchangeFlipPanel() {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "profitPercent", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
-  // Starts empty (show every tier) rather than hiding Low by default - unlike the flip-suggestions
-  // table's confidence filter, this page's whole point is showing raw spreads and letting the
-  // Liquidity column inform the judgment call, not curating them away up front.
-  const [hiddenLiquidityTiers, setHiddenLiquidityTiers] = useState<Set<LiquidityTier>>(() => new Set());
+  // Low hidden by default, same "curated by default" philosophy as the flip-suggestions table's
+  // confidence filter - a Low-liquidity row's profit % is usually a couple of trades' worth of
+  // ratio-rounding noise, not a real opportunity, so it's not worth showing until asked for.
+  const [hiddenLiquidityTiers, setHiddenLiquidityTiers] = useState<Set<LiquidityTier>>(() => new Set(["low"]));
   const [isPending, startTransition] = useTransition();
 
   const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
@@ -289,7 +289,7 @@ export function CurrencyExchangeFlipPanel() {
                     <div className="flex justify-center">
                       <Badge
                         variant={LIQUIDITY_VARIANT[s.liquidity]}
-                        title={`${s.volumeChaos.toLocaleString()}c volume, ${s.volumeItem.toLocaleString()} units traded, ${s.stock.toLocaleString()} listed this hour`}
+                        title={`Volume this hour: ${s.volumeChaos.toLocaleString()}c (${s.volumeItem.toLocaleString()} traded)\nOffers available: ${s.itemStock.toLocaleString()} to buy, ${s.chaosStock.toLocaleString()}c to sell into`}
                       >
                         {LIQUIDITY_LABEL[s.liquidity]}
                       </Badge>

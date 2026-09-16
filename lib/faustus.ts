@@ -847,9 +847,13 @@ export interface FaustusSpread {
   volumeChaos: number;
   /** The item's own unit volume traded that hour. */
   volumeItem: number;
-  /** Units of the item listed (highest_stock reached that hour) - a depth signal distinct from
-   *  volume: volume is what actually traded, stock is what's sitting there available to trade against. */
-  stock: number;
+  /** Units of the item listed for trade (highest_stock reached that hour) - the "offers available"
+   *  to buy: a depth signal distinct from volume, since volume is what actually traded and this is
+   *  what's sitting there right now available to trade against. */
+  itemStock: number;
+  /** Chaos Orb listed on the other side of this same pair (highest_stock reached that hour) - the
+   *  "offers available" to sell into: how much chaos liquidity exists to absorb a sell order. */
+  chaosStock: number;
   /** Gold cost to place a buy order for one unit - see lib/faustus-gold.ts. Undefined when that
    *  table doesn't cover this item at all (a genuine gap, not a zero cost). */
   goldCost?: GoldCost;
@@ -882,7 +886,7 @@ export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]
     if (id === CHAOS_ID) continue; // Chaos Orb has no spread against itself.
 
     let best:
-      | { buy: number; sell: number; volumeChaos: number; volumeItem: number; stock: number }
+      | { buy: number; sell: number; volumeChaos: number; volumeItem: number; itemStock: number; chaosStock: number }
       | undefined;
     for (const m of markets) {
       if (!m.market_pair.includes(id) || !m.market_pair.includes(CHAOS_ID)) continue;
@@ -904,7 +908,8 @@ export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]
           sell: Math.max(a, b),
           volumeChaos,
           volumeItem: m.volume_traded[id] ?? 0,
-          stock: m.highest_stock[id] ?? 0,
+          itemStock: m.highest_stock[id] ?? 0,
+          chaosStock: m.highest_stock[CHAOS_ID] ?? 0,
         };
       }
     }
@@ -920,7 +925,8 @@ export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]
       spreadChaosValue: best.sell - best.buy,
       volumeChaos: best.volumeChaos,
       volumeItem: best.volumeItem,
-      stock: best.stock,
+      itemStock: best.itemStock,
+      chaosStock: best.chaosStock,
       goldCost: goldCostFor(name, id),
     });
   }
