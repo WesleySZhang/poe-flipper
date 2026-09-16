@@ -616,7 +616,7 @@ export function PriceHistoryChart({
                 <polyline
                   fill="none"
                   stroke={s.color}
-                  strokeWidth={1.5}
+                  strokeWidth={1}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                   points={s.points.map((p) => `${xScale(p.dayOffset)},${yScale(p.value)}`).join(" ")}
