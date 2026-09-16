@@ -4,7 +4,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function MirageSimulatorPage() {
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-2 sm:p-6">
       <header className="flex items-start justify-between gap-4">
         <div>
           <Link
