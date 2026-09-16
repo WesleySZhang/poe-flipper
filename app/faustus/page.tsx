@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FaustusSpreadsPanel } from "@/components/faustus-spreads-panel";
+import { CurrencyExchangeFlipPanel } from "@/components/currency-exchange-flip-panel";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CURRENT_LEAGUE } from "@/lib/league-recency";
 
@@ -14,17 +14,17 @@ export default function FaustusPage() {
           >
             &larr; Dashboard
           </Link>
-          <h1 className="mt-2 text-2xl font-semibold">Faustus spreads - {CURRENT_LEAGUE}</h1>
+          <h1 className="mt-2 text-2xl font-semibold">Currency Exchange Flip - {CURRENT_LEAGUE}</h1>
           <p className="text-sm text-muted-foreground">
-            Buy/sell price spreads on GGG&apos;s Currency Exchange for same-day flipping - not a projection like the
-            rest of this app, just what the exchange itself already shows about how far an item&apos;s price moved
-            within the last hour it traded.
+            Buy/sell price spreads on GGG&apos;s Currency Exchange (the &quot;Faustus&quot; NPC) for same-day
+            flipping - not a projection like the rest of this app, just what the exchange itself already shows about
+            how far an item&apos;s price moved within the last hour it traded.
           </p>
         </div>
         <ThemeToggle />
       </header>
 
-      <FaustusSpreadsPanel />
+      <CurrencyExchangeFlipPanel />
     </div>
   );
 }

@@ -26,7 +26,7 @@ export function Dashboard() {
             href="/faustus"
             className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
-            Faustus spreads
+            Currency Exchange Flip
           </Link>
           <ThemeToggle />
         </div>

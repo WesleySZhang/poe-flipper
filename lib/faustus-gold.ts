@@ -8,7 +8,7 @@
  * when the wiki's numbers change.
  *
  * The cost is charged PER ITEM on the "want"/buy side of an order, so a flip's total gold spend is
- * (units bought x costPerItem) - see components/faustus-spreads-panel.tsx for how that turns into a
+ * (units bought x costPerItem) - see components/currency-exchange-flip-panel.tsx for how that turns into a
  * "chaos profit per 1000 gold" ranking, which is the number that matters once gold (not chaos) is
  * the binding constraint on how much you can flip in a day.
  *
