@@ -471,6 +471,15 @@ export function PriceHistoryChart({
           // reach anywhere near the hovered day shouldn't show a misleading value.
           .filter(({ point }) => Math.abs(point.dayOffset - hoverDay) <= 5);
 
+  const hoverPercent = hoverDay === undefined ? 0 : (xScale(hoverDay) / VIEW_WIDTH) * 100;
+  // Centered on the hover point normally, but flipped to hang off the near edge instead once the
+  // cursor gets close to either side of the chart - otherwise a centered tooltip near the right
+  // edge overflows past the table's own overflow-x-auto container (see ui/table.tsx) and gets
+  // silently clipped rather than visibly overflowing. Thresholds are on the SVG's own 0-100%
+  // coordinate space, not the rendered pixel width, so this doesn't need to measure the tooltip's
+  // actual (data-dependent) width.
+  const tooltipTranslateX = hoverPercent > 85 ? "-100%" : hoverPercent < 15 ? "0%" : "-50%";
+
   return (
     <div className="flex flex-col gap-2">
       <div className="relative w-full" style={{ aspectRatio: CHART_ASPECT_RATIO }}>
@@ -628,8 +637,8 @@ export function PriceHistoryChart({
 
         {hoverDay !== undefined && !isChartDragging && hoverRows.length > 0 && (
           <div
-            className="pointer-events-none absolute top-2 -translate-x-1/2 overflow-hidden rounded-md border border-border shadow-sm"
-            style={{ left: `${((xScale(hoverDay) / VIEW_WIDTH) * 100).toFixed(2)}%` }}
+            className="pointer-events-none absolute top-2 overflow-hidden rounded-md border border-border shadow-sm"
+            style={{ left: `${hoverPercent.toFixed(2)}%`, transform: `translateX(${tooltipTranslateX})` }}
           >
             {/* Translucent/blurred backdrop as its own layer, behind the text - keeps the text at
                 full opacity regardless of how transparent this background is. */}
