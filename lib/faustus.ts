@@ -860,13 +860,14 @@ export interface FaustusSpread {
 }
 
 /**
- * Buy/sell spread for every Faustus-tradeable item that has a direct market against Chaos Orb this
- * league - the same "steady price, real market" question getFaustusPrices already answers, but
- * keeping both ends of the hour's trade range instead of collapsing them to one midpoint. Scoped to
- * chaos-paired markets only (not the getFaustusPrices fallback through Divine) - a spread computed
- * by converting both ends through a second pair's own low/high range would compound two markets'
- * uncertainty into one number, and the vast majority of mapped items (515 of 657, checked live) do
- * have a direct Chaos pair, so that scope covers everything a same-day flip realistically needs.
+ * Buy/sell spread for every Faustus-tradeable item that has a market this hour, either directly
+ * against Chaos Orb or (for items GGG's exchange never opens a Chaos pair for at all - Mirror of
+ * Kalandra, Hinekora's Lock, ...) against Divine Orb, converted through that same hour's Divine/
+ * Chaos rate. Same "steady price, real market" question getFaustusPrices already answers, but
+ * keeping both ends of the hour's trade range instead of collapsing them to one midpoint. The
+ * direct Chaos pair is always preferred when one exists - the vast majority of mapped items (515 of
+ * 657, checked live) have one - since converting through a second market compounds its own
+ * uncertainty into the number; the Divine path only runs at all when no Chaos pair was found.
  */
 export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]> {
   const markets = await fetchExchangeMarkets(league);
@@ -913,6 +914,40 @@ export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]
         };
       }
     }
+
+    // Fallback for items with no direct Chaos market this hour - a handful of very high-value
+    // items (Mirror of Kalandra, Hinekora's Lock) only ever trade against Divine Orb; GGG's
+    // exchange doesn't open every pair for every item. Same "each extremum is its own
+    // self-contained quote" math as above, converted through this hour's Divine/Chaos rate rather
+    // than skipping the item entirely. volumeChaos/chaosStock become chaos-EQUIVALENT (Divine
+    // volume/stock multiplied through the same rate) rather than literal Chaos Orb activity, so
+    // the Liquidity column's chaos-denominated thresholds still mean the same thing across both
+    // origins - noted here since nothing in the returned shape distinguishes the two paths.
+    if (!best && divineChaosRate !== undefined && id !== DIVINE_ID) {
+      for (const m of markets) {
+        if (!m.market_pair.includes(id) || !m.market_pair.includes(DIVINE_ID)) continue;
+        const idLow = m.lowest_ratio[id];
+        const idHigh = m.highest_ratio[id];
+        const divLow = m.lowest_ratio[DIVINE_ID];
+        const divHigh = m.highest_ratio[DIVINE_ID];
+        if (!idLow || !idHigh || !divLow || !divHigh) continue;
+        const a = (divLow / idLow) * divineChaosRate;
+        const b = (divHigh / idHigh) * divineChaosRate;
+        const volumeDivine = m.volume_traded[DIVINE_ID] ?? 0;
+        const volumeChaos = volumeDivine * divineChaosRate;
+        if (!best || volumeChaos > best.volumeChaos) {
+          best = {
+            buy: Math.min(a, b),
+            sell: Math.max(a, b),
+            volumeChaos,
+            volumeItem: m.volume_traded[id] ?? 0,
+            itemStock: m.highest_stock[id] ?? 0,
+            chaosStock: (m.highest_stock[DIVINE_ID] ?? 0) * divineChaosRate,
+          };
+        }
+      }
+    }
+
     if (!best || !(best.buy > 0)) continue;
 
     results.push({

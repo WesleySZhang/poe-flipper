@@ -13,7 +13,6 @@ import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { FaustusSpread } from "@/lib/faustus";
-import type { GoldCost } from "@/lib/faustus-gold";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { liquidityTier, type LiquidityTier } from "@/lib/liquidity";
@@ -22,22 +21,11 @@ import { activePrice, activeRatio, formatPercentChange, formatPriceValue, priceU
 
 const PAGE_SIZE = 25;
 
-type SortKey = "buy" | "sell" | "profitPercent" | "profitAbs" | "gold" | "profitPerGold";
+type SortKey = "buy" | "sell" | "profitPercent" | "profitAbs" | "profitPerGold";
 
 // Same variant-as-state vocabulary as ConfidenceBadge - no green/amber, red stays reserved for warnings.
 const LIQUIDITY_VARIANT = { high: "default", medium: "secondary", low: "outline" } as const;
 const LIQUIDITY_LABEL = { high: "High", medium: "Medium", low: "Low" } as const;
-
-function formatGold(cost: GoldCost | undefined): string {
-  if (!cost) return "—";
-  const rounded = cost.perItem >= 1 ? Math.round(cost.perItem) : cost.perItem.toFixed(3);
-  return `${cost.approximate ? "~" : ""}${rounded}g`;
-}
-
-function goldTitle(cost: GoldCost | undefined): string | undefined {
-  if (!cost) return "No published gold cost for this item.";
-  return cost.approximate ? cost.note : undefined;
-}
 
 async function fetchFaustusSpreads(): Promise<FaustusSpread[]> {
   const res = await fetch("/api/faustus-spreads");
@@ -116,8 +104,6 @@ export function CurrencyExchangeFlipPanel() {
             return activeRatio(s.chaosRatio, s.divineRatio, priceUnit);
           case "profitAbs":
             return activePrice(s.spreadChaosValue, s.spreadDivineValue, priceUnit);
-          case "gold":
-            return s.goldCost?.perItem;
           case "profitPerGold":
             return s.profitPer1000Gold;
         }
@@ -242,7 +228,6 @@ export function CurrencyExchangeFlipPanel() {
                   onSort={handleSort}
                   className="hidden sm:table-cell"
                 />
-                <SortableHeader label="Gold" sortKey="gold" sort={sort} onSort={handleSort} className="hidden sm:table-cell" />
                 <SortableHeader
                   label="Profit / 1k gold"
                   sortKey="profitPerGold"
@@ -271,9 +256,6 @@ export function CurrencyExchangeFlipPanel() {
                   </TableCell>
                   <TableCell className="hidden text-right sm:table-cell">
                     {formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, priceUnit)}
-                  </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell" title={goldTitle(s.goldCost)}>
-                    {formatGold(s.goldCost)}
                   </TableCell>
                   <TableCell className="hidden max-w-[90px] text-right sm:table-cell">
                     {s.profitPer1000Gold !== undefined ? (
