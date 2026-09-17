@@ -1,3 +1,4 @@
+import { jsonResponse } from "@/lib/api-response";
 import { getFlipSuggestions } from "@/lib/flip-suggestions";
 import { currentLeagueDay } from "@/lib/league-day";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const durationDays = Number(searchParams.get("durationDays"));
   if (!Number.isFinite(durationDays)) {
-    return Response.json({ error: "durationDays must be a number" }, { status: 400 });
+    return jsonResponse({ error: "durationDays must be a number" }, request, { status: 400 });
   }
 
   // Optional override so a testing tool can replay the model against a past league day while still
@@ -17,9 +18,9 @@ export async function GET(request: Request) {
   const currentDayParam = searchParams.get("currentDay");
   const currentDay = currentDayParam !== null ? Number(currentDayParam) : currentLeagueDay(CURRENT_LEAGUE_START_DATE);
   if (!Number.isFinite(currentDay)) {
-    return Response.json({ error: "currentDay must be a number" }, { status: 400 });
+    return jsonResponse({ error: "currentDay must be a number" }, request, { status: 400 });
   }
 
   const suggestions = await getFlipSuggestions(CURRENT_LEAGUE, currentDay, durationDays);
-  return Response.json(suggestions);
+  return jsonResponse(suggestions, request);
 }

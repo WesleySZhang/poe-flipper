@@ -1,3 +1,4 @@
+import { jsonResponse } from "@/lib/api-response";
 import { getFaustusPrice } from "@/lib/faustus";
 import { CURRENT_LEAGUE } from "@/lib/league-recency";
 
@@ -9,16 +10,17 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const name = searchParams.get("name");
   if (!name) {
-    return Response.json({ error: "name is required" }, { status: 400 });
+    return jsonResponse({ error: "name is required" }, request, { status: 400 });
   }
 
   const price = await getFaustusPrice(name, CURRENT_LEAGUE);
   if (!price) {
-    return Response.json(
+    return jsonResponse(
       { error: "No Faustus (Currency Exchange) price available for this item right now." },
+      request,
       { status: 404 }
     );
   }
 
-  return Response.json(price);
+  return jsonResponse(price, request);
 }

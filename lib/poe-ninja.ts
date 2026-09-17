@@ -172,7 +172,15 @@ export interface CurrencyPrice {
 /** Price (+ type, for filtering) keyed by currency/fragment name, merged across all currency overview types. */
 export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<string, CurrencyPrice>> {
   const prices = new Map<string, CurrencyPrice>();
-  const stashResults = await Promise.all(CURRENCY_OVERVIEW_TYPES.map((type) => fetchCurrencyOverviewRaw(league, type)));
+  // Both requested concurrently - the exchange overview below doesn't depend on the stash batch's
+  // results, only on the tradeIdToName lookup built FROM them further down, so there's no reason
+  // to wait for the stash batch to finish before even starting this one (was previously a fully
+  // separate, sequential await AFTER the stash Promise.all - measured at ~1.6s on its own, one of
+  // the single slowest calls in the whole fan-out, entirely wasted as serial latency).
+  const [stashResults, exchangeLines] = await Promise.all([
+    Promise.all(CURRENCY_OVERVIEW_TYPES.map((type) => fetchCurrencyOverviewRaw(league, type))),
+    getExchangeOverview(league, "Currency"),
+  ]);
 
   // Currency Exchange lines below are keyed by a short id ("chaos", "alch") rather than a display
   // name - build the id->name lookup from whichever stash responses happen to carry it, since
@@ -200,7 +208,6 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   // The base "Currency" bucket (Chaos/Divine/Exalted/Alch/...) prefers Currency Exchange pricing
   // over the stash-listing scrape above - see getExchangeOverview's comment. Falls back to the
   // stash value set above for any line whose tradeId doesn't resolve to a name.
-  const exchangeLines = await getExchangeOverview(league, "Currency");
   for (const line of exchangeLines) {
     const name = tradeIdToName.get(line.id);
     if (name) prices.set(name, { chaosValue: line.primaryValue, type: "Currency" });

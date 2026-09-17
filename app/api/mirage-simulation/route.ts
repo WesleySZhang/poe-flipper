@@ -1,3 +1,4 @@
+import { jsonResponse } from "@/lib/api-response";
 import { simulateMirageLeague } from "@/lib/mirage-simulator";
 
 // A plain read - deliberately a Route Handler rather than a Server Action. In Next's dev server,
@@ -11,9 +12,9 @@ export async function GET(request: Request) {
   const durationDays = Number(searchParams.get("durationDays"));
 
   if (!Number.isFinite(currentDay) || !Number.isFinite(durationDays)) {
-    return Response.json({ error: "currentDay and durationDays must be numbers" }, { status: 400 });
+    return jsonResponse({ error: "currentDay and durationDays must be numbers" }, request, { status: 400 });
   }
 
   const rows = await simulateMirageLeague(currentDay, durationDays);
-  return Response.json(rows);
+  return jsonResponse(rows, request);
 }

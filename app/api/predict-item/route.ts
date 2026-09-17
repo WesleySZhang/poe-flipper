@@ -1,3 +1,4 @@
+import { jsonResponse } from "@/lib/api-response";
 import {
   getCurrencyGrowthRatiosBatch,
   getItemGrowthRatiosBatch,
@@ -24,13 +25,13 @@ export async function GET(request: Request) {
   const durationDays = Number(searchParams.get("durationDays"));
 
   if (category !== "currency" && category !== "item") {
-    return Response.json({ error: "category must be 'currency' or 'item'" }, { status: 400 });
+    return jsonResponse({ error: "category must be 'currency' or 'item'" }, request, { status: 400 });
   }
   if (!name) {
-    return Response.json({ error: "name is required" }, { status: 400 });
+    return jsonResponse({ error: "name is required" }, request, { status: 400 });
   }
   if (!Number.isFinite(currentDay) || !Number.isFinite(durationDays)) {
-    return Response.json({ error: "currentDay and durationDays must be numbers" }, { status: 400 });
+    return jsonResponse({ error: "currentDay and durationDays must be numbers" }, request, { status: 400 });
   }
 
   // Uses the *Batch functions (normally reserved for the backtest) purely for their
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
     const error = coverage
       ? `This item has price data from day ${coverage.minDay} to day ${coverage.maxDay} (in ${coverage.leagues.join(", ")}), but none close enough to day ${currentDay}/day ${currentDay + durationDays} to predict from. Try a Current day within that range.`
       : "No historical price data for this item at all - it may not have existed in past leagues, or exists under a slightly different name/variant.";
-    return Response.json({ error }, { status: 404 });
+    return jsonResponse({ error }, request, { status: 404 });
   }
 
   // A single past league (or two) can't have demonstrated real reliability yet, no matter which
@@ -69,14 +70,17 @@ export async function GET(request: Request) {
   const confidence =
     match.leagueCount < MIN_LEAGUES_WITH_DATA ? Math.min(match.confidence, MEDIUM_TIER_MIN - 1) : match.confidence;
 
-  return Response.json({
-    avgRatio: match.avgRatio,
-    avgRatioDivine: match.avgRatioDivine,
-    leagueCount: match.leagueCount,
-    leagueCountDivine: match.leagueCountDivine,
-    confidence,
-    confidenceDivine: match.confidenceDivine,
-    upFraction: match.upFraction,
-    upFractionDivine: match.upFractionDivine,
-  });
+  return jsonResponse(
+    {
+      avgRatio: match.avgRatio,
+      avgRatioDivine: match.avgRatioDivine,
+      leagueCount: match.leagueCount,
+      leagueCountDivine: match.leagueCountDivine,
+      confidence,
+      confidenceDivine: match.confidenceDivine,
+      upFraction: match.upFraction,
+      upFractionDivine: match.upFractionDivine,
+    },
+    request
+  );
 }
