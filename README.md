@@ -13,7 +13,9 @@ league economy data.
   DuckDB database built from historical poe.ninja price exports, compared against
   today's live price. The current league and its start date are hardcoded in
   `lib/league-recency.ts` (`CURRENT_LEAGUE`) and need updating by hand each time a new
-  challenge league launches.
+  challenge league launches. `npm run check-league` compares it against poe.ninja's own
+  live leagues list and warns if it's gone stale (see below) - run this whenever you
+  suspect a new league has launched, then update `CURRENT_LEAGUE` by hand.
 - **Confidence scoring**: each suggestion also gets a confidence tier (High/Medium/Low)
   based on how reliably that item has actually gained in past leagues, not just how big
   the predicted gain is - see `lib/confidence.ts`.
@@ -61,13 +63,17 @@ league economy data.
 
 ## Known limitations
 
-- poe.ninja has no official public API. The endpoints used here were found by
-  inspecting the site's own network traffic and may change or break without notice.
+- poe.ninja's economy/pricing endpoints aren't part of any officially documented public
+  API and may change or break without notice, though poe.ninja does publish a small API
+  reference (poe.ninja/docs/api) covering some of what's used here, including the
+  leagues-list endpoint `npm run check-league` relies on.
 - Flip suggestions are a simple heuristic (historical growth from a given day of the
   league over a given duration) - not financial/trade advice, and confidence varies
   with how many past leagues have data for a given item.
-- The current league is hardcoded (see above) rather than auto-detected, since there's
-  no clean unauthenticated endpoint for "what league is active right now".
+- The current league is hardcoded (see above) rather than fully auto-detected - poe.ninja
+  does expose a live leagues list, but switching `CURRENT_LEAGUE` also requires adding
+  the new league's release date and deciding whether/when to start training on it, which
+  isn't something to do unattended.
 - GGG's Currency Exchange API is purely historical (roughly 2 hours stale) and has no
   gold-cost field at all - the Currency Exchange Flip page's buy/sell spreads and gold
   costs are the best available approximation, not a live order book.
@@ -80,6 +86,8 @@ league economy data.
   shrinkage, training-league selection, error budget) - not part of the running app.
 - `scripts/generate-faustus-*.ts` - regenerates the Currency Exchange name/id mapping
   and its doc from RePoE data.
+- `scripts/check-current-league.ts` - compares the hardcoded `CURRENT_LEAGUE` against
+  poe.ninja's live leagues list; run via `npm run check-league`.
 - `lib/db.ts` - shared DuckDB connection.
 - `lib/poe-ninja.ts` - live poe.ninja price client (with caching).
 - `lib/growth-ratios.ts` - core historical growth-ratio queries (recency-weighted).
