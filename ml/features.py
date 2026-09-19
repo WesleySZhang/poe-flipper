@@ -15,6 +15,7 @@ has no day-by-day history in production - lib/price-history.ts).
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 
 import duckdb
@@ -47,12 +48,25 @@ def _nearest_fill(raw: np.ndarray) -> np.ndarray:
     return out
 
 
+def _causal_fill(raw: np.ndarray) -> np.ndarray:
+    """Fill NaNs from the nearest PAST day within TOLERANCE only. Used for the target league's own
+    momentum features, so they can never see a day after `t` (nearest-fill above may borrow from d+1..d+3)."""
+    out = raw.copy()
+    for dist in range(1, TOLERANCE + 1):
+        shifted = np.full_like(raw, np.nan)
+        shifted[:, dist:] = raw[:, :-dist]
+        m = np.isnan(out)
+        out[m] = shifted[m]
+    return out
+
+
 @dataclass
 class KindData:
     keys: list[str]
     key_index: dict[str, int]
     category: np.ndarray  # int codes
     logv: dict[str, np.ndarray]  # league -> (n_keys, D) log chaos value, nearest-filled
+    logv_c: dict[str, np.ndarray]  # same, causally filled (past days only) - target's own-history features
 
 
 class History:
@@ -84,11 +98,13 @@ class History:
 
         # divine log rate per league/day, nearest-filled
         self.logdiv: dict[str, np.ndarray] = {}
+        self.logdiv_c: dict[str, np.ndarray] = {}
         for lg in LEAGUES:
             arr = np.full((1, D), np.nan, dtype=np.float32)
             sub = div[div.league == lg]
             arr[0, sub.day_offset.values] = np.log(sub.chaos_per_divine.values)
             self.logdiv[lg] = _nearest_fill(arr)[0]
+            self.logdiv_c[lg] = _causal_fill(arr)[0]
 
         self.kinds: dict[str, KindData] = {}
         for kind, df in (("currency", cur), ("item", itm)):
@@ -104,14 +120,15 @@ class History:
                 cmap = category_map_currency or {}
                 cats = [cmap.get(k, "Currency") for k in keys]
             catarr = np.array([code(c) for c in cats], dtype=np.int32)
-            logv = {}
+            logv, logv_c = {}, {}
             for lg in LEAGUES:
                 arr = np.full((len(keys), D), np.nan, dtype=np.float32)
                 sub = df[df.league == lg]
                 # duplicate (key, day) rows would be a data bug; keep last defensively
                 arr[sub.key.map(kidx).values, sub.day_offset.values] = np.log(sub.value.values).astype(np.float32)
                 logv[lg] = _nearest_fill(arr)
-            self.kinds[kind] = KindData(keys, kidx, catarr, logv)
+                logv_c[lg] = _causal_fill(arr)
+            self.kinds[kind] = KindData(keys, kidx, catarr, logv, logv_c)
 
     @property
     def n_categories(self) -> int:
@@ -128,6 +145,46 @@ FEATURE_COLS = [
     "peer_ref_mean", "peer_refd_mean", "peer_rel_level", "peer_n", "shrunk_base",
     "ref_mean_pct", "rel_level_pct",
 ]
+
+# ---- momentum: the target league's own last-7-days path. poe.ninja's live API returns exactly this
+# (a 7-point sparkline of daily % change, verified to match the stored daily history point for point),
+# so these are available for a live league even though it has no stored history of its own.
+MOM_COLS = [
+    "mom1", "mom3", "mom6", "vol6", "accel",           # own recent trend / shape
+    "ref_mom6", "rel_mom6", "rel_mom3",                 # ... relative to what past leagues did at the same day
+    "mom6_pct", "rel_mom6_pct", "mom6_dm", "mkt_mom6", "peer_mom6",  # cross-sectional / market context
+    "div_mom6", "rel_div_mom6",                         # the divine orb's own momentum (chaos debasement pace)
+]
+# ---- analog forecasting + convergence: use each past league's OWN ratio, weighted by how similar its
+# situation at day t was (momentum-matched / level-matched), instead of a flat average.
+ANALOG_COLS = ["r_last", "r_prev", "analog_mom", "analog_lvl", "conv_full", "rel_level_w"]
+# ---- full own-history features: NOT available live today (the app stores no daily history for the
+# current league). Used only to measure how much a daily price log for the live league would add.
+HIST_COLS = ["growth0", "rel_growth0", "dd_peak", "above_mean", "mom14"]
+# ---- denoising: single-day prices are noisy, so average the reference ratio over shifted endpoints (t+d,
+# t+h+d for d in -2..2) and compare a 3-day-smoothed level (the sparkline gives the last 7 days live).
+SMOOTH_COLS = ["ref_mean_sm", "peer_ref_sm", "shrunk_sm", "dev_sm3", "rel_level_sm", "rel_level_sm_pct"]
+KIND_COLS = ["is_cur"]
+NEW_COLS = MOM_COLS + ANALOG_COLS + HIST_COLS + SMOOTH_COLS + KIND_COLS
+
+
+def _nth_last_valid(A: np.ndarray, n: int) -> np.ndarray:
+    """Along axis 0 (ordered oldest -> newest league), the n-th most recent non-NaN value per column."""
+    out = np.full(A.shape[1], np.nan, dtype=np.float32)
+    seen = np.zeros(A.shape[1], dtype=int)
+    for i in range(A.shape[0] - 1, -1, -1):
+        v = A[i]
+        ok = ~np.isnan(v)
+        take = ok & (seen == n - 1)
+        out[take] = v[take]
+        seen += ok
+    return out
+
+
+def _weighted_mean(vals: np.ndarray, w: np.ndarray) -> np.ndarray:
+    ok = ~np.isnan(vals)
+    ww = np.where(ok, w, 0.0)
+    return np.where(ww.sum(0) > 0, np.where(ok, vals * w, 0.0).sum(0) / np.maximum(ww.sum(0), 1e-12), np.nan)
 
 
 def scenario_features(
@@ -197,6 +254,70 @@ def scenario_features(
         else:
             ref_pre_mean = np.full(len(idx), np.nan, dtype=np.float32)
 
+        # ---------------- momentum (target's own last-7-days path; causal, never past day t) ----------
+        Cc = kd.logv_c[target]
+        nan_n = np.full(len(idx), np.nan, dtype=np.float32)
+
+        def lag(k):
+            return (Cc[idx, t] - Cc[idx, t - k]).astype(np.float32) if t >= k else nan_n
+
+        def ref_lag(k):
+            return np.stack([kd.logv[l][idx, t] - kd.logv[l][idx, t - k] for l in refs]) if t >= k else None
+
+        mom1, mom3, mom6 = lag(1), lag(3), lag(6)
+        if t >= 6:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                vol6 = np.nanstd(np.diff(Cc[idx, t - 6 : t + 1], axis=1), axis=1).astype(np.float32)
+                rm6, rm3 = ref_lag(6), ref_lag(3)
+                ref_mom6, ref_mom3 = np.nanmean(rm6, 0), np.nanmean(rm3, 0)
+                ref_div_mom6 = float(np.nanmean([hist.logdiv[l][t] - hist.logdiv[l][t - 6] for l in refs]))
+            accel = mom3 - (mom6 - mom3)
+            div_mom6 = float(hist.logdiv_c[target][t] - hist.logdiv_c[target][t - 6])
+            rel_div_mom6 = div_mom6 - ref_div_mom6
+        else:
+            vol6, accel, ref_mom6, ref_mom3, rm6 = nan_n, nan_n, nan_n, nan_n, None
+            div_mom6 = rel_div_mom6 = np.nan
+        rel_mom6, rel_mom3 = mom6 - ref_mom6, mom3 - ref_mom3
+
+        # ---------------- analog forecasting: weight each past league's own ratio by similarity --------
+        r_last, r_prev = _nth_last_valid(r_v, 1), _nth_last_valid(r_v, 2)
+        if rm6 is not None:  # momentum-matched: leagues whose item was moving like this one at day t
+            w_mom = np.exp(-0.5 * ((mom6[None, :] - rm6) / 0.2) ** 2)
+            w_mom = np.where(np.isnan(w_mom), 0.0, w_mom) + 1e-3  # no signal -> equal weights
+            analog_mom = _weighted_mean(r_v, w_mom).astype(np.float32)
+        else:
+            analog_mom = ref_mean
+        w_lvl = np.exp(-0.5 * ((xn[None, :] - ref_lvl) / 0.7) ** 2)  # level-matched
+        analog_lvl = _weighted_mean(r_v, np.where(np.isnan(w_lvl), 0.0, w_lvl) + 1e-3).astype(np.float32)
+        conv_full = ref_mean - rel_level  # "converge to the reference leagues' price at t+h"
+        rel_level_w = np.clip(rel_level, -2, 2)
+
+        # ---------------- own-history features (NOT available live; measures value of a daily price log) ----
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            growth0 = (xn - Cc[idx, 0]).astype(np.float32)
+            rel_growth0 = growth0 - ref_pre_mean
+            dd_peak = (xn - np.nanmax(Cc[idx, : t + 1], axis=1)).astype(np.float32)
+            above_mean = (xn - np.nanmean(Cc[idx, : t + 1], axis=1)).astype(np.float32)
+        mom14 = lag(14)
+
+        # ---------------- denoising ----------------
+        D_all = Vt.shape[1]
+        sm_parts = []
+        for dlt in (-2, -1, 0, 1, 2):
+            a, b = t + dlt, t + h + dlt
+            if 0 <= a and b < D_all:
+                sm_parts.append(np.stack([kd.logv[l][idx, b] - kd.logv[l][idx, a] for l in refs]))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ref_mean_sm = np.nanmean(np.concatenate(sm_parts, axis=0), axis=0).astype(np.float32)
+            lo_d = max(0, t - 2)
+            xsm3 = np.nanmean(Cc[idx, lo_d : t + 1], axis=1).astype(np.float32)
+            ref_lvl_sm = np.nanmean(np.stack([np.nanmean(kd.logv[l][idx, lo_d : t + 1], axis=1) for l in refs]), axis=0)
+        dev_sm3 = xn - xsm3
+        rel_level_sm = xsm3 - ref_lvl_sm
+
     df = pd.DataFrame(
         {
             "t": t, "h": h,
@@ -210,6 +331,15 @@ def scenario_features(
             "ref_level_std": ref_level_std, "ref_pre_mean": ref_pre_mean,
             "macro_div_rel": macro_div_rel, "div_now": div_now_t,
             "y": (x_fut[idx] - x_now[idx]),
+            "mom1": mom1, "mom3": mom3, "mom6": mom6, "vol6": vol6, "accel": accel,
+            "ref_mom6": ref_mom6, "rel_mom6": rel_mom6, "rel_mom3": rel_mom3,
+            "div_mom6": div_mom6, "rel_div_mom6": rel_div_mom6,
+            "r_last": r_last, "r_prev": r_prev, "analog_mom": analog_mom, "analog_lvl": analog_lvl,
+            "conv_full": conv_full, "rel_level_w": rel_level_w,
+            "growth0": growth0, "rel_growth0": rel_growth0, "dd_peak": dd_peak, "above_mean": above_mean,
+            "mom14": mom14,
+            "ref_mean_sm": ref_mean_sm, "dev_sm3": dev_sm3, "rel_level_sm": rel_level_sm,
+            "is_cur": float(kind == "currency"),
         }
     )
     # divine-denominated label
@@ -224,6 +354,17 @@ def scenario_features(
     df["shrunk_base"] = 0.5 * df["ref_mean"] + 0.5 * df["peer_ref_mean"]
     df["ref_mean_pct"] = df["ref_mean"].rank(pct=True)
     df["rel_level_pct"] = df["rel_level"].rank(pct=True)
+    # cross-sectional momentum context (same scenario, same kind): a rank, market mean and peer mean
+    df["mkt_mom6"] = df["mom6"].mean()
+    df["mom6_dm"] = df["mom6"] - df["mkt_mom6"]
+    df["mom6_pct"] = df["mom6"].rank(pct=True)
+    df["rel_mom6_pct"] = df["rel_mom6"].rank(pct=True)
+    df["peer_mom6"] = g["mom6"].transform("mean")
+    df["peer_ref_sm"] = g["ref_mean_sm"].transform("mean")
+    df["shrunk_sm"] = 0.5 * df["ref_mean_sm"] + 0.5 * df["peer_ref_sm"]
+    df["rel_level_sm_pct"] = df["rel_level_sm"].rank(pct=True)
+    num = [c for c in NEW_COLS if c in df.columns]
+    df[num] = df[num].astype("float32")
     df["kind"] = kind
     return df
 

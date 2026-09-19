@@ -19,7 +19,7 @@ model ignores, not from model complexity.** Details, method, and caveats below.
 - **Only features production genuinely has** for a live league: other leagues' trajectories for the
   item, the item's *current live price*, the divine orb's current price, league day `t`, horizon `h`,
   category. Never the target league's own history/future (the current league has no daily history in
-  production).
+  production). Round 2 below adds exactly one more input the live API does provide: poe.ninja's 7-day sparkline.
 - **Pipeline validated first** (`check_features.py`): it reproduces 100% of production's rows with
   identical labels, and my re-derived peer-shrunk estimate correlates 0.997 with production's
   prediction and scores the same Spearman vs reality (0.3065 vs 0.3066 on Mirage).
@@ -91,6 +91,98 @@ production's own signal deserves only ~0.26 weight and price-vs-history carries 
   h 3-30). A production port should be trained on / checked at the days users actually query.
 - Ranking edge is not a guarantee of profit: no spread/fees/liquidity modelled in these numbers.
 
+## Round 2: momentum, trends, and other model families (early league, t = 0-25)
+
+Motivation: early-league predictions matter most (currency roughly doubles-to-triples in the first weeks, and
+dispersion between items is widest then), so round 2 evaluates *early* scenarios, currency separately, and
+by league-day bucket. Same leave-one-league-out protocol, same production rows; headline metric is the
+**per-scenario Spearman** (rank items within one league/kind/day/horizon - market-wide moves cancel).
+
+### The momentum signal is available live
+
+poe.ninja's API already returns a **7-day sparkline** that the app currently discards
+(`receiveSparkLine` / `sparkline` / `sparkLine`: 7 points, % change vs 6-7 days ago). Coverage on live Allflame:
+currency and exchange lines 100%, uniques 79-97%, skill gems 76%. Validated against the stored daily history of
+Mirage: the first six points match our history (to rounding), only the last point differs (it is the live
+price, not the last daily row), and ~3% of points are `null`. So momentum from `db/history.duckdb` is a faithful
+backtest proxy. Causality of every new feature is unit-tested (`check_leakage.py`: erase the future, features unchanged).
+
+### What the data say (`trend_analysis.py`)
+
+- **Currency trends continue; items mean-revert.** Rank correlation of the 6-day change with the next return:
+  currency +0.24 (t 7-10), +0.34 at 20-30 day horizons; items ~0 (+0.03..+0.08). For items the signal is *price
+  vs. same-day history* (mean log-return +0.15 for cheap-vs-history items, -0.04..+0.01 for expensive ones) regardless of momentum, plus category-level momentum (+0.09..+0.15).
+- **Predictability is front-loaded.** Best single-signal Spearman ~0.6 at day 0 falling to ~0.15 by day 14-25;
+  cross-sectional dispersion of returns is 1.04 (currency, day 0) vs 0.35 (day 14+).
+- Currency drifts down ~15% over the first 5 days, then rises 20-50% over 20-30 days.
+
+### Results (per-scenario Spearman; production 0.328)
+
+| model | all | day 0 | day 2-4 | day 7-10 | day 14-25 | currency, day 0 / 2-4 / 7-10 / 14-25 |
+|---|---|---|---|---|---|---|
+| production | 0.328 | 0.535 | 0.440 | 0.295 | 0.135 | 0.611 / 0.515 / 0.351 / 0.144 |
+| formula F0 (2 features, round 1) | 0.412 | 0.661 | 0.561 | 0.355 | 0.182 | 0.709 / 0.570 / 0.327 / 0.137 |
+| formula, coefficients per day-bucket x kind, + momentum | 0.433 | 0.664 | 0.567 | 0.376 | 0.226 | 0.723 / 0.580 / 0.364 / 0.205 |
+| XGBoost, 21 portable features | 0.471 | 0.682 | 0.593 | 0.419 | 0.284 | 0.718 / 0.596 / 0.408 / 0.281 |
+| XGBoost, all 58 features, depth 8 | 0.488 | 0.694 | 0.612 | 0.448 | 0.292 | 0.725 / 0.616 / 0.439 / 0.279 |
+| 3 XGBoost seeds + GPU MLP (not portable) | 0.498 | 0.702 | 0.623 | 0.456 | 0.302 | 0.733 / 0.629 / 0.455 / 0.293 |
+
+**For the first ~5 days the piecewise formula captures essentially all of the ML gain** (currency top-10% mean
+log-return: production 1.03 -> formula 1.27 vs. XGBoost 1.27 at day 0; 0.98 -> 1.15 vs 1.15 at day 2-4). XGBoost pulls
+ahead from day ~7 (+0.04 currency at 7-10, +0.075 at 14-25), where momentum matters. Top-decile hit rate overall:
+production 66.8% -> formula 73.1% -> XGBoost 77.4%. Every model beats production in all five holdouts, and the 21-feature XGBoost beats the formula in
+all five (worst league: production 0.219, formula 0.345, XGBoost 0.381).
+
+Divine-denominated mode (UI toggle): production 0.330 -> XGBoost 0.443 (formula 0.398); top-decile hit rate 58.8% -> 69.4% (`divine_check.py`).
+
+### What did not help (all tested, `explore.py`)
+
+- **Learning-to-rank objectives** (pairwise, NDCG): worse than plain regression (0.443 / 0.453 vs 0.479 at the time).
+  A rank-normalised regression target is equal (0.493, best hit rate 78.7%); a demeaned target is equal.
+- **Analog forecasting** (weight each past league's own ratio by momentum/level similarity): ~0.
+- **Denoising** (reference ratio averaged over +-2 days, 3-day-smoothed level): the smoothed *ratio* is a little better,
+  the smoothed *level* is worse (the live price is the signal); net zero in XGBoost, negative in the formula.
+- **Currency-specific handling** (up-weighting currency rows x10/x40, separate per-kind models): no gain -
+  the joint model does not underserve currency.
+- **Own price history** (growth since day 0, drawdown from peak, 14-day momentum; would need a daily log of the live
+  league): +0.005 over the 7-day sparkline. Not worth building storage for.
+- **Removing league-level macro features** (divine price etc.), hypothesising they let the model memorise leagues:
+  slightly worse, so the hypothesis is refuted. Picking the top-8/12/16 features by gain also fails (0.42-0.45);
+  a hand-picked 21-feature set works (0.471), see below.
+- **Hybrid** (formula + residual trees): 0.472 at 250 depth-6 trees; with small trees it collapses to the formula.
+- Capacity matters a little: depth 8 > depth 6 (+0.01); the GPU MLP is 0.476, only useful inside an ensemble (+0.005).
+
+### Robustness (`robustness2.py`; test-time perturbation, models trained on clean data)
+
+| | formula | XGBoost (21 feat.) | production |
+|---|---|---|---|
+| clean | 0.433 | 0.471 | 0.328 |
+| +-10% noise on the live price (applied consistently to level and momentum) | 0.426 | 0.449 | |
+| +-20% | 0.410 | 0.428 | |
+| no sparkline for 25% of items | 0.427 | 0.453 | |
+| no sparkline at all | 0.408 | 0.419 | |
+
+Still well above production in every case, but XGBoost's lead over the formula halves with 20% noise
+(+0.039 -> +0.018). The observed live-vs-history difference on the last sparkline point was ~3-6%.
+
+### Deployment footprint of the portable model (`export_model.py`, `eval_model.mjs`)
+
+21 features, each computable from what the app already fetches (cross-league aggregates it already computes,
+one extra aggregate - mean past log price at day t, ~25 ms standalone on the 8.2M-row table -, the sparkline, the live
+price). Exported to a plain JSON tree list and scored with a ~15-line JavaScript evaluator; output matches XGBoost to 1e-6.
+
+| trees | LOLO Spearman | model file (raw / gzip) | inference, 13.7k rows (Node) | cold-start JSON parse |
+|---|---|---|---|---|
+| 400 (depth 8) | 0.471 | 3.8 MB / 1.2 MB | 233 ms | 7 ms |
+| 200 | 0.468 | 1.9 MB / 0.6 MB | 100 ms | 4 ms |
+| 100 | 0.463 | 0.9 MB / 0.3 MB | 44 ms | 2 ms |
+
+Free-tier notes: the model is a plain committed file, so it adds nothing to Git LFS (the 72 MB DuckDB file is the only LFS object
+and no database change is needed) and is negligible against Vercel's function size limit; the cost is CPU per
+request, which a 20-minute in-memory cache keyed on (day, horizon) - the same TTL as the poe.ninja cache - bounds to
+one evaluation per warm instance per window. To avoid Python/TypeScript feature drift, a port should generate its
+training features from the TypeScript code path (extend `scripts/export-backtest-baseline.ts`), not from `features.py`.
+
 ## Reproduce
 
     # once
@@ -110,6 +202,16 @@ production's own signal deserves only ~0.26 weight and price-vs-history carries 
     ../ml/.venv/Scripts/python robustness.py        # divine target, live-price noise
     ../ml/.venv/Scripts/python fit_final.py         # coefficients of the simple model
 
+    # round 2 (momentum etc.)
+    ../ml/.venv/Scripts/python check_leakage.py     # momentum/own-history features never see the future
+    ../ml/.venv/Scripts/python build_folds.py       # ~1 min: caches LOLO train/test sets as parquet
+    ../ml/.venv/Scripts/python explore.py run       # ~15 min GPU: every model variant, predictions cached
+    ../ml/.venv/Scripts/python explore.py report    # score everything (by day bucket, currency vs items)
+    ../ml/.venv/Scripts/python trend_analysis.py    # momentum vs mean reversion, market drift, dispersion
+    ../ml/.venv/Scripts/python robustness2.py       # live-price noise, missing sparklines
+    ../ml/.venv/Scripts/python divine_check.py      # divine-denominated mode
+    ROUNDS=200 ETA=0.1 ../ml/.venv/Scripts/python export_model.py && node eval_model.mjs  # size, parity, JS speed
+
 ## Files
 
 | file | purpose |
@@ -122,3 +224,8 @@ production's own signal deserves only ~0.26 weight and price-vs-history carries 
 | `robustness.py` | divine target; live-price noise sensitivity |
 | `fit_final.py` | fits the simple 2-feature formula for a possible port |
 | `check_features.py` | validates the pipeline against production |
+| `build_folds.py` / `explore.py` | round 2: cached LOLO folds; every model variant + scoring by day bucket / kind |
+| `trend_analysis.py` | descriptive: momentum vs reversion, market drift, dispersion |
+| `robustness2.py` / `divine_check.py` | noise + missing-sparkline tests; divine-denominated mode |
+| `check_leakage.py` | causality test for the momentum / own-history features |
+| `export_model.py` / `eval_model.mjs` | trains + exports the portable model; JS evaluator with parity + timing |
