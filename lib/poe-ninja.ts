@@ -66,9 +66,23 @@ export const ITEM_OVERVIEW_TYPES = [
 export type CurrencyOverviewType = (typeof CURRENCY_OVERVIEW_TYPES)[number];
 export type ItemOverviewType = (typeof ITEM_OVERVIEW_TYPES)[number];
 
+/** poe.ninja's 7-point price sparkline: each entry is the % change of that day's price relative to a fixed
+ *  base 6-7 days earlier (a stash currency line's first point is 0 - the base itself), oldest first; a point
+ *  is null on a day with no price. Verified to match our stored daily history point-for-point (see ml/README.md). */
+export interface SparkLine {
+  data?: Array<number | null>;
+}
+
 export interface CurrencyOverviewLine {
   currencyTypeName: string;
   chaosEquivalent: number;
+  receiveSparkLine?: SparkLine;
+}
+
+/** Returns the sparkline's points when there are enough to derive any momentum, else undefined. */
+export function sparkPointsFrom(line: SparkLine | undefined): Array<number | null> | undefined {
+  const data = line?.data;
+  return Array.isArray(data) && data.length >= 2 ? data : undefined;
 }
 
 /** poe.ninja's catalog entry for one currency - the "tradeId" here is the same short id
@@ -91,6 +105,7 @@ export interface ItemOverviewLine {
   chaosValue: number;
   /** Distinct sellers currently listing this exact name+variant - see ItemPrice.sellerCount. */
   count?: number;
+  sparkLine?: SparkLine;
 }
 
 interface CacheEntry<T> {
@@ -149,6 +164,7 @@ export interface ExchangeOverviewLine {
    *  Orb as "primary" (verified across Currency, Fragment, Scarab, Essence, DivinationCard, Tattoo,
    *  Fossil), same as CurrencyOverviewLine.chaosEquivalent. */
   primaryValue: number;
+  sparkline?: SparkLine;
 }
 
 async function getExchangeOverview(league: string, type: CurrencyOverviewType): Promise<ExchangeOverviewLine[]> {
@@ -165,6 +181,8 @@ export async function getItemOverview(league: string, type: ItemOverviewType): P
 
 export interface CurrencyPrice {
   chaosValue: number;
+  /** poe.ninja's last-7-days price path (see SparkLine) - momentum input for lib/prediction-features.ts. */
+  spark?: Array<number | null>;
   /** Which CURRENCY_OVERVIEW_TYPES bucket this came from (Currency, Fragment, Scarab, ...) - used for the category filter. */
   type: CurrencyOverviewType;
 }
@@ -198,7 +216,11 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
     const type = CURRENCY_OVERVIEW_TYPES[i];
     for (const line of data?.lines ?? []) {
       if (!prices.has(line.currencyTypeName)) {
-        prices.set(line.currencyTypeName, { chaosValue: line.chaosEquivalent, type });
+        prices.set(line.currencyTypeName, {
+          chaosValue: line.chaosEquivalent,
+          type,
+          spark: sparkPointsFrom(line.receiveSparkLine),
+        });
       }
     }
   });
@@ -210,7 +232,11 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   // stash value set above for any line whose tradeId doesn't resolve to a name.
   for (const line of exchangeLines) {
     const name = tradeIdToName.get(line.id);
-    if (name) prices.set(name, { chaosValue: line.primaryValue, type: "Currency" });
+    if (name) {
+      // Keep the stash line's sparkline if the exchange line happens to carry none.
+      const spark = sparkPointsFrom(line.sparkline) ?? prices.get(name)?.spark;
+      prices.set(name, { chaosValue: line.primaryValue, type: "Currency", spark });
+    }
   }
 
   return prices;
@@ -230,6 +256,8 @@ export interface ItemPrice {
    *  rows out. Currency overview lines have no equivalent field (poe.ninja aggregates those
    *  stash-tab-wide rather than per-listing), so CurrencyPrice has no counterpart. */
   sellerCount?: number;
+  /** poe.ninja's last-7-days price path (see SparkLine) - momentum input for lib/prediction-features.ts. */
+  spark?: Array<number | null>;
 }
 
 /**
@@ -280,6 +308,7 @@ export async function getAllCurrentItemPrices(league: string): Promise<Map<strin
           chaosValue: line.chaosValue,
           type: correctedItemType(type, line.baseType),
           sellerCount: line.count,
+          spark: sparkPointsFrom(line.sparkLine),
         });
       }
     }

@@ -24,6 +24,21 @@ export interface GrowthRatioRow {
    *  "4 of 5 leagues gained" rather than only showing a number. */
   upFraction: number;
   upFractionDivine?: number;
+  // ---- inputs for lib/prediction-features.ts (the learned predictor). All derived from the same matched
+  // per-league rows avgRatio already averages, so they cost nothing extra to scan.
+  /** log of the league-weighted mean growth ratio BEFORE peer shrinkage. */
+  rawLogRatio: number;
+  /** Std-dev of the per-league log ratios (undefined with a single league) - how much leagues disagree. */
+  ratioSpread?: number;
+  /** Weighted mean log price (chaos) the matched leagues had on the "now" day - what this item "usually"
+   *  costs at this point of a league, to compare today's live price against. */
+  refLevelLog: number;
+  /** The divine-denominated counterparts of the three fields above. */
+  rawLogRatioDivine?: number;
+  ratioSpreadDivine?: number;
+  refLevelLogDivine?: number;
+  /** Peer group this row is shrunk toward (poe.ninja type bucket for items, "currency" for all currency). */
+  peerCategory: string;
 }
 
 export interface GrowthRatioScenario {
@@ -36,6 +51,11 @@ export interface GrowthRatioScenario {
 // A historical league's day must land within this many days of the target day to count as a match -
 // otherwise a league that ended early (or started late) would silently extrapolate a misleading price.
 export const DEFAULT_TOLERANCE_DAYS = 3;
+// Every "nearest day" lookup below orders by distance THEN by day_offset. Without that second key, a league
+// that has no price on the exact day but has prices equally far either side (day-1 and day+1) was resolved
+// by whichever row DuckDB's parallel scan happened to emit first - the same query returned different ratios
+// (up to ~17% apart for a few items) on consecutive runs. Ties now deterministically take the earlier day.
+// Likewise MAX(type) instead of ANY_VALUE(type) when picking an item's peer bucket.
 // The ingested history now only covers a handful of the most recent leagues (see
 // scripts/ingest-history.ts's INCLUDED_LEAGUES), and the currently-active/backtested league is
 // always excluded on top of that, leaving at most a few training leagues - so 5 (tuned back when
@@ -114,6 +134,51 @@ const DIVINE_AGGREGATE_SQL = `
 const CONFIDENCE_AGGREGATE_SQL = `
       SUM(weight * CASE WHEN ratio > 1 THEN 1 ELSE 0 END) / NULLIF(SUM(weight), 0) AS up_fraction,
       STDDEV_SAMP(LN(ratio)) AS ratio_spread`;
+
+// What the matched leagues' prices were on the "now" day, averaged in log space with the same weights - the
+// reference level the learned predictor compares today's live price against (mean reversion signal).
+const LEVEL_AGGREGATE_SQL = `
+      SUM(weight * LN(value_now)) / NULLIF(SUM(weight), 0) AS ref_level_log,
+      SUM(weight * LN(value_now / NULLIF(rate_now, 0))) FILTER (WHERE ratio_divine > 0) /
+        NULLIF(SUM(weight) FILTER (WHERE ratio_divine > 0), 0) AS ref_level_log_divine`;
+
+/** "AND d.league NOT IN (...)": leagues are internal constants (never user input), so inlining is safe. */
+function excludeLeaguesClause(options: { excludeLeague?: string; excludeLeagues?: string[] }): string {
+  const leagues = [...(options.excludeLeagues ?? []), ...(options.excludeLeague ? [options.excludeLeague] : [])];
+  if (leagues.length === 0) return "";
+  return `AND d.league NOT IN (${leagues.map((l) => `'${l.replace(/'/g, "''")}'`).join(", ")})`;
+}
+
+function finiteOrUndefined(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return value !== null && value !== undefined && Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** One result row -> GrowthRatioRow, shared by all four queries below. */
+function growthRowFrom(
+  row: Record<string, unknown>,
+  identity: { name: string; variant?: string; peerCategory: string }
+): GrowthRatioRow {
+  const avgRatio = Number(row.avg_ratio);
+  const avgRatioDivine = divineRatioFrom(row);
+  return {
+    ...identity,
+    avgRatio,
+    leagueCount: Number(row.league_count),
+    avgRatioDivine,
+    leagueCountDivine: Number(row.league_count_divine ?? 0),
+    confidence: confidenceFrom(row),
+    confidenceDivine: confidenceDivineFrom(row),
+    upFraction: Number(row.up_fraction ?? 0),
+    upFractionDivine: upFractionDivineFrom(row),
+    rawLogRatio: Math.log(avgRatio),
+    ratioSpread: finiteOrUndefined(row.ratio_spread),
+    refLevelLog: Number(row.ref_level_log),
+    rawLogRatioDivine: avgRatioDivine !== undefined ? Math.log(avgRatioDivine) : undefined,
+    ratioSpreadDivine: avgRatioDivine !== undefined ? finiteOrUndefined(row.ratio_spread_divine) : undefined,
+    refLevelLogDivine: avgRatioDivine !== undefined ? finiteOrUndefined(row.ref_level_log_divine) : undefined,
+  };
+}
 
 // Blends each item's own noisy few-league average toward its peer group's average (poe.ninja type
 // bucket for items, all currency pooled as one group - currency_history_dayed has no type column
@@ -204,14 +269,6 @@ function shrinkToPeers<T extends ShrinkableRow>(rows: T[], categoryOf: (row: T) 
   });
 }
 
-/** Strips the internal-only peerCategory field shrinkToPeers needs back off before returning a
- *  GrowthRatioRow - callers never need to know an item's peer group, only the final blended ratio. */
-function omitPeerCategory<T extends { peerCategory: string }>(row: T): Omit<T, "peerCategory"> {
-  const clone: Partial<T> = { ...row };
-  delete clone.peerCategory;
-  return clone as Omit<T, "peerCategory">;
-}
-
 /** A divine ratio backed by fewer leagues than the chaos one is too thin to trust - drop it. */
 function divineRatioFrom(row: Record<string, unknown>): number | undefined {
   if (Number(row.league_count_divine ?? 0) < MIN_LEAGUES_WITH_DATA) return undefined;
@@ -251,6 +308,8 @@ function upFractionDivineFrom(row: Record<string, unknown>): number | undefined 
 export interface GrowthRatioOptions extends GrowthRatioScenario {
   /** Exclude this league from the training data (e.g. the player's own active league, or a backtest holdout). */
   excludeLeague?: string;
+  /** Exclude several leagues at once (a training row's own league AND the holdout - see ml/README.md's nested exclusion). */
+  excludeLeagues?: string[];
   toleranceDays?: number;
   /** Override PEER_SHRINK_WEIGHT - e.g. the backtest sweeping it, or 0 to disable shrinkage entirely. */
   shrinkWeight?: number;
@@ -261,13 +320,12 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
   const {
     currentDay,
     durationDays,
-    excludeLeague,
     toleranceDays = DEFAULT_TOLERANCE_DAYS,
     shrinkWeight = PEER_SHRINK_WEIGHT,
   } = options;
   const targetDay = currentDay + durationDays;
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
+  const excludeClause = excludeLeaguesClause(options);
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
@@ -275,20 +333,20 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
     ),
     nearest_now AS (
       SELECT d.league, d.name, d.value AS value_now, dr.chaos_per_divine AS rate_now, d.day_offset,
-             ROW_NUMBER() OVER (PARTITION BY d.league, d.name ORDER BY ABS(d.day_offset - $currentDay)) AS rn
+             ROW_NUMBER() OVER (PARTITION BY d.league, d.name ORDER BY ABS(d.day_offset - $currentDay), d.day_offset) AS rn
       FROM currency_history_dayed d
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE d.day_offset BETWEEN $currentDay - $tolerance AND $currentDay + $tolerance ${excludeClause}
     ),
     nearest_future AS (
       SELECT d.league, d.name, d.value AS value_future, dr.chaos_per_divine AS rate_future, d.day_offset,
-             ROW_NUMBER() OVER (PARTITION BY d.league, d.name ORDER BY ABS(d.day_offset - $targetDay)) AS rn
+             ROW_NUMBER() OVER (PARTITION BY d.league, d.name ORDER BY ABS(d.day_offset - $targetDay), d.day_offset) AS rn
       FROM currency_history_dayed d
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE d.day_offset BETWEEN $targetDay - $tolerance AND $targetDay + $tolerance ${excludeClause}
     ),
     matched AS (
-      SELECT n.name, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+      SELECT n.name, n.value_now AS value_now, n.rate_now AS rate_now, f.value_future / NULLIF(n.value_now, 0) AS ratio,
              ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
@@ -302,7 +360,7 @@ export async function getCurrencyGrowthRatios(options: GrowthRatioOptions): Prom
     -- in log space - a plain average would also let one outlier league dominate. Weighted by
     -- league recency on top of that, so a recent league's ratio counts far more than an old one's.
     SELECT name, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
-${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
+${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL},${LEVEL_AGGREGATE_SQL}
     FROM matched
     GROUP BY name
     HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
@@ -311,20 +369,9 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
       currentDay,
       targetDay,
       tolerance: toleranceDays,
-      ...(excludeLeague ? { excludeLeague } : {}),
     }
   );
-  const rows = reader.getRowObjects().map((row) => ({
-    name: String(row.name),
-    avgRatio: Number(row.avg_ratio),
-    leagueCount: Number(row.league_count),
-    avgRatioDivine: divineRatioFrom(row),
-    leagueCountDivine: Number(row.league_count_divine ?? 0),
-    confidence: confidenceFrom(row),
-    confidenceDivine: confidenceDivineFrom(row),
-    upFraction: Number(row.up_fraction ?? 0),
-    upFractionDivine: upFractionDivineFrom(row),
-  }));
+  const rows = reader.getRowObjects().map((row) => growthRowFrom(row, { name: String(row.name), peerCategory: "currency" }));
   // Currency has no type/category column of its own (see currency_history_dayed's schema) - all
   // currency is pooled as a single peer group, validated the same way in discover-peer-shrinkage.ts.
   return shrinkToPeers(rows, () => "currency", shrinkWeight);
@@ -335,13 +382,12 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
   const {
     currentDay,
     durationDays,
-    excludeLeague,
     toleranceDays = DEFAULT_TOLERANCE_DAYS,
     shrinkWeight = PEER_SHRINK_WEIGHT,
   } = options;
   const targetDay = currentDay + durationDays;
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
+  const excludeClause = excludeLeaguesClause(options);
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
@@ -350,7 +396,7 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
     nearest_now AS (
       SELECT d.league, d.name, d.variant, d.type, d.value AS value_now, dr.chaos_per_divine AS rate_now, d.day_offset,
              ROW_NUMBER() OVER (
-               PARTITION BY d.league, d.name, d.variant ORDER BY ABS(d.day_offset - $currentDay)
+               PARTITION BY d.league, d.name, d.variant ORDER BY ABS(d.day_offset - $currentDay), d.day_offset
              ) AS rn
       FROM item_history_dayed d
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
@@ -359,14 +405,14 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
     nearest_future AS (
       SELECT d.league, d.name, d.variant, d.value AS value_future, dr.chaos_per_divine AS rate_future, d.day_offset,
              ROW_NUMBER() OVER (
-               PARTITION BY d.league, d.name, d.variant ORDER BY ABS(d.day_offset - $targetDay)
+               PARTITION BY d.league, d.name, d.variant ORDER BY ABS(d.day_offset - $targetDay), d.day_offset
              ) AS rn
       FROM item_history_dayed d
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE d.day_offset BETWEEN $targetDay - $tolerance AND $targetDay + $tolerance ${excludeClause}
     ),
     matched AS (
-      SELECT n.name, n.variant, n.type, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+      SELECT n.name, n.variant, n.type, n.value_now AS value_now, n.rate_now AS rate_now, f.value_future / NULLIF(n.value_now, 0) AS ratio,
              ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
@@ -380,11 +426,11 @@ export async function getItemGrowthRatios(options: GrowthRatioOptions): Promise<
     -- Ratios are multiplicative (a 10x league and a 0.1x league should cancel out), so average
     -- in log space - a plain average would also let one outlier league dominate. Weighted by
     -- league recency on top of that, so a recent league's ratio counts far more than an old one's.
-    -- ANY_VALUE(type) is only for peer-group shrinkage below (see shrinkToPeers) - poe.ninja's type
+    -- MAX(type) is only for peer-group shrinkage below (see shrinkToPeers) - poe.ninja's type
     -- bucket is expected stable per name/variant, so any single occurrence represents it fine.
-    SELECT name, variant, ANY_VALUE(type) AS peer_category,
+    SELECT name, variant, MAX(type) AS peer_category,
            EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
-${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
+${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL},${LEVEL_AGGREGATE_SQL}
     FROM matched
     GROUP BY name, variant
     HAVING COUNT(*) >= ${MIN_LEAGUES_WITH_DATA}
@@ -393,23 +439,16 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
       currentDay,
       targetDay,
       tolerance: toleranceDays,
-      ...(excludeLeague ? { excludeLeague } : {}),
     }
   );
-  const rows = reader.getRowObjects().map((row) => ({
-    name: String(row.name),
-    variant: row.variant ? String(row.variant) : undefined,
-    avgRatio: Number(row.avg_ratio),
-    leagueCount: Number(row.league_count),
-    avgRatioDivine: divineRatioFrom(row),
-    leagueCountDivine: Number(row.league_count_divine ?? 0),
-    confidence: confidenceFrom(row),
-    confidenceDivine: confidenceDivineFrom(row),
-    upFraction: Number(row.up_fraction ?? 0),
-    upFractionDivine: upFractionDivineFrom(row),
-    peerCategory: row.peer_category ? String(row.peer_category) : "Unknown",
-  }));
-  return shrinkToPeers(rows, (r) => r.peerCategory, shrinkWeight).map(omitPeerCategory);
+  const rows = reader.getRowObjects().map((row) =>
+    growthRowFrom(row, {
+      name: String(row.name),
+      variant: row.variant ? String(row.variant) : undefined,
+      peerCategory: row.peer_category ? String(row.peer_category) : "Unknown",
+    })
+  );
+  return shrinkToPeers(rows, (r) => r.peerCategory, shrinkWeight);
 }
 
 // Scenario (current_day, target_day) pairs are internal, numeric, and never user-supplied, so
@@ -421,6 +460,8 @@ function scenarioValuesSql(scenarios: GrowthRatioScenario[]): string {
 export interface GrowthRatioBatchOptions {
   /** Exclude this league from the training data (e.g. the player's own active league, or a backtest holdout). */
   excludeLeague?: string;
+  /** Exclude several leagues at once (a training row's own league AND the holdout - see ml/README.md's nested exclusion). */
+  excludeLeagues?: string[];
   toleranceDays?: number;
   /** Override the default recency-based league weights (see league-recency.ts) - used by the
    *  backtest to test alternate weighting schemes without touching production behavior. A league
@@ -446,14 +487,13 @@ export async function getCurrencyGrowthRatiosBatch(
   options: GrowthRatioBatchOptions = {}
 ): Promise<GrowthRatioRow[][]> {
   const {
-    excludeLeague,
     toleranceDays = DEFAULT_TOLERANCE_DAYS,
     leagueWeights,
     minLeaguesWithData = MIN_LEAGUES_WITH_DATA,
     shrinkWeight = PEER_SHRINK_WEIGHT,
   } = options;
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
+  const excludeClause = excludeLeaguesClause(options);
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
@@ -475,18 +515,18 @@ export async function getCurrencyGrowthRatiosBatch(
     ),
     nearest_now AS (
       SELECT scenario_id, current_day, target_day, league, name, value AS value_now, rate AS rate_now, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY scenario_id, league, name ORDER BY ABS(day_offset - current_day)) AS rn
+             ROW_NUMBER() OVER (PARTITION BY scenario_id, league, name ORDER BY ABS(day_offset - current_day), day_offset) AS rn
       FROM expanded
       WHERE day_offset BETWEEN current_day - $tolerance AND current_day + $tolerance
     ),
     nearest_future AS (
       SELECT scenario_id, league, name, value AS value_future, rate AS rate_future, day_offset,
-             ROW_NUMBER() OVER (PARTITION BY scenario_id, league, name ORDER BY ABS(day_offset - target_day)) AS rn
+             ROW_NUMBER() OVER (PARTITION BY scenario_id, league, name ORDER BY ABS(day_offset - target_day), day_offset) AS rn
       FROM expanded
       WHERE day_offset BETWEEN target_day - $tolerance AND target_day + $tolerance
     ),
     matched AS (
-      SELECT n.scenario_id, n.name, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+      SELECT n.scenario_id, n.name, n.value_now AS value_now, n.rate_now AS rate_now, f.value_future / NULLIF(n.value_now, 0) AS ratio,
              ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
@@ -497,7 +537,7 @@ export async function getCurrencyGrowthRatiosBatch(
         AND f.value_future > 0
     )
     SELECT scenario_id, name, EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio, COUNT(*) AS league_count,
-${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
+${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL},${LEVEL_AGGREGATE_SQL}
     FROM matched
     GROUP BY scenario_id, name
     -- SUM(weight) > 0 matters once a caller can override weights (see leagueWeights above): a row
@@ -508,24 +548,13 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
     `,
     {
       tolerance: toleranceDays,
-      ...(excludeLeague ? { excludeLeague } : {}),
     }
   );
   const byScenario = new Map<number, GrowthRatioRow[]>();
   for (const row of reader.getRowObjects()) {
     const scenarioId = Number(row.scenario_id);
     const list = byScenario.get(scenarioId) ?? [];
-    list.push({
-      name: String(row.name),
-      avgRatio: Number(row.avg_ratio),
-      leagueCount: Number(row.league_count),
-      avgRatioDivine: divineRatioFrom(row),
-      leagueCountDivine: Number(row.league_count_divine ?? 0),
-      confidence: confidenceFrom(row),
-      confidenceDivine: confidenceDivineFrom(row),
-      upFraction: Number(row.up_fraction ?? 0),
-      upFractionDivine: upFractionDivineFrom(row),
-    });
+    list.push(growthRowFrom(row, { name: String(row.name), peerCategory: "currency" }));
     byScenario.set(scenarioId, list);
   }
   // See getCurrencyGrowthRatios - all currency is one peer group, computed per scenario since
@@ -539,14 +568,13 @@ export async function getItemGrowthRatiosBatch(
   options: GrowthRatioBatchOptions = {}
 ): Promise<GrowthRatioRow[][]> {
   const {
-    excludeLeague,
     toleranceDays = DEFAULT_TOLERANCE_DAYS,
     leagueWeights,
     minLeaguesWithData = MIN_LEAGUES_WITH_DATA,
     shrinkWeight = PEER_SHRINK_WEIGHT,
   } = options;
   const db = await getDb();
-  const excludeClause = excludeLeague ? "AND d.league != $excludeLeague" : "";
+  const excludeClause = excludeLeaguesClause(options);
   const reader = await db.runAndReadAll(
     `
     WITH league_weights (league, weight) AS (
@@ -570,7 +598,7 @@ export async function getItemGrowthRatiosBatch(
       SELECT scenario_id, current_day, target_day, league, name, variant, type, value AS value_now,
              rate AS rate_now, day_offset,
              ROW_NUMBER() OVER (
-               PARTITION BY scenario_id, league, name, variant ORDER BY ABS(day_offset - current_day)
+               PARTITION BY scenario_id, league, name, variant ORDER BY ABS(day_offset - current_day), day_offset
              ) AS rn
       FROM expanded
       WHERE day_offset BETWEEN current_day - $tolerance AND current_day + $tolerance
@@ -578,13 +606,13 @@ export async function getItemGrowthRatiosBatch(
     nearest_future AS (
       SELECT scenario_id, league, name, variant, value AS value_future, rate AS rate_future, day_offset,
              ROW_NUMBER() OVER (
-               PARTITION BY scenario_id, league, name, variant ORDER BY ABS(day_offset - target_day)
+               PARTITION BY scenario_id, league, name, variant ORDER BY ABS(day_offset - target_day), day_offset
              ) AS rn
       FROM expanded
       WHERE day_offset BETWEEN target_day - $tolerance AND target_day + $tolerance
     ),
     matched AS (
-      SELECT n.scenario_id, n.name, n.variant, n.type, f.value_future / NULLIF(n.value_now, 0) AS ratio,
+      SELECT n.scenario_id, n.name, n.variant, n.type, n.value_now AS value_now, n.rate_now AS rate_now, f.value_future / NULLIF(n.value_now, 0) AS ratio,
              ${DIVINE_RATIO_SQL} AS ratio_divine,
              COALESCE(lw.weight, 1) AS weight
       FROM nearest_now n
@@ -596,11 +624,11 @@ export async function getItemGrowthRatiosBatch(
         AND n.value_now >= ${MIN_STARTING_VALUE_ITEM}
         AND f.value_future > 0
     )
-    -- ANY_VALUE(type) - see getItemGrowthRatios's identical comment.
-    SELECT scenario_id, name, variant, ANY_VALUE(type) AS peer_category,
+    -- MAX(type) - see getItemGrowthRatios's identical comment.
+    SELECT scenario_id, name, variant, MAX(type) AS peer_category,
            EXP(SUM(weight * LN(ratio)) / SUM(weight)) AS avg_ratio,
            COUNT(*) AS league_count,
-${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
+${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL},${LEVEL_AGGREGATE_SQL}
     FROM matched
     GROUP BY scenario_id, name, variant
     -- See the currency batch query's comment above for why SUM(weight) > 0 is needed alongside the
@@ -609,31 +637,24 @@ ${DIVINE_AGGREGATE_SQL},${CONFIDENCE_AGGREGATE_SQL}
     `,
     {
       tolerance: toleranceDays,
-      ...(excludeLeague ? { excludeLeague } : {}),
     }
   );
-  const byScenario = new Map<number, Array<GrowthRatioRow & { peerCategory: string }>>();
+  const byScenario = new Map<number, GrowthRatioRow[]>();
   for (const row of reader.getRowObjects()) {
     const scenarioId = Number(row.scenario_id);
     const list = byScenario.get(scenarioId) ?? [];
-    list.push({
-      name: String(row.name),
-      variant: row.variant ? String(row.variant) : undefined,
-      avgRatio: Number(row.avg_ratio),
-      leagueCount: Number(row.league_count),
-      avgRatioDivine: divineRatioFrom(row),
-      leagueCountDivine: Number(row.league_count_divine ?? 0),
-      confidence: confidenceFrom(row),
-      confidenceDivine: confidenceDivineFrom(row),
-      upFraction: Number(row.up_fraction ?? 0),
-      upFractionDivine: upFractionDivineFrom(row),
-      peerCategory: row.peer_category ? String(row.peer_category) : "Unknown",
-    });
+    list.push(
+      growthRowFrom(row, {
+        name: String(row.name),
+        variant: row.variant ? String(row.variant) : undefined,
+        peerCategory: row.peer_category ? String(row.peer_category) : "Unknown",
+      })
+    );
     byScenario.set(scenarioId, list);
   }
   return scenarios.map((_, i) => {
     const rows = byScenario.get(i) ?? [];
-    return shrinkToPeers(rows, (r) => r.peerCategory, shrinkWeight).map(omitPeerCategory);
+    return shrinkToPeers(rows, (r) => r.peerCategory, shrinkWeight);
   });
 }
 
@@ -661,7 +682,7 @@ export async function getActualCurrencyValueAtDay(
     `
     WITH nearest AS (
       SELECT d.name, d.value, dr.chaos_per_divine AS rate, d.day_offset,
-             ROW_NUMBER() OVER (PARTITION BY d.name ORDER BY ABS(d.day_offset - $day)) AS rn
+             ROW_NUMBER() OVER (PARTITION BY d.name ORDER BY ABS(d.day_offset - $day), d.day_offset) AS rn
       FROM currency_history_dayed d
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE d.league = $league AND d.day_offset BETWEEN $day - $tolerance AND $day + $tolerance
@@ -698,7 +719,7 @@ export async function getActualItemValueAtDay(
     `
     WITH nearest AS (
       SELECT d.name, d.variant, d.value, d.type, dr.chaos_per_divine AS rate, d.day_offset,
-             ROW_NUMBER() OVER (PARTITION BY d.name, d.variant ORDER BY ABS(d.day_offset - $day)) AS rn
+             ROW_NUMBER() OVER (PARTITION BY d.name, d.variant ORDER BY ABS(d.day_offset - $day), d.day_offset) AS rn
       FROM item_history_dayed d
       LEFT JOIN divine_rate_dayed dr ON dr.league = d.league AND dr.day_offset = d.day_offset
       WHERE d.league = $league AND d.day_offset BETWEEN $day - $tolerance AND $day + $tolerance

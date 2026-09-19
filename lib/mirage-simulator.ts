@@ -8,6 +8,9 @@ import {
 import { itemPriceKey, getAllCurrentCurrencyPrices, formatItemDisplayName } from "./poe-ninja";
 import { SIMULATED_LEAGUE } from "./mirage-league";
 import { CURRENT_LEAGUE } from "./league-recency";
+import { currentPredictorMode, predictGrowth, type PredictorMode, type PredictorRuntime } from "./prediction-model";
+import type { PredictionInput } from "./prediction-features";
+import { historyNowAtDay, loadLeagueDailyMatrix } from "./history-now";
 
 // Wider than the default (used everywhere else, incl. the training-ratio matching above) purely for
 // these single-league "actual value" lookups - there's no cross-league averaging risk here (unlike
@@ -54,6 +57,11 @@ export interface MirageSimulationRow {
   /** Share of training leagues that gained, for the "N of M leagues" hover text. */
   upFraction: number;
   upFractionDivine?: number;
+  /** The original production estimate that predictedRatio replaces when a learned predictor is active. */
+  baselineRatio: number;
+  baselineRatioDivine?: number;
+  /** Which model produced predictedRatio - see lib/prediction-model.ts. */
+  predictor: PredictorMode;
 }
 
 /**
@@ -65,7 +73,10 @@ export interface MirageSimulationRow {
  */
 export async function simulateMirageLeague(
   currentDay: number,
-  durationDays: number
+  durationDays: number,
+  /** Testing seam (scripts/backtest-predictor.ts): score with a specific mode / model instead of the app's
+   *  configured one, e.g. a model trained WITHOUT Mirage so the replay is genuinely out-of-sample. */
+  overrides: { mode?: PredictorMode; runtime?: PredictorRuntime } = {}
 ): Promise<MirageSimulationRow[]> {
   const targetDay = currentDay + durationDays;
 
@@ -91,6 +102,32 @@ export async function simulateMirageLeague(
     getAllCurrentCurrencyPrices(CURRENT_LEAGUE),
   ]);
 
+  // Predict for EVERY item that has a price on the replayed day - not only those with a known outcome later - so the
+  // model's cross-sectional features rank an item among the same set of items the live app would see.
+  const mode = overrides.mode ?? currentPredictorMode();
+  const matrix = await loadLeagueDailyMatrix(SIMULATED_LEAGUE, currentDay - 9, currentDay);
+  const now = historyNowAtDay(matrix, currentDay);
+  const candidates: Array<{ kind: "currency" | "item"; trend: (typeof currencyTrends)[number]; key: string }> = [];
+  const inputs: PredictionInput[] = [];
+  for (const [kind, trends] of [["currency", currencyTrends], ["item", itemTrends]] as const) {
+    for (const trend of trends) {
+      const key = kind === "currency" ? trend.name : itemPriceKey(trend.name, trend.variant);
+      const actualNow = (kind === "currency" ? actualNowCurrency : actualNowItem).get(key);
+      if (actualNow === undefined || actualNow.value <= 0) continue;
+      const hist = (kind === "currency" ? now.currency : now.items).get(key);
+      candidates.push({ kind, trend, key });
+      inputs.push({
+        key,
+        kind,
+        ratio: trend,
+        priceNow: actualNow.value,
+        divineRateNow: actualNow.valueDivine ? actualNow.value / actualNow.valueDivine : undefined,
+        spark: hist?.spark,
+      });
+    }
+  }
+  const predictions = predictGrowth(inputs, { currentDay, durationDays, universe: [...currencyTrends, ...itemTrends] }, mode, overrides.runtime);
+
   const rows: MirageSimulationRow[] = [];
 
   // Each actual value already carries its own day's divine conversion (see growth-ratios.ts), and
@@ -98,77 +135,49 @@ export async function simulateMirageLeague(
   // chaos prediction - otherwise predicted and actual would be measured against Divine Orb rates
   // from different days, and the comparison would be skewed by however much divine inflated in
   // between (roughly 1.4x over a 14-day window early in Mirage).
-  for (const trend of currencyTrends) {
-    const actualNow = actualNowCurrency.get(trend.name);
-    const actualFuture = actualFutureCurrency.get(trend.name);
-    if (actualNow === undefined || actualFuture === undefined || actualNow.value <= 0) continue;
+  candidates.forEach(({ kind, trend, key }, i) => {
+    const actualNow = (kind === "currency" ? actualNowCurrency : actualNowItem).get(key)!;
+    const actualFuture = (kind === "currency" ? actualFutureCurrency : actualFutureItem).get(key);
+    if (actualFuture === undefined) return;
     // Both ends landed on the exact same day - the item's tracking window doesn't actually reach
     // both requested days, it just happens to have one point somewhere inside the widened search
     // radius above. Comparing that point to itself would show a false "0% actual change" instead of
     // the truth (not enough real separation to say anything) - skip rather than fabricate a result.
-    if (actualNow.dayOffset === actualFuture.dayOffset) continue;
+    if (actualNow.dayOffset === actualFuture.dayOffset) return;
+    const p = predictions[i];
     rows.push({
-      name: trend.name,
+      name: kind === "currency" ? trend.name : formatItemDisplayName(trend.name, trend.variant),
       historyName: trend.name,
       variant: trend.variant,
-      category: "currency",
-      filterCategory: currencyTypes.get(trend.name)?.type ?? "Currency",
+      category: kind,
+      // Mirage has ended, so poe.ninja no longer serves live prices for it to read a type bucket
+      // from - currency uses the current league's (fixed, league-agnostic) buckets, items the stored type.
+      filterCategory:
+        kind === "currency"
+          ? currencyTypes.get(trend.name)?.type ?? "Currency"
+          : (actualNow as { type?: string }).type || trend.name,
       leagueCount: trend.leagueCount,
       actualNowChaos: actualNow.value,
       actualNowDivine: actualNow.valueDivine,
-      predictedChaosValue: actualNow.value * trend.avgRatio,
+      predictedChaosValue: actualNow.value * p.ratio,
       predictedDivineValue:
-        actualNow.valueDivine !== undefined && trend.avgRatioDivine !== undefined
-          ? actualNow.valueDivine * trend.avgRatioDivine
-          : undefined,
+        actualNow.valueDivine !== undefined && p.ratioDivine !== undefined ? actualNow.valueDivine * p.ratioDivine : undefined,
       actualFutureChaos: actualFuture.value,
       actualFutureDivine: actualFuture.valueDivine,
-      predictedRatio: trend.avgRatio,
+      predictedRatio: p.ratio,
       actualRatio: actualFuture.value / actualNow.value,
-      predictedRatioDivine: trend.avgRatioDivine,
+      predictedRatioDivine: p.ratioDivine,
       leagueCountDivine: trend.leagueCountDivine,
       confidence: trend.confidence,
       confidenceDivine: trend.confidenceDivine,
       upFraction: trend.upFraction,
       upFractionDivine: trend.upFractionDivine,
       actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
+      baselineRatio: trend.avgRatio,
+      baselineRatioDivine: trend.avgRatioDivine,
+      predictor: mode,
     });
-  }
-
-  for (const trend of itemTrends) {
-    const key = itemPriceKey(trend.name, trend.variant);
-    const actualNow = actualNowItem.get(key);
-    const actualFuture = actualFutureItem.get(key);
-    if (actualNow === undefined || actualFuture === undefined || actualNow.value <= 0) continue;
-    // See the currency loop's comment above - same collision guard.
-    if (actualNow.dayOffset === actualFuture.dayOffset) continue;
-    rows.push({
-      name: formatItemDisplayName(trend.name, trend.variant),
-      historyName: trend.name,
-      variant: trend.variant,
-      category: "item",
-      filterCategory: actualNow.type || trend.name,
-      leagueCount: trend.leagueCount,
-      actualNowChaos: actualNow.value,
-      actualNowDivine: actualNow.valueDivine,
-      predictedChaosValue: actualNow.value * trend.avgRatio,
-      predictedDivineValue:
-        actualNow.valueDivine !== undefined && trend.avgRatioDivine !== undefined
-          ? actualNow.valueDivine * trend.avgRatioDivine
-          : undefined,
-      actualFutureChaos: actualFuture.value,
-      actualFutureDivine: actualFuture.valueDivine,
-      predictedRatio: trend.avgRatio,
-      actualRatio: actualFuture.value / actualNow.value,
-      predictedRatioDivine: trend.avgRatioDivine,
-      leagueCountDivine: trend.leagueCountDivine,
-      confidence: trend.confidence,
-      confidenceDivine: trend.confidenceDivine,
-      upFraction: trend.upFraction,
-      upFractionDivine: trend.upFractionDivine,
-      actualRatioDivine: divineRatio(actualNow.valueDivine, actualFuture.valueDivine),
-    });
-  }
+  });
 
   return rows.sort((a, b) => b.predictedRatio - a.predictedRatio);
 }

@@ -2,6 +2,8 @@ import "server-only";
 import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey, formatItemDisplayName } from "./poe-ninja";
 import { getCurrencyGrowthRatios, getItemGrowthRatios, type GrowthRatioRow } from "./growth-ratios";
 import { getFaustusPrices, isFaustusTradeable } from "./faustus";
+import { currentPredictorMode, predictGrowth, type GrowthPrediction, type PredictorMode } from "./prediction-model";
+import type { PredictionInput } from "./prediction-features";
 
 // Guards against one specific failure mode: a rare item/variant (a corrupted 21/23% quality gem, an
 // influence-exalted base) with only a handful of live sellers, where the historical training data
@@ -62,17 +64,39 @@ export interface FlipSuggestion {
   upFraction: number;
   upFractionDivine?: number;
   rationale: string;
+  /** The original production estimate (plain average of past leagues' growth) that avgGrowthRatio replaces when a
+   *  learned predictor is active - kept so the UI/tests can show or compare both. Equal to avgGrowthRatio when
+   *  predictor is "baseline". */
+  baselineGrowthRatio: number;
+  baselineGrowthRatioDivine?: number;
+  /** Which model produced avgGrowthRatio - see lib/prediction-model.ts. */
+  predictor: PredictorMode;
+}
+
+/** A live-priced item ready to be scored, before the (cross-sectional) predictor runs over the whole set. */
+interface Candidate {
+  trend: GrowthRatioRow;
+  category: "currency" | "item";
+  filterCategory: string;
+  chaosValue: number;
+  spark?: Array<number | null>;
 }
 
 function buildSuggestion(
-  trend: GrowthRatioRow,
+  baseTrend: GrowthRatioRow,
+  prediction: GrowthPrediction,
+  mode: PredictorMode,
   category: "currency" | "item",
   filterCategory: string,
   currentChaosValue: number,
   durationDays: number,
   divineRate: number | undefined
 ): FlipSuggestion {
+  // The learned predictor replaces the growth ratios (chaos and divine); everything else about the row - league
+  // count, confidence, "N of M leagues gained" - still describes the past leagues it was learned from.
+  const trend = { ...baseTrend, avgRatio: prediction.ratio, avgRatioDivine: prediction.ratioDivine };
   const pctChange = Math.round((trend.avgRatio - 1) * 100);
+  const basePct = Math.round((baseTrend.avgRatio - 1) * 100);
   const direction = pctChange >= 0 ? "risen" : "fallen";
   const displayName = formatItemDisplayName(trend.name, trend.variant);
   const currentDivineValue = divineRate ? currentChaosValue / divineRate : undefined;
@@ -104,7 +128,13 @@ function buildSuggestion(
     confidenceDivine: trend.confidenceDivine,
     upFraction: trend.upFraction,
     upFractionDivine: trend.upFractionDivine,
-    rationale: `Historically has ${direction} ${Math.abs(pctChange)}% over the next ${durationDays} days from this point in the league, averaged over ${trend.leagueCount} past leagues.`,
+    rationale:
+      mode === "baseline"
+        ? `Historically has ${direction} ${Math.abs(pctChange)}% over the next ${durationDays} days from this point in the league, averaged over ${trend.leagueCount} past leagues.`
+        : `Model expects ${pctChange >= 0 ? "+" : "-"}${Math.abs(pctChange)}% over the next ${durationDays} days. Past leagues averaged ${basePct >= 0 ? "+" : "-"}${Math.abs(basePct)}% from this point (${trend.leagueCount} leagues); the forecast adjusts that for how today's price compares with those leagues' and for the last 7 days' trend.`,
+    baselineGrowthRatio: baseTrend.avgRatio,
+    baselineGrowthRatioDivine: baseTrend.avgRatioDivine,
+    predictor: mode,
   };
 }
 
@@ -134,12 +164,14 @@ export async function getFlipSuggestions(
   // the least likely price to ever be missing from poe.ninja.
   const divineRate = currencyPrices.get("Divine Orb")?.chaosValue ?? faustusPrices.get("Divine Orb")?.chaosValue;
 
-  const suggestions: FlipSuggestion[] = [];
+  // Every item with a live price is collected first: the learned predictor's price-vs-history and momentum
+  // ranks are cross-sectional (they compare each item with all the others), so all rows are scored together.
+  const candidates: Candidate[] = [];
 
   for (const trend of currencyTrends) {
     const price = currencyPrices.get(trend.name);
     if (price !== undefined && price.chaosValue > 0) {
-      suggestions.push(buildSuggestion(trend, "currency", price.type, price.chaosValue, durationDays, divineRate));
+      candidates.push({ trend, category: "currency", filterCategory: price.type, chaosValue: price.chaosValue, spark: price.spark });
       continue;
     }
     // poe.ninja hasn't listed a live price for this currency at all yet (common for a brand-new or
@@ -147,7 +179,7 @@ export async function getFlipSuggestions(
     // small, evergreen subset of currencies (see lib/faustus.ts) and can fill this gap when it does.
     const faustusPrice = faustusPrices.get(trend.name);
     if (faustusPrice !== undefined && faustusPrice.chaosValue > 0) {
-      suggestions.push(buildSuggestion(trend, "currency", "Currency", faustusPrice.chaosValue, durationDays, divineRate));
+      candidates.push({ trend, category: "currency", filterCategory: "Currency", chaosValue: faustusPrice.chaosValue });
     }
   }
 
@@ -156,9 +188,10 @@ export async function getFlipSuggestions(
     if (itemPrice !== undefined && itemPrice.chaosValue > 0) {
       // See isThinMarketOutlier above - skip rather than fall through to the currency-price
       // fallback below, which prices a completely different set of items (Scarabs/Essences/etc.)
-      // and wouldn't legitimately apply to this same trend.
+      // and wouldn't legitimately apply to this same trend. Judged on the historical ratio (the thing that
+      // was swung by a handful of sellers), not on the learned forecast.
       if (!isThinMarketOutlier(trend.avgRatio, itemPrice.sellerCount)) {
-        suggestions.push(buildSuggestion(trend, "item", itemPrice.type, itemPrice.chaosValue, durationDays, divineRate));
+        candidates.push({ trend, category: "item", filterCategory: itemPrice.type, chaosValue: itemPrice.chaosValue, spark: itemPrice.spark });
       }
       continue;
     }
@@ -168,11 +201,23 @@ export async function getFlipSuggestions(
     // currency price map, keyed on name only since these never have a variant.
     const currencyPrice = !trend.variant ? currencyPrices.get(trend.name) : undefined;
     if (currencyPrice !== undefined && currencyPrice.chaosValue > 0) {
-      suggestions.push(
-        buildSuggestion(trend, "item", currencyPrice.type, currencyPrice.chaosValue, durationDays, divineRate)
-      );
+      candidates.push({ trend, category: "item", filterCategory: currencyPrice.type, chaosValue: currencyPrice.chaosValue, spark: currencyPrice.spark });
     }
   }
+
+  const mode = currentPredictorMode();
+  const inputs: PredictionInput[] = candidates.map((c, i) => ({
+    key: String(i),
+    kind: c.category,
+    ratio: c.trend,
+    priceNow: c.chaosValue,
+    divineRateNow: divineRate,
+    spark: c.spark,
+  }));
+  const predictions = predictGrowth(inputs, { currentDay, durationDays, universe: [...currencyTrends, ...itemTrends] }, mode);
+  const suggestions = candidates.map((c, i) =>
+    buildSuggestion(c.trend, predictions[i], mode, c.category, c.filterCategory, c.chaosValue, durationDays, divineRate)
+  );
 
   return suggestions.sort((a, b) => b.avgGrowthRatio - a.avgGrowthRatio);
 }

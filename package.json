@@ -9,7 +9,10 @@
     "lint": "eslint",
     "db:ingest": "tsx scripts/ingest-history.ts",
     "backtest:mirage": "tsx scripts/backtest-mirage.ts",
-    "check-league": "tsx scripts/check-current-league.ts"
+    "check-league": "tsx scripts/check-current-league.ts",
+    "ml:export-features": "tsx scripts/export-training-features.ts",
+    "ml:parity": "tsx scripts/check-predictor-parity.ts",
+    "ml:backtest": "tsx --conditions=react-server scripts/backtest-predictor.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

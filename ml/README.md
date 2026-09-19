@@ -183,6 +183,58 @@ request, which a 20-minute in-memory cache keyed on (day, horizon) - the same TT
 one evaluation per warm instance per window. To avoid Python/TypeScript feature drift, a port should generate its
 training features from the TypeScript code path (extend `scripts/export-backtest-baseline.ts`), not from `features.py`.
 
+## Production integration (shipped)
+
+The learned predictor is live in the app. `PREDICTOR=xgb` (default) | `formula` | `baseline` (the original behaviour,
+one env var away); a missing model file falls back to the formula, then baseline.
+
+| piece | file |
+|---|---|
+| poe.ninja 7-day sparkline plumbed through | `lib/poe-ninja.ts` |
+| extra cross-league aggregates (raw log ratio, spread, past price level, peer group), multi-league exclusion | `lib/growth-ratios.ts` |
+| features - the one implementation used by the live app, the simulator and the training export | `lib/prediction-features.ts`, `lib/history-now.ts` |
+| tree evaluator + formula tables + `PREDICTOR` switch | `lib/prediction-model.ts`, `lib/models/predictor.json` (1.9 MB) |
+| used by | `lib/flip-suggestions.ts`, `lib/mirage-simulator.ts` (the single-item spot check still shows the historical ratio: it has no live price) |
+| training data export / fit / checks | `scripts/export-training-features.ts`, `ml/fit_production.py`, `scripts/check-predictor-parity.ts`, `scripts/backtest-predictor.ts` |
+
+Refresh after ingesting a new league: `npm run ml:export-features` (~30 min), `python ml/fit_production.py all`, `npm run ml:parity`,
+`npm run ml:backtest`, commit `lib/models/predictor.json`.
+
+**Validation on the shipped code path** (Mirage replayed through `lib/mirage-simulator.ts`, model trained WITHOUT Mirage,
+features built by the app's own TypeScript; per-scenario means over league days 0-75, horizons 3/7/14):
+
+| | Spearman | top-10% hit rate | top-10% mean log-return |
+|---|---|---|---|
+| production | 0.185 | 61.7% | 0.313 |
+| formula | 0.324 | 69.7% | 0.581 |
+| XGBoost | 0.334 | 72.8% | 0.590 |
+
+By league day the XGBoost/formula Spearman is 0.60/0.60 (day 0), 0.51/0.50 (day 3), 0.35/0.32 (day 7), 0.25/0.23 (day 14),
+0.32/0.30 (day 30), 0.21/0.22 (day 50), 0.24/0.26 (day 75) vs production 0.47, 0.38, 0.28, 0.15, 0.08, -0.04, 0.02 - the
+formula ties or beats XGBoost on day 0 and in the late league, XGBoost leads from day ~3 to ~30. The TypeScript runtime
+reproduces Python's predictions to 1e-6 (`npm run ml:parity`). Divine mode: 0.174 -> 0.329 (holdout, all days).
+These are one holdout (the newest league) on a coarse grid; the five-league study above is the broader evidence.
+
+**Live testing found three training/serving mismatches that validation alone did not (all fixed):**
+1. *League-wide price offset.* Allflame's Divine is 358c at day 57 vs 130-144c in three past leagues, so every item was
+   ~2.5x "expensive" vs history; raw level features made XGBoost forecast a -7.7% median. Level features are now
+   demeaned across the market and the tier feature is the price in divines.
+2. *Missing momentum.* ~48% of live items have no usable sparkline, vs 0.3% of historical rows. Training rows now lose momentum at 45%.
+3. *Out-of-range `n_ref`* (4 past leagues live at day 57, at most 3 in training): dropped as a feature.
+Items under 1c (tick-size noise, e.g. 0.03c -> 0.05c = "+67%") were topping the list; the model is now trained on items >= 1c
+and serves the production ratio for anything cheaper, mirroring the original 1c floor.
+
+**A determinism bug in the original queries** was found on the way: the nearest-day lookup had no tie-break, so a league
+with no price on the exact day but prices at day-1 and day+1 was resolved by DuckDB's parallel scan order - the same query
+returned ratios up to ~17% apart on consecutive runs. It now ties to the earlier day (`lib/growth-ratios.ts`); this changes
+individual production ratios slightly, in the direction of reproducibility.
+
+**Known limits.** The live sparkline is raw while the stored history had single-day glitches corrected at ingest, so live
+momentum is noisier (median 6-day volatility ~2x historical); the robustness tests above cover +-20% noise on the last
+point, not this. Live predictions use 4-5 reference leagues where training rows saw at most 4. Confidence scores still
+describe cross-league consistency, not the learned forecast. Nothing here has run against a live league's *outcomes* yet:
+log a few weeks of live forecasts against what happened before treating the absolute numbers as settled.
+
 ## Reproduce
 
     # once
@@ -228,4 +280,5 @@ training features from the TypeScript code path (extend `scripts/export-backtest
 | `trend_analysis.py` | descriptive: momentum vs reversion, market drift, dispersion |
 | `robustness2.py` / `divine_check.py` | noise + missing-sparkline tests; divine-denominated mode |
 | `check_leakage.py` | causality test for the momentum / own-history features |
-| `export_model.py` / `eval_model.mjs` | trains + exports the portable model; JS evaluator with parity + timing |
+| `export_model.py` / `eval_model.mjs` | round-2 prototype of the portable model export + JS evaluator with parity + timing |
+| `fit_production.py` | fits + exports the shipped model (`lib/models/predictor.json`) from TypeScript-built rows; validation report |
