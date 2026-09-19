@@ -48,3 +48,9 @@ next-env.d.ts
 /db/*.duckdb
 !/db/history.duckdb
 /db/*.duckdb.wal
+
+# ML experiment virtualenv and artifacts
+ml/.venv/
+ml/cache/
+ml/*.log
+__pycache__/

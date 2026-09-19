@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Python ML experiments (see ml/README.md) - the virtualenv's site-packages ships assorted
+    // third-party JS (e.g. pandas' HTML templates) that isn't this project's code.
+    "ml/**",
   ]),
 ]);
 
