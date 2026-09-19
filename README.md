@@ -1,21 +1,31 @@
 # PoE Flipper
 
-An unofficial Path of Exile companion that suggests items to flip, based on historical
-league economy data.
-
-> This product isn't affiliated with or endorsed by Grinding Gear Games in any way.
-
 ## How it works
 
-- **Flip suggestions**: ranks items/currency by how much they historically grew from a
-  chosen day of the current league over a chosen number of days (weighted so recent
-  leagues count far more than old ones - see `lib/league-recency.ts`), using a local
-  DuckDB database built from historical poe.ninja price exports, compared against
-  today's live price. The current league and its start date are hardcoded in
+- **Flip suggestions**: ranks items/currency by their forecast growth from a chosen day
+  of the current league over a chosen number of days. The forecast starts from how much
+  each item historically grew over that stretch of past leagues (a local DuckDB database
+  built from historical poe.ninja price exports; every past league counts equally - see
+  `lib/league-recency.ts`) and is then adjusted by a learned model - see **Learned
+  forecast** below - against today's live price. The current league and its start date are hardcoded in
   `lib/league-recency.ts` (`CURRENT_LEAGUE`) and need updating by hand each time a new
   challenge league launches. `npm run check-league` compares it against poe.ninja's own
   live leagues list and warns if it's gone stale (see below) - run this whenever you
   suspect a new league has launched, then update `CURRENT_LEAGUE` by hand.
+- **Learned forecast** (`lib/prediction-model.ts`, `lib/prediction-features.ts`): the
+  historical average alone is a weak predictor - in a backtest it ranked late-league items
+  about as well as a coin flip. The forecast therefore also uses (1) how today's price
+  compares with what the item cost on the same day of past leagues (expensive items tend
+  to fall, cheap ones to rise) and (2) poe.ninja's 7-day price sparkline (currency
+  momentum tends to continue, items' does not). Two interchangeable models are shipped in
+  `lib/models/predictor.json` (1.9 MB): gradient-boosted trees (default) and a small
+  linear formula per league-day bucket. Chosen with the optional `PREDICTOR` env var:
+  `xgb` (default), `formula`, or `baseline` (the original plain average); a missing model
+  file falls back automatically. Replaying the finished Mirage league with a model that
+  never saw it: rank correlation 0.185 -> 0.334, share of top-decile picks that gained
+  61.7% -> 72.8% (`npm run ml:backtest`). Training, validation and every experiment are
+  documented in [`ml/README.md`](ml/README.md); the Python there is offline tooling and
+  is not part of the deployed app.
 - **Confidence scoring**: each suggestion also gets a confidence tier (High/Medium/Low)
   based on how reliably that item has actually gained in past leagues, not just how big
   the predicted gain is - see `lib/confidence.ts`.
@@ -34,11 +44,14 @@ league economy data.
   from community sources (mostly exact; a handful of items fall back to a range
   estimate - see the comments in `lib/faustus-gold.ts`).
 - **Mirage simulator** (`/mirage-simulator`): a testing page that replays the model
-  against the Mirage league - which is always excluded from training - so you can pick
-  a day and duration and see the model's prediction next to what actually happened.
+  against the Mirage league - which is always excluded from the historical averages - so
+  you can pick a day and duration and see the model's prediction next to what actually
+  happened. (The shipped learned model was trained on all five past leagues including
+  Mirage, so this page flatters it; `npm run ml:backtest` does the honest version with a
+  model trained without Mirage.)
 - **Current league tester** (`/current-league-tester`): look up a single item/currency
-  by name and see the model's live prediction for it, without needing the full
-  suggestions table.
+  by name and apply its historical growth ratio to a price you type in. It uses the
+  historical ratio only, not the learned forecast (it has no live price to work from).
 - **Data store**: [DuckDB](https://duckdb.org) (embedded, columnar, great for analytical
   queries over large CSV history) - no external database server required.
 
@@ -52,6 +65,7 @@ league economy data.
    - `SITE_PASSWORD` - a shared password gating the whole app (see `proxy.ts` /
      `lib/site-auth.ts`). Not per-user auth, just a gate since this is shared with a
      handful of people. Required - unset, the login page rejects every attempt.
+   - `PREDICTOR` - optional: `xgb` (default), `formula` or `baseline`, see above.
 2. Ingest historical data into DuckDB:
    ```bash
    npm run db:ingest
@@ -61,15 +75,52 @@ league economy data.
    npm run dev
    ```
 
+### Refreshing the learned model
+
+After ingesting a new league, retrain (needs Python 3.11+ with the packages in
+`ml/requirements.txt`; training uses an NVIDIA GPU by default - set `XGB_DEVICE=cpu`
+without one):
+
+```bash
+npm run ml:export-features          # ~30 min: training rows, built by the app's own TypeScript
+python ml/fit_production.py all     # validation report + writes lib/models/predictor.json
+npm run ml:parity                   # TypeScript runtime reproduces Python's predictions
+npm run ml:backtest                 # replay Mirage through the app's simulator, per predictor
+```
+
+Commit `lib/models/predictor.json`. Details, and why features are built in TypeScript
+rather than Python, are in [`ml/README.md`](ml/README.md).
+
+## Deploying to Vercel
+
+The app deploys as a normal Next.js project; nothing is built or trained in production.
+
+- `db/history.duckdb` (~72 MB) is committed through **Git LFS** (see `.gitattributes`), so the
+  Vercel project needs its Git LFS setting enabled - if the database looks tiny or every
+  query fails, the build checked out an LFS pointer instead of the file. `next.config.ts`
+  force-includes DuckDB's native binaries in the function bundle, and `lib/db.ts` opens the
+  database read-only because a function's filesystem is read-only.
+- Set `SITE_PASSWORD` under the project's Environment Variables; `PREDICTOR` is optional
+  (set it to `baseline` to revert to the original forecast without a code change).
+- The learned model is a plain 1.9 MB JSON file, so it adds nothing to Git LFS storage or
+  bandwidth; scoring ~10k items takes roughly 0.2 s of CPU per request (repeat requests
+  are cached in memory).
+
 ## Known limitations
 
 - poe.ninja's economy/pricing endpoints aren't part of any officially documented public
   API and may change or break without notice, though poe.ninja does publish a small API
   reference (poe.ninja/docs/api) covering some of what's used here, including the
   leagues-list endpoint `npm run check-league` relies on.
-- Flip suggestions are a simple heuristic (historical growth from a given day of the
-  league over a given duration) - not financial/trade advice, and confidence varies
-  with how many past leagues have data for a given item.
+- Flip suggestions are a statistical forecast, not financial/trade advice. The learned
+  model is trained on only five past leagues (the current one is a sixth, different
+  economy) and its accuracy is measured as *ranking quality* - it says nothing about
+  spreads, fees or whether a cheap item can actually be traded. Live poe.ninja sparklines
+  are noisier than the cleaned stored history the model learned from, and no live
+  league's outcomes have been scored against its forecasts yet. Items under 1c keep the
+  plain historical ratio. The confidence tier still describes how consistently an item
+  gained in past leagues, not the learned forecast, and varies with how many past leagues
+  have data for it.
 - The current league is hardcoded (see above) rather than fully auto-detected - poe.ninja
   does expose a live leagues list, but switching `CURRENT_LEAGUE` also requires adding
   the new league's release date and deciding whether/when to start training on it, which
@@ -88,9 +139,22 @@ league economy data.
   and its doc from RePoE data.
 - `scripts/check-current-league.ts` - compares the hardcoded `CURRENT_LEAGUE` against
   poe.ninja's live leagues list; run via `npm run check-league`.
+- `scripts/export-training-features.ts`, `check-predictor-parity.ts`,
+  `backtest-predictor.ts` - the learned model's training-data export, TypeScript/Python
+  parity check and out-of-sample Mirage replay (`npm run ml:*`);
+  `export-backtest-baseline.ts` feeds the experiments in `ml/`.
+- `ml/` - offline Python for the learned model: experiments, validation, and
+  `fit_production.py`, which writes `lib/models/predictor.json`. See `ml/README.md`.
 - `lib/db.ts` - shared DuckDB connection.
-- `lib/poe-ninja.ts` - live poe.ninja price client (with caching).
-- `lib/growth-ratios.ts` - core historical growth-ratio queries (recency-weighted).
+- `lib/poe-ninja.ts` - live poe.ninja price client (with caching), including each item's
+  7-day sparkline.
+- `lib/growth-ratios.ts` - core historical growth-ratio queries.
+- `lib/prediction-features.ts` - the one implementation of the learned model's inputs,
+  shared by the live app, the Mirage simulator and the training export.
+- `lib/prediction-model.ts` / `lib/models/predictor.json` - tree/formula evaluator and
+  the trained model; also the `PREDICTOR` switch.
+- `lib/history-now.ts` - reads a past league's stored prices in the same shape as the live
+  feed (price now + 7-day sparkline), for replays and training rows.
 - `lib/league-recency.ts` - per-league recency weighting, and the current league.
 - `lib/confidence.ts` - confidence-tier scoring for a prediction.
 - `lib/price-history.ts` - per-item price history across past leagues, for the chart.

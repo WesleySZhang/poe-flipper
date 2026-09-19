@@ -49,7 +49,8 @@ XGB_COLS = {"chaos": CHAOS_COLS, "divine": CHAOS_COLS + DIVINE_EXTRA}
 # (and formula) learns what to do without it instead of guessing a default branch it never saw.
 MOM_MASK = ["mom1", "mom3", "mom6", "vol6", "accel", "dev_sm3", "mom6_pct"]
 MASK_RATE = 0.45
-XGB_PARAMS = {"device": "cuda", "tree_method": "hist", "objective": "reg:pseudohubererror", "huber_slope": 0.5,
+XGB_PARAMS = {"device": os.environ.get("XGB_DEVICE", "cuda"),  # XGB_DEVICE=cpu without an NVIDIA GPU
+               "tree_method": "hist", "objective": "reg:pseudohubererror", "huber_slope": 0.5,
               "max_depth": 8, "min_child_weight": 200, "eta": 0.10, "subsample": 0.8, "colsample_bytree": 0.8,
               "reg_lambda": 10.0, "seed": 0}
 ROUNDS = 200
