@@ -1,5 +1,9 @@
 {
   "permissions": {
     "ask": ["Bash(git push*)"]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }
