@@ -83,18 +83,28 @@ export function formatConfidence(score: number | undefined): string {
  * Hover text spelling out what the badge is based on, so a tier can't be misread as a probability
  * or as a claim about the predicted number's precision. Shown via the native title attribute, the
  * pattern already used for truncated item names (there's no Tooltip component in components/ui).
+ *
+ * `forecastSpread` (see FlipSuggestion.forecastSpread / lib/prediction-model.ts) answers the question
+ * this text otherwise has to disclaim away: not "has this consistently risen before" but "how wide is
+ * the model's own uncertainty band around THIS specific number". Appended as a distinct sentence,
+ * never blended into the score, so the two stay legible as separate signals - see confidenceScore's
+ * module doc for why conflating them was a known pitfall worth guarding against explicitly.
  */
 export function describeConfidence(
   score: number | undefined,
   upFraction: number | undefined,
-  leagueCount: number
+  leagueCount: number,
+  forecastSpread?: number
 ): string {
   if (score === undefined || upFraction === undefined) {
     return "Not enough past-league data in this denomination to rate.";
   }
   const gained = Math.round(upFraction * leagueCount);
-  return (
+  let text =
     `Confidence ${score}/100 - ${gained} of ${leagueCount} past leagues gained over this window. ` +
-    `Reflects how consistently this has risen before, not how exact the predicted price is.`
-  );
+    `Reflects how consistently this has risen before, not how exact the predicted price is.`;
+  if (forecastSpread !== undefined && Number.isFinite(forecastSpread)) {
+    text += ` Forecast precision: the model's own middle-80% range for this item spans about ${forecastSpread.toFixed(1)}x - narrower means the model itself is more sure of this specific number.`;
+  }
+  return text;
 }

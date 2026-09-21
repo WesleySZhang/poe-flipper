@@ -28,7 +28,11 @@
   is not part of the deployed app.
 - **Confidence scoring**: each suggestion also gets a confidence tier (High/Medium/Low)
   based on how reliably that item has actually gained in past leagues, not just how big
-  the predicted gain is - see `lib/confidence.ts`.
+  the predicted gain is - see `lib/confidence.ts`. A separate "forecast precision" note in
+  the same badge's hover text (chaos mode, learned-forecast predictor only) says how wide
+  the model's *own* uncertainty band is around this specific number - a deliberately
+  distinct question from the tier, which is answered by a second, independent pair of
+  quantile models trained alongside the point forecast (see `ml/README.md`).
 - **Price history charts**: click any row to expand a chart of that item's price across
   every past league used for training, with markers for the current day and the
   prediction's target day - lets you sanity-check a prediction against the real shape of

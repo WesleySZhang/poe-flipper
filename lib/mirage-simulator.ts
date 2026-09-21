@@ -62,6 +62,8 @@ export interface MirageSimulationRow {
   baselineRatioDivine?: number;
   /** Which model produced predictedRatio - see lib/prediction-model.ts. */
   predictor: PredictorMode;
+  /** How wide the model's own forecast range is for THIS row - see FlipSuggestion.forecastSpread. */
+  forecastSpread?: number;
 }
 
 /**
@@ -176,6 +178,7 @@ export async function simulateMirageLeague(
       baselineRatio: trend.avgRatio,
       baselineRatioDivine: trend.avgRatioDivine,
       predictor: mode,
+      forecastSpread: p.forecastSpread,
     });
   });
 

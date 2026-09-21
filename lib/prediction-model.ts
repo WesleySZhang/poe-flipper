@@ -52,6 +52,9 @@ export interface PredictorModel {
   clip: number;
   formula: { chaos: FormulaBucket[]; divine: FormulaBucket[] };
   xgb: { chaos?: PackedForest; divine?: PackedForest };
+  /** Forecast-precision quantile heads (see ml/test_quantile_xgb.py) - p10/p90 of the CHAOS log-return, same
+   *  feature set as xgb.chaos. Optional: an older model file simply has no forecast-precision signal. */
+  quantiles?: { chaos?: { p10?: PackedForest; p90?: PackedForest } };
 }
 
 function unpack<T extends Int16Array | Int32Array | Float32Array | Uint8Array>(
@@ -119,13 +122,18 @@ export interface PredictorRuntime {
   model: PredictorModel;
   chaos?: Forest;
   divine?: Forest;
+  chaosP10?: Forest;
+  chaosP90?: Forest;
 }
 
 export function createPredictor(model: PredictorModel): PredictorRuntime {
+  const q = model.quantiles?.chaos;
   return {
     model,
     chaos: model.xgb.chaos?.roots ? new Forest(model.xgb.chaos) : undefined,
     divine: model.xgb.divine?.roots ? new Forest(model.xgb.divine) : undefined,
+    chaosP10: q?.p10?.roots ? new Forest(q.p10) : undefined,
+    chaosP90: q?.p90?.roots ? new Forest(q.p90) : undefined,
   };
 }
 
@@ -151,6 +159,17 @@ export interface GrowthPrediction {
   ratio: number;
   /** Same, divine-denominated (chaos debasement divided out); undefined when the divine ratio is unavailable. */
   ratioDivine?: number;
+  /**
+   * How wide the model's OWN 10th-90th percentile range is for this specific forecast, as a ratio-space
+   * multiple (p90/p10 of the predicted price, always >= 1) - e.g. 1.8 means the model's own middle-80%
+   * range spans a factor of 1.8x. A genuinely different signal from confidence.ts's score: that answers
+   * "has this item's growth been directionally consistent across past leagues", this answers "how wide is
+   * the model's uncertainty band around THIS forecast" - validated (ml/test_quantile_xgb.py) to track actual
+   * point-forecast error monotonically (8.2x wider error at the widest vs narrowest decile of this spread).
+   * Chaos-denominated and xgb-mode only (the quantile heads share the point model's feature set, not the
+   * formula's) - undefined for the formula/baseline modes or when the model file has no quantile heads.
+   */
+  forecastSpread?: number;
 }
 
 /**
@@ -180,6 +199,36 @@ export function scoreFeatureMatrix(
     }
   }
   return { chaos, divine };
+}
+
+/**
+ * Raw log-return p10/p90 predictions (clamped to +-clip, same convention as scoreFeatureMatrix) - exposed
+ * alongside it so callers (and scripts/check-predictor-parity.ts) can verify/use the quantile heads directly,
+ * without reaching into the private Forest class. NaN where a forest is unavailable.
+ */
+export function scoreChaosQuantiles(X: Float32Array, rt: PredictorRuntime = getDefaultRuntime()): { p10: Float64Array; p90: Float64Array } {
+  const n = X.length / N_FEATURES;
+  const { clip } = rt.model;
+  const clamp = (v: number) => Math.min(clip, Math.max(-clip, v));
+  const p10 = new Float64Array(n).fill(NaN), p90 = new Float64Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    const off = i * N_FEATURES;
+    if (rt.chaosP10) p10[i] = clamp(rt.chaosP10.predictRow(X, off));
+    if (rt.chaosP90) p90[i] = clamp(rt.chaosP90.predictRow(X, off));
+  }
+  return { p10, p90 };
+}
+
+/**
+ * Forecast-precision spread per row: exp(clamp(p90) - clamp(p10)) as a ratio-space multiple (always >= 1).
+ * Requires both quantile forests (checked by the caller); the p10/p90 features are the same CHAOS_COLS the
+ * chaos point model reads, so no NaN-availability check beyond that is needed here.
+ */
+function forecastSpreadFromForests(X: Float32Array, rt: PredictorRuntime): Float64Array {
+  const { p10, p90 } = scoreChaosQuantiles(X, rt);
+  const out = new Float64Array(p10.length);
+  for (let i = 0; i < out.length; i++) out[i] = Math.exp(Math.max(0, p90[i] - p10[i]));
+  return out;
 }
 
 // Identical inputs (e.g. repeated requests inside poe.ninja's 20-minute response cache) give identical
@@ -216,6 +265,7 @@ export function predictGrowth(
   if (cached) return cached;
 
   const scores = scoreFeatureMatrix(X, mode, rt);
+  const spread = mode === "xgb" && rt.chaosP10 && rt.chaosP90 ? forecastSpreadFromForests(X, rt) : undefined;
   const out: GrowthPrediction[] = new Array(inputs.length);
   for (let i = 0; i < inputs.length; i++) {
     const { chaos, divine } = { chaos: scores.chaos[i], divine: scores.divine[i] };
@@ -227,6 +277,7 @@ export function predictGrowth(
     out[i] = {
       ratio: Number.isFinite(chaos) ? Math.exp(chaos) : inputs[i].ratio.avgRatio,
       ratioDivine: inputs[i].ratio.avgRatioDivine === undefined ? undefined : Number.isFinite(divine) ? Math.exp(divine) : inputs[i].ratio.avgRatioDivine,
+      forecastSpread: spread ? spread[i] : undefined,
     };
   }
   if (sig) {

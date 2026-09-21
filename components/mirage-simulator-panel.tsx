@@ -372,6 +372,7 @@ export function MirageSimulatorPanel() {
                         score={activeConfidence(r.confidence, r.confidenceDivine, priceUnit)}
                         upFraction={priceUnit === "chaos" ? r.upFraction : r.upFractionDivine}
                         leagueCount={priceUnit === "chaos" ? r.leagueCount : r.leagueCountDivine}
+                        forecastSpread={priceUnit === "chaos" ? r.forecastSpread : undefined}
                       />
                     </div>
                   </TableCell>

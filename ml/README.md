@@ -232,8 +232,39 @@ individual production ratios slightly, in the direction of reproducibility.
 **Known limits.** The live sparkline is raw while the stored history had single-day glitches corrected at ingest, so live
 momentum is noisier (median 6-day volatility ~2x historical); the robustness tests above cover +-20% noise on the last
 point, not this. Live predictions use 4-5 reference leagues where training rows saw at most 4. Confidence scores still
-describe cross-league consistency, not the learned forecast. Nothing here has run against a live league's *outcomes* yet:
-log a few weeks of live forecasts against what happened before treating the absolute numbers as settled.
+describe cross-league consistency, not the learned forecast (see "Forecast precision" below for what does). Nothing here
+has run against a live league's *outcomes* yet: log a few weeks of live forecasts against what happened before treating
+the absolute numbers as settled.
+
+## Forecast precision: quantile heads (shipped)
+
+`lib/confidence.ts`'s score answers "has this item consistently gained across past leagues" - a different question
+from "how wide is the model's own uncertainty band around *this* forecast" (in backtesting, high-confidence rows had
+*higher* absolute error than low, simply because reliable gainers move further - see that file's module doc). A
+p10/p90 quantile pair on the chaos log-return, sharing the point model's feature set, answers the second question and
+is shipped as `FlipSuggestion.forecastSpread` / `MirageSimulationRow.forecastSpread` (a ratio-space multiple, e.g. 1.8
+means the model's own middle-80% range spans a factor of 1.8x) - appended to the confidence badge's hover text as a
+second, clearly separate sentence, never blended into the score itself (`lib/confidence.ts`'s `describeConfidence`).
+
+**Validated** (`test_quantile_xgb.py`, Mirage holdout): mean |point-model error| climbs monotonically across predicted-
+spread deciles, 0.070 (narrowest) -> 0.592 (widest), 8.2-8.4x; Spearman(spread, |error|) = 0.50-0.52. Calibration is
+decent but not exact: P(y < p10) landed at 0.156-0.168 against a target of 0.10 depending on the training set (some
+tail under-coverage - a narrower-than-ideal band), P(y < p90) at 0.837-0.841 against 0.90. Chaos-denominated and
+`xgb`-mode only; divine was not validated by this test. Items under the 1c floor (see above) get no spread, same as
+they get no learned point forecast.
+
+**Deployment bug found and fixed**: XGBoost's built-in `reg:quantileerror` objective (`test_quantile_xgb.py`'s
+original approach) trains a booster whose serialized JSON tree dump (`base_weights` + `base_score`) does **not**
+reproduce its own `predict()` output on XGBoost 3.2.0 - confirmed by matching leaf indices exactly via `pred_leaf`
+(ruling out a tree-walk bug), then ruling out `eta` scaling, `base_score` handling, GPU vs CPU, `QuantileDMatrix`,
+and even XGBoost's own `pred_contribs` SHAP-style bias term - none reconciled a ~1.0 log-return gap. Since the
+shipped predictor is a from-scratch TypeScript tree walker (no XGBoost runtime on Vercel - see "Deployment
+footprint" above), an unreproducible objective is a dead end regardless of accuracy. The shipped quantile heads
+(`fit_production.py`'s `pinball_objective`) instead train with a **custom** grad/hess objective (pinball loss,
+constant Hessian - standard practice for non-twice-differentiable quantile loss) via `xgb.train(obj=...)`, which
+produces an ordinary single-output booster serialized the same proven way as the point/formula/divine models
+(`npm run ml:parity`: 1e-6 max diff) and, empirically, calibrated as well or slightly better than the built-in
+objective did.
 
 ## Reproduce
 
@@ -282,3 +313,4 @@ log a few weeks of live forecasts against what happened before treating the abso
 | `check_leakage.py` | causality test for the momentum / own-history features |
 | `export_model.py` / `eval_model.mjs` | round-2 prototype of the portable model export + JS evaluator with parity + timing |
 | `fit_production.py` | fits + exports the shipped model (`lib/models/predictor.json`) from TypeScript-built rows; validation report |
+| `test_quantile_xgb.py` | exploratory: does a quantile spread predict point-model error (yes) - superseded by `fit_production.py`'s shipped custom-objective quantile heads |

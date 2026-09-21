@@ -58,6 +58,38 @@ ROUNDS = 200
 BUCKETS = [(0, 0), (1, 5), (6, 29), (30, 59), (60, 9999)]
 MOM_LATE = ["mom1", "mom3", "mom6", "mom6_pct", "accel", "vol6", "dev_sm3", "peer_mom6"]
 
+# Forecast-precision quantile heads (see test_quantile_xgb.py): p10/p90 of the chaos log-return, on the SAME
+# feature set as the shipped chaos point model. Validated there that the predicted spread (p90-p10) tracks
+# actual point-model error monotonically (8.2x from narrowest to widest decile, Spearman 0.50) - a genuine,
+# separate signal from lib/confidence.ts's historical-reliability score, which answers "has this consistently
+# gained before" rather than "how wide is THIS forecast". Chaos only: divine was not validated by that test.
+#
+# Trained with a CUSTOM pinball-loss objective (grad/hess), not XGBoost's built-in reg:quantileerror. That
+# built-in objective's serialized JSON tree dump (base_weights + base_score) does not reproduce its own
+# predict() output on this XGBoost version (3.2.0) - verified exhaustively (matching leaf indices via
+# pred_leaf, testing eta/base_score scaling, GPU vs CPU, QuantileDMatrix, even XGBoost's own pred_contribs
+# bias term - none reconciled the ~1.0 log-return gap). A plain custom objective produces an ordinary
+# single-output booster serialized the same proven way as the point/formula/divine models (parity 1e-6) and,
+# empirically, calibrates BETTER than the built-in objective did (P(y<p10)=0.101, P(y<p90)=0.900 vs 0.156/0.841).
+QUANTILES = (0.1, 0.9)
+XGB_QUANTILE_PARAMS = {"device": os.environ.get("XGB_DEVICE", "cuda"), "tree_method": "hist",
+                       "max_depth": 8, "min_child_weight": 200, "eta": 0.10, "subsample": 0.8,
+                       "colsample_bytree": 0.8, "reg_lambda": 10.0, "seed": 0, "base_score": 0.0}
+
+
+def pinball_objective(q):
+    """grad/hess of pinball (quantile) loss L(pred)=q*max(y-pred,0)+(1-q)*max(pred-y,0) for xgb.train(obj=...).
+    Constant hessian=1 (pinball loss isn't twice-differentiable at 0) - standard practice for custom quantile
+    objectives. base_score=0.0 is required (see XGB_QUANTILE_PARAMS): with a custom objective XGBoost does not
+    compute its own data-driven intercept, so leaving the default base_score would silently center predictions
+    on a meaningless point rather than the data's own scale - the trees alone must learn the full mapping."""
+    def obj(preds, dtrain):
+        y = dtrain.get_label()
+        grad = np.where(preds < y, -q, 1 - q).astype(np.float64)
+        hess = np.ones_like(grad)
+        return grad, hess
+    return obj
+
 
 def tradeable(df):
     """Items priced under 1c are price-tick noise, not flips (the original model applies the same 1c floor to
@@ -130,6 +162,15 @@ def fit_xgb(df, denom):
     return xgb.train(XGB_PARAMS, dm, num_boost_round=ROUNDS), cols
 
 
+def fit_xgb_quantile(df, q):
+    """One p-quantile chaos model, same feature set as the point model (CHAOS_COLS). Custom pinball objective -
+    see the comment above QUANTILES/pinball_objective for why not XGBoost's built-in reg:quantileerror."""
+    d = df[df.y.notna()]
+    cols = CHAOS_COLS
+    dm = xgb.DMatrix(d[cols].values.astype("float32"), label=d.y.clip(-CLIP, CLIP).values, feature_names=cols)
+    return xgb.train(XGB_QUANTILE_PARAMS, dm, num_boost_round=ROUNDS, obj=pinball_objective(q)), cols
+
+
 def xgb_predict(m, cols, df):
     return m.predict(xgb.DMatrix(df[cols].values.astype("float32"), feature_names=cols))
 
@@ -155,14 +196,21 @@ def pack(booster, cols):
 
 
 def model_json(train, note):
-    """Returns (packed model JSON, {denomination: (booster, columns)}) - the boosters are kept for validation reports."""
+    """Returns (packed model JSON, {denomination|quantile-key: (booster, columns)}) - the boosters are kept for
+    validation reports. mj["quantiles"]["chaos"] = {"p10": PackedForest, "p90": PackedForest} - see QUANTILES."""
     mj = {"version": 1, "trainedOn": note, "clip": CLIP,
-          "formula": {"chaos": fit_formula(train, "chaos"), "divine": fit_formula(train, "divine")}, "xgb": {}}
+          "formula": {"chaos": fit_formula(train, "chaos"), "divine": fit_formula(train, "divine")},
+          "xgb": {}, "quantiles": {"chaos": {}}}
     boosters = {}
     for d in ("chaos", "divine"):
         b, cols = fit_xgb(train, d)
         mj["xgb"][d] = pack(b, cols)
         boosters[d] = (b, cols)
+    for q in QUANTILES:
+        b, cols = fit_xgb_quantile(train, q)
+        key = f"p{int(round(q * 100))}"
+        mj["quantiles"]["chaos"][key] = pack(b, cols)
+        boosters[f"chaos_{key}"] = (b, cols)
     return mj, boosters
 
 
@@ -249,13 +297,30 @@ def validate(holdouts):
                 m = ((te.t >= lo) & (te.t <= hi)).values
                 sub = te[m].reset_index(drop=True)
                 report(f"{h} holdout, {denom}, {tag}", sub, {k: v[m] for k, v in preds.items()}, ycol)
-        # predictions for the TS parity check (chaos xgb + formula on the first 20k test rows of a few scenarios)
+        # forecast-precision quantile check (chaos only - see fit_xgb_quantile): does the predicted p90-p10
+        # spread actually track the point model's error on THIS holdout, the same way test_quantile_xgb.py found?
+        te_c = test[test.y.notna() & test.shrunk_base.notna()].reset_index(drop=True)
+        p10, p90 = xgb_predict(*rt["chaos_p10"], te_c), xgb_predict(*rt["chaos_p90"], te_c)
+        point = xgb_predict(*rt["chaos"], te_c)
+        spread = p90 - p10
+        below10, below90 = (te_c.y.values < p10).mean(), (te_c.y.values < p90).mean()
+        dq = pd.DataFrame({"spread": spread, "abs_err": np.abs(point - te_c.y.values)})
+        dq["decile"] = pd.qcut(dq.spread, 10, labels=False, duplicates="drop")
+        g = dq.groupby("decile").abs_err.mean()
+        print(f"\nquantile spread calibration ({h} holdout, chaos): P(y<p10)={below10:.3f} (target 0.10), "
+              f"P(y<p90)={below90:.3f} (target 0.90), Spearman(spread,|err|)={spearmanr(spread, dq.abs_err)[0]:.3f}")
+        print(f"  mean|err| by spread decile (0=narrowest..9=widest): "
+              f"{g.iloc[0]:.3f} -> {g.iloc[-1]:.3f} ({g.iloc[-1]/max(g.iloc[0], 1e-9):.1f}x), "
+              f"monotonic: {(g.diff().dropna() > 0).all()}")
+        # predictions for the TS parity check (chaos xgb/quantiles + formula on the first 20k test rows of a few scenarios)
         chk = test[test.t.isin([1, 14, 60]) & test.h.isin([3, 14])].reset_index(drop=True)
         np.asarray(chk[FEATURES + ["y", "yd"]].values, dtype="<f4").tofile(os.path.join(ROWS, f"parity_{h}.f32"))
         json.dump({"rows": len(chk), "columns": FEATURES + ["y", "yd"],
                    "xgb_chaos": [None if not np.isfinite(v) else float(v) for v in xgb_predict(*rt["chaos"], chk)],
                    "xgb_divine": [None if not np.isfinite(v) else float(v) for v in xgb_predict(*rt["divine"], chk)],
-                   "formula_chaos": [None if not np.isfinite(v) else float(v) for v in apply_formula(mj["formula"]["chaos"], chk)]},
+                   "formula_chaos": [None if not np.isfinite(v) else float(v) for v in apply_formula(mj["formula"]["chaos"], chk)],
+                   "xgb_chaos_p10": [None if not np.isfinite(v) else float(v) for v in xgb_predict(*rt["chaos_p10"], chk)],
+                   "xgb_chaos_p90": [None if not np.isfinite(v) else float(v) for v in xgb_predict(*rt["chaos_p90"], chk)]},
                   open(os.path.join(ROWS, f"parity_{h}.json"), "w"))
         print(f"({time.time()-t0:.0f}s)")
 

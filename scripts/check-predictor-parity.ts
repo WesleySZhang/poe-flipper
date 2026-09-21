@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { createPredictor, scoreFeatureMatrix, type PredictorModel } from "../lib/prediction-model";
+import { createPredictor, scoreChaosQuantiles, scoreFeatureMatrix, type PredictorModel, type PredictorRuntime } from "../lib/prediction-model";
 import { FEATURE_NAMES, N_FEATURES } from "../lib/prediction-features";
 
 function spearman(a: number[], b: number[]): number {
@@ -50,9 +50,10 @@ async function main() {
     y.push(all[i * stride + N_FEATURES]);
     t.push(all[i * stride]);
   }
-  const rt = createPredictor(model);
+  const rt: PredictorRuntime = createPredictor(model);
   const xg = scoreFeatureMatrix(X, "xgb", rt);
   const fm = scoreFeatureMatrix(X, "formula", rt);
+  const quantiles = scoreChaosQuantiles(X, rt);
   const clip = model.clip;
   const cmp = (name: string, ts: Float64Array, py: Array<number | null>) => {
     let max = 0, n = 0, mismatchedNaN = 0;
@@ -68,7 +69,10 @@ async function main() {
   const worst = Math.max(
     cmp("xgb chaos", xg.chaos, meta.xgb_chaos),
     cmp("xgb divine", xg.divine, meta.xgb_divine),
-    cmp("formula chaos", fm.chaos, meta.formula_chaos)
+    cmp("formula chaos", fm.chaos, meta.formula_chaos),
+    ...(meta.xgb_chaos_p10
+      ? [cmp("xgb chaos p10", quantiles.p10, meta.xgb_chaos_p10), cmp("xgb chaos p90", quantiles.p90, meta.xgb_chaos_p90)]
+      : [])
   );
   // end-to-end sanity: rank correlation with what actually happened, per scenario size class
   const ok = y.map((v) => Number.isFinite(v));

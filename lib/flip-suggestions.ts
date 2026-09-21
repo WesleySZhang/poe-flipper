@@ -71,6 +71,11 @@ export interface FlipSuggestion {
   baselineGrowthRatioDivine?: number;
   /** Which model produced avgGrowthRatio - see lib/prediction-model.ts. */
   predictor: PredictorMode;
+  /** How wide the model's own forecast range is for THIS row, as a ratio-space multiple (>= 1) - see
+   *  GrowthPrediction.forecastSpread. A different signal from `confidence`: that says how consistently this
+   *  item has gained historically; this says how much the model itself trusts today's specific number.
+   *  Undefined outside xgb mode, in divine-only rows, or when the model file has no quantile heads. */
+  forecastSpread?: number;
 }
 
 /** A live-priced item ready to be scored, before the (cross-sectional) predictor runs over the whole set. */
@@ -135,6 +140,7 @@ function buildSuggestion(
     baselineGrowthRatio: baseTrend.avgRatio,
     baselineGrowthRatioDivine: baseTrend.avgRatioDivine,
     predictor: mode,
+    forecastSpread: prediction.forecastSpread,
   };
 }
 

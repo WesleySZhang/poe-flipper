@@ -21,12 +21,16 @@ export function ConfidenceBadge({
   score,
   upFraction,
   leagueCount,
+  forecastSpread,
 }: {
   score: number | undefined;
   upFraction: number | undefined;
   leagueCount: number;
+  /** See lib/confidence.ts's describeConfidence - a distinct "how sure is the model of THIS number" signal,
+   *  appended to the hover text rather than blended into the badge/score itself. */
+  forecastSpread?: number;
 }) {
-  const title = describeConfidence(score, upFraction, leagueCount);
+  const title = describeConfidence(score, upFraction, leagueCount, forecastSpread);
   if (score === undefined) {
     return (
       <span className="text-muted-foreground" title={title}>

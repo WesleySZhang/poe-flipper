@@ -339,6 +339,7 @@ export function FlipSuggestionsPanel() {
                         score={activeConfidence(s.confidence, s.confidenceDivine, priceUnit)}
                         upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
                         leagueCount={priceUnit === "chaos" ? s.leagueCount : s.leagueCountDivine}
+                        forecastSpread={priceUnit === "chaos" ? s.forecastSpread : undefined}
                       />
                     </div>
                   </TableCell>
