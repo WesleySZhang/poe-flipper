@@ -9,9 +9,8 @@ export default function DivinationCardsPage() {
         title="Divination Card Flips"
         description={
           <>
-            Buying a full stack of a card and turning it in for its reward, in {CURRENT_LEAGUE} - ranked by how
-            much cheaper the stack is than the reward is worth right now. Only cards with a single, deterministic
-            reward are shown; see the note below the price toggle for why.
+            Ranks divination cards by profit from buying a full stack and turning it in, in {CURRENT_LEAGUE} - only
+            cards with a single, deterministic reward are shown; see the note below the price toggle for why.
           </>
         }
       />

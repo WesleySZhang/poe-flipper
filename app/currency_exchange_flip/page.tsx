@@ -9,9 +9,8 @@ export default function FaustusPage() {
         title="Currency Exchange Flip"
         description={
           <>
-            Buy/sell price spreads on GGG&apos;s Currency Exchange (the &quot;Faustus&quot; NPC) for same-day
-            flipping in {CURRENT_LEAGUE} - not a projection like the rest of this app, just what the exchange itself
-            already shows about how far an item&apos;s price moved within the last hour it traded.
+            Buy/sell price spreads on GGG&apos;s Currency Exchange for same-day flipping in {CURRENT_LEAGUE} - not a
+            projection, just what the exchange itself shows about how far a price moved within the last hour.
           </>
         }
       />
