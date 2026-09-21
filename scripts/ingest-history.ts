@@ -36,26 +36,6 @@ const INCLUDED_LEAGUES = process.env.POE_INCLUDED_LEAGUES
       .filter(Boolean)
   : PRODUCTION_LEAGUES;
 
-// Each main league folder can also have an "extras" subfolder holding private/community leagues
-// that ran during that league's era (streamer leagues, restart leagues, "search party" events,
-// etc.) - smaller player bases, so a less liquid, potentially noisier economy of their own. Checked
-// all 21 across Keepers/Mercenaries/Mirage/Settlers: poe.ninja recorded literally zero price rows
-// for 20 of them (header-only CSVs - too few trades to ever produce a snapshot), leaving exactly one
-// with real, substantial data - Necro Settlers (~105 days, ~20% of main Settlers' row volume).
-//
-// Tested it as additional training data anyway (scripts/backtest-extras-leagues.ts, run against a
-// separate experimental DB via the POE_DB_PATH override below - never against the real production
-// DB) across two holdout leagues (Mirage, Phrecia 2.0), at full weight, half weight, and as a
-// substitute for main Settlers: every configuration that included it was flat-to-worse than the
-// current 5-league baseline on both Spearman correlation and directional accuracy, driven mostly by
-// a sharp Essence-category regression (-0.22 Spearman on ~5900 pooled rows) that outweighed a few
-// small gains elsewhere (IncursionTemple, Vial, Fossil). As a standalone single-league predictor it
-// also transferred worse than mainline Settlers alone - consistent with it being a smaller, less
-// liquid economy of its own rather than a noisier sample of the same one. Left out of production
-// training as a result - this allowlist stays empty until a future extras drop earns a spot in it
-// the same way (glob is exercised either way so the mechanism itself stays tested).
-const INCLUDED_EXTRA_LEAGUES: string[] = [];
-
 // One-day "spike" glitches: a steady price suddenly drops (or jumps) to a small fraction/multiple
 // of itself for exactly one day, then returns to right around its former level and keeps trending
 // the way it already was. Distinct from the magnitude-band and local-median rejection above (which
@@ -209,27 +189,13 @@ async function main() {
   if (allCsvFiles.length === 0) {
     throw new Error(`No CSV files found under ${DATA_DIR}`);
   }
-  const mainCsvFiles = allCsvFiles.filter((file) => INCLUDED_LEAGUES.includes(path.basename(path.dirname(file))));
+  const csvFiles = allCsvFiles.filter((file) => INCLUDED_LEAGUES.includes(path.basename(path.dirname(file))));
   const missingLeagues = INCLUDED_LEAGUES.filter(
-    (league) => !mainCsvFiles.some((file) => path.basename(path.dirname(file)) === league)
+    (league) => !csvFiles.some((file) => path.basename(path.dirname(file)) === league)
   );
   if (missingLeagues.length > 0) {
     throw new Error(`No CSV files found for league(s): ${missingLeagues.join(", ")} under ${DATA_DIR}`);
   }
-
-  // Extras live one level deeper, under "<League>/extras/" - see INCLUDED_EXTRA_LEAGUES above.
-  const allExtraCsvFiles = await glob("*/extras/*.{currency,items}.csv", { cwd: DATA_DIR, absolute: true });
-  const extraCsvFiles = allExtraCsvFiles.filter((file) =>
-    INCLUDED_EXTRA_LEAGUES.some((league) => path.basename(file).startsWith(`${league}.`))
-  );
-  const missingExtraLeagues = INCLUDED_EXTRA_LEAGUES.filter(
-    (league) => !extraCsvFiles.some((file) => path.basename(file).startsWith(`${league}.`))
-  );
-  if (missingExtraLeagues.length > 0) {
-    throw new Error(`No CSV files found for extra league(s): ${missingExtraLeagues.join(", ")} under ${DATA_DIR}`);
-  }
-
-  const csvFiles = [...mainCsvFiles, ...extraCsvFiles];
 
   // Raw ingestion happens entirely in memory - DuckDB's DROP TABLE doesn't reclaim on-disk space
   // (there's no VACUUM-equivalent compaction), so building the ~250MB raw tables directly in the
