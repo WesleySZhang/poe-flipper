@@ -159,15 +159,6 @@ export function DivinationFlipsPanel() {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <p className="text-xs text-muted-foreground">
-          Only cards with a single, deterministic, currently-priced reward are listed - cards with variable rewards
-          (a random unique of a type, a random-level gem, a corrupted roll) are intentionally excluded, since their
-          true value can&apos;t be computed from a single number. Buy/Reward use poe.ninja&apos;s live prices; Min/Max
-          (where shown) is GGG&apos;s own Currency Exchange data for the last closed hour - historical, roughly 2
-          hours stale, not two live standing orders. Confidence is the weaker of the two legs&apos; liquidity (buying
-          the card, selling the reward) - a wide profit % on a Low-confidence row is usually just one or two trades,
-          not a real opportunity.
-        </p>
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search cards or rewards..." />
           <NumericRangeFilter

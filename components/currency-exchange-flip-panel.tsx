@@ -183,11 +183,6 @@ export function CurrencyExchangeFlipPanel() {
             Warning: Day-{currentDay} is late in the league - flips may not be achievable.
           </p>
         )}
-        <p className="text-xs text-muted-foreground">
-          GGG&apos;s exchange data is purely historical - roughly 2 hours stale, and Buy/Sell are the low/high ends of
-          the last closed hour&apos;s trade range, not two live standing orders right now. A wide profit % on a Low
-          liquidity item is usually just a couple of trades, not a real opportunity - check Liquidity before acting.
-        </p>
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search items..." />
           <NumericRangeFilter

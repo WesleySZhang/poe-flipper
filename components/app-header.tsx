@@ -38,17 +38,19 @@ const TESTING_ROUTES = ["/mirage-simulator", "/current-league-tester"];
  * pages. usePathname (not a passed-in prop) is the single source of truth for which button is
  * active, so a new page only ever needs to add itself here once, not thread active-state through
  * every page's own top-level component.
+ *
+ * Deliberately just a title - no per-page description text. An earlier version had one, but pages'
+ * descriptions varied enough in length that the header's height (and so the nav row's position)
+ * visibly shifted between pages, which defeats the point of a shared, fixed nav; a page that still
+ * needs to explain itself does so in its own panel instead.
  */
-export function AppHeader({ title, description }: { title: string; description?: React.ReactNode }) {
+export function AppHeader({ title }: { title: string }) {
   const pathname = usePathname();
   const isTestingRoute = TESTING_ROUTES.includes(pathname);
 
   return (
-    <header className="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
-      </div>
+    <header className="flex flex-wrap items-center justify-between gap-4">
+      <h1 className="text-2xl font-semibold">{title}</h1>
       <div className="flex items-center gap-4">
         <NavButton href="/" active={pathname === "/"}>
           Flip Suggestions
@@ -63,9 +65,13 @@ export function AppHeader({ title, description }: { title: string; description?:
             same-day-actionable tools - grouped under one dropdown rather than two separate nav
             buttons, so the header doesn't read as five equally-weighted destinations. The trigger
             itself highlights active (same default/secondary styling as the other buttons) whenever
-            either of its pages is the current one, so "where am I" still holds even collapsed. */}
+            either of its pages is the current one, so "where am I" still holds even collapsed.
+            openOnHover shows its contents on hover (with a short delay so brushing past it on the
+            way to another button doesn't pop it open), not just on click. */}
         <DropdownMenu>
           <DropdownMenuTrigger
+            openOnHover
+            delay={150}
             render={
               <Button variant={isTestingRoute ? "default" : "secondary"} size="sm">
                 Testing
