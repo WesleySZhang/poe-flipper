@@ -28,7 +28,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
-          {children}
+          <div className="flex min-h-full flex-1 flex-col">
+            <div className="flex-1">{children}</div>
+            <footer className="border-t border-border px-2 py-4 text-center text-xs text-muted-foreground sm:px-6">
+              Unofficial tool - not affiliated with or endorsed by Grinding Gear Games.
+            </footer>
+          </div>
           <Toaster />
         </ThemeProvider>
       </body>
