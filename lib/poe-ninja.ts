@@ -208,6 +208,15 @@ export interface CurrencyPrice {
   type: CurrencyOverviewType;
 }
 
+// The stash-listing scrape (fetchCurrencyOverviewRaw) only ever returns rows for these two types -
+// verified live 2026-09-20 (see the comment above CURRENCY_OVERVIEW_TYPES) and re-confirmed while
+// profiling page load time: every other type returns zero lines AND zero currencyDetails, always.
+// Firing that request for the other 17 types was pure wasted latency (~17 extra round-trips per
+// cold page load, since they're guaranteed to come back empty) - narrowing to just these two cut a
+// real ~1.2s off getAllCurrentCurrencyPrices's cold-cache time. The exchange-overview fetch below
+// still runs for every type, since for those other 17 it's the ONLY source that has any data at all.
+const STASH_SCRAPE_TYPES: readonly CurrencyOverviewType[] = ["Currency", "Fragment"];
+
 /** Price (+ type, for filtering) keyed by currency/fragment name, merged across all currency overview types. */
 export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<string, CurrencyPrice>> {
   const prices = new Map<string, CurrencyPrice>();
@@ -218,7 +227,7 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   // measured at ~1.6s on its own, one of the single slowest calls in the whole fan-out, entirely
   // wasted as serial latency).
   const [stashResults, exchangeResults] = await Promise.all([
-    Promise.all(CURRENCY_OVERVIEW_TYPES.map((type) => fetchCurrencyOverviewRaw(league, type))),
+    Promise.all(STASH_SCRAPE_TYPES.map((type) => fetchCurrencyOverviewRaw(league, type))),
     Promise.all(CURRENCY_OVERVIEW_TYPES.map((type) => getExchangeOverview(league, type))),
   ]);
 
@@ -237,7 +246,7 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   }
 
   stashResults.forEach((data, i) => {
-    const type = CURRENCY_OVERVIEW_TYPES[i];
+    const type = STASH_SCRAPE_TYPES[i];
     for (const line of data?.lines ?? []) {
       if (!prices.has(line.currencyTypeName)) {
         prices.set(line.currencyTypeName, {
