@@ -24,6 +24,12 @@ export function Dashboard() {
           >
             League tester
           </Link>
+          <Link
+            href="/divination-cards"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+          >
+            Divination card flips
+          </Link>
           {/* Solid button, not a muted text link like the other two - this is the tool's primary
               same-day-actionable feature (real, live exchange spreads), not a secondary testing/
               simulation utility, so it earns the visual weight. */}

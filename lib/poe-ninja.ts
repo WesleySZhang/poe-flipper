@@ -10,6 +10,11 @@ const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated wi
 // poe.ninja's own item categories keep shifting between the "currency" and "item" overview endpoints
 // (last re-verified 2026-09-12: Scarab/Essence/Fossil/DivinationCard/etc. now 404 on item/overview and
 // live under currency/overview instead - same currencyTypeName/chaosEquivalent shape as Currency/Fragment).
+// A second shift found 2026-09-20: the currency/overview (stash-scrape) endpoint itself now returns
+// ZERO lines for every type here except Currency and Fragment - poe.ninja appears to have moved the
+// rest fully onto its Currency Exchange-backed data instead (see getExchangeOverview/
+// getAllCurrentCurrencyPrices's fallback). Prophecy, Seed, DjinnCoin, HelmetEnchant and Watchstone
+// currently have zero lines from BOTH endpoints (no live listings/trades right now, not a bug).
 export const CURRENCY_OVERVIEW_TYPES = [
   "Currency",
   "Fragment",
@@ -154,9 +159,11 @@ export async function getCurrencyOverview(
  * poe.ninja's Currency Exchange (Faustus)-backed overview - a newer, separate endpoint from the
  * stash-listing scrape above. Verified this tracks Divine Orb within ~5% of GGG's own raw
  * Currency Exchange API data, vs. the stash overview which is derived from public stash tab
- * listings instead of actual completed exchange trades. Lines are keyed by a short "tradeId"
- * (e.g. "chaos", "divine", "alch") rather than a display name - resolve via CurrencyDetail.tradeId
- * from the stash overview responses (see getAllCurrentCurrencyPrices).
+ * listings instead of actual completed exchange trades. Lines are keyed by a short "id" (e.g.
+ * "chaos", "the-nurse") rather than a display name - resolved either via the response's own
+ * `items[].name` (every type, incl. DivinationCard/Scarab/etc. - see getAllCurrentCurrencyPrices)
+ * or, for the base Currency bucket specifically, via CurrencyDetail.tradeId from the stash overview
+ * responses (kept as the existing path there since it was already verified working).
  */
 export interface ExchangeOverviewLine {
   id: string;
@@ -167,10 +174,24 @@ export interface ExchangeOverviewLine {
   sparkline?: SparkLine;
 }
 
-async function getExchangeOverview(league: string, type: CurrencyOverviewType): Promise<ExchangeOverviewLine[]> {
+interface ExchangeOverviewItem {
+  id: string;
+  name: string;
+}
+
+interface ExchangeOverviewResponse {
+  lines?: ExchangeOverviewLine[];
+  /** id->display-name catalog for this same response's lines - present on every type this
+   *  endpoint serves (verified on Currency, Scarab, DivinationCard, Essence, Fossil, Tattoo), so a
+   *  type with no other name source (see the stash-overview regression below) can still resolve
+   *  its lines without a second request. */
+  items?: ExchangeOverviewItem[];
+}
+
+async function getExchangeOverview(league: string, type: CurrencyOverviewType): Promise<ExchangeOverviewResponse> {
   const url = `${EXCHANGE_OVERVIEW_URL}?league=${encodeURIComponent(league)}&type=${type}`;
-  const data = await fetchJson<{ lines?: ExchangeOverviewLine[] }>(url);
-  return data?.lines ?? [];
+  const data = await fetchJson<ExchangeOverviewResponse>(url);
+  return { lines: data?.lines ?? [], items: data?.items ?? [] };
 }
 
 export async function getItemOverview(league: string, type: ItemOverviewType): Promise<ItemOverviewLine[]> {
@@ -190,19 +211,22 @@ export interface CurrencyPrice {
 /** Price (+ type, for filtering) keyed by currency/fragment name, merged across all currency overview types. */
 export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<string, CurrencyPrice>> {
   const prices = new Map<string, CurrencyPrice>();
-  // Both requested concurrently - the exchange overview below doesn't depend on the stash batch's
-  // results, only on the tradeIdToName lookup built FROM them further down, so there's no reason
-  // to wait for the stash batch to finish before even starting this one (was previously a fully
-  // separate, sequential await AFTER the stash Promise.all - measured at ~1.6s on its own, one of
-  // the single slowest calls in the whole fan-out, entirely wasted as serial latency).
-  const [stashResults, exchangeLines] = await Promise.all([
+  // Both batches requested concurrently - the exchange overview below doesn't depend on the stash
+  // batch's results, only on the tradeIdToName lookup built FROM the Currency-type stash response
+  // further down, so there's no reason to wait for the stash batch to finish before even starting
+  // this one (was previously a fully separate, sequential await AFTER the stash Promise.all -
+  // measured at ~1.6s on its own, one of the single slowest calls in the whole fan-out, entirely
+  // wasted as serial latency).
+  const [stashResults, exchangeResults] = await Promise.all([
     Promise.all(CURRENCY_OVERVIEW_TYPES.map((type) => fetchCurrencyOverviewRaw(league, type))),
-    getExchangeOverview(league, "Currency"),
+    Promise.all(CURRENCY_OVERVIEW_TYPES.map((type) => getExchangeOverview(league, type))),
   ]);
 
-  // Currency Exchange lines below are keyed by a short id ("chaos", "alch") rather than a display
-  // name - build the id->name lookup from whichever stash responses happen to carry it, since
-  // currencyDetails is poe.ninja's own catalog data and stable across categories.
+  // Currency Exchange's Currency-type lines are keyed by a short id ("chaos", "alch") that its own
+  // items[] entries (unlike every other type's - see below) resolve to the SAME name the stash
+  // overview already uses, verified independently via currencyDetails - kept as its own path since
+  // it predates (and was already verified working for) the fallback this function now also does
+  // for every other type.
   const tradeIdToName = new Map<string, string>();
   for (const data of stashResults) {
     for (const detail of data?.currencyDetails ?? []) {
@@ -227,17 +251,29 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   // Chaos Orb is the implicit baseline and never appears in the overview lines itself.
   if (!prices.has("Chaos Orb")) prices.set("Chaos Orb", { chaosValue: 1, type: "Currency" });
 
-  // The base "Currency" bucket (Chaos/Divine/Exalted/Alch/...) prefers Currency Exchange pricing
-  // over the stash-listing scrape above - see getExchangeOverview's comment. Falls back to the
-  // stash value set above for any line whose tradeId doesn't resolve to a name.
-  for (const line of exchangeLines) {
-    const name = tradeIdToName.get(line.id);
-    if (name) {
-      // Keep the stash line's sparkline if the exchange line happens to carry none.
-      const spark = sparkPointsFrom(line.sparkline) ?? prices.get(name)?.spark;
-      prices.set(name, { chaosValue: line.primaryValue, type: "Currency", spark });
+  // poe.ninja's stash-listing scrape (above) now returns zero lines for most non-Currency/Fragment
+  // types (Scarab, Essence, Fossil, DivinationCard, Oil, ... - verified live 2026-09-20, no
+  // announcement found; presumably poe.ninja itself has moved fully onto Currency Exchange data for
+  // these) - so this fallback isn't just "prefer the newer source" for those types, it's the ONLY
+  // source they have left. Every exchange-overview type's own `items[]` resolves its lines' short
+  // ids to real display names directly (see ExchangeOverviewResponse) - the base Currency type
+  // still prefers the tradeIdToName path above instead, since that was independently verified
+  // (Divine Orb within ~5% of GGG's own exchange data) and items[] wasn't cross-checked against it.
+  exchangeResults.forEach((exchange, i) => {
+    const type = CURRENCY_OVERVIEW_TYPES[i];
+    const idToName = new Map(exchange.items?.map((item) => [item.id, item.name]));
+    for (const line of exchange.lines ?? []) {
+      const name = type === "Currency" ? tradeIdToName.get(line.id) : idToName.get(line.id);
+      if (!name) continue;
+      const existing = prices.get(name);
+      // For Currency specifically, exchange data replaces the stash value outright (see above) -
+      // for every other type, only fill a gap the stash scrape left empty, so a type that DOES
+      // still have working stash data isn't silently overridden by this fallback.
+      if (type !== "Currency" && existing) continue;
+      const spark = sparkPointsFrom(line.sparkline) ?? existing?.spark;
+      prices.set(name, { chaosValue: line.primaryValue, type, spark });
     }
-  }
+  });
 
   return prices;
 }
