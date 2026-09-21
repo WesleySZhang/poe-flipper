@@ -18,7 +18,7 @@
   compares with what the item cost on the same day of past leagues (expensive items tend
   to fall, cheap ones to rise) and (2) poe.ninja's 7-day price sparkline (currency
   momentum tends to continue, items' does not). Two interchangeable models are shipped in
-  `lib/models/predictor.json` (1.9 MB): gradient-boosted trees (default) and a small
+  `lib/models/predictor.json` (4.5 MB): gradient-boosted trees (default) and a small
   linear formula per league-day bucket. Chosen with the optional `PREDICTOR` env var:
   `xgb` (default), `formula`, or `baseline` (the original plain average); a missing model
   file falls back automatically. Replaying the finished Mirage league with a model that
@@ -32,7 +32,10 @@
   the same badge's hover text (chaos mode, learned-forecast predictor only) says how wide
   the model's *own* uncertainty band is around this specific number - a deliberately
   distinct question from the tier, which is answered by a second, independent pair of
-  quantile models trained alongside the point forecast (see `ml/README.md`).
+  quantile models trained alongside the point forecast (see `ml/README.md`). The Currency
+  Exchange Flip and Divination Card Flips pages show a differently-named "Confidence"
+  column instead, based on live trade liquidity rather than historical reliability - see
+  their own sections below and `lib/liquidity.ts`.
 - **Price history charts**: click any row to expand a chart of that item's price across
   every past league used for training, with markers for the current day and the
   prediction's target day - lets you sanity-check a prediction against the real shape of
@@ -47,6 +50,16 @@
   GGG's exchange API has no gold-cost field, so those numbers are transcribed by hand
   from community sources (mostly exact; a handful of items fall back to a range
   estimate - see the comments in `lib/faustus-gold.ts`).
+- **Divination Card Flips** (`/divination-cards`): ranks divination cards by the profit
+  from buying a full stack (poe.ninja's live card price x the card's stack size) and
+  turning it in for its reward, at today's live prices. Only cards whose reward is a
+  single, deterministic, currently-priced unique item, currency amount, or other card are
+  included - cards with a randomized reward (a roll, a corruption, a random item of a
+  category) are excluded, since their true value can't be computed from a single number
+  (`lib/divination-cards.ts`, generated from RePoE's game data by
+  `scripts/generate-divination-cards.ts`; `lib/divination-flips.ts` does the live
+  scoring). Confidence here is the weaker of the two legs' live trade liquidity (buying
+  the card, selling the reward), not the historical-reliability score used elsewhere.
 - **Mirage simulator** (`/mirage-simulator`): a testing page that replays the model
   against the Mirage league - which is always excluded from the historical averages - so
   you can pick a day and duration and see the model's prediction next to what actually
@@ -56,6 +69,11 @@
 - **Current league tester** (`/current-league-tester`): look up a single item/currency
   by name and apply its historical growth ratio to a price you type in. It uses the
   historical ratio only, not the learned forecast (it has no live price to work from).
+- **Navigation** (`components/app-header.tsx`): every page shares one header - a button
+  per top-level page plus a "Testing" dropdown grouping the Mirage simulator and current
+  league tester (opens on hover or click). The current page's own button is highlighted;
+  none of the pages carry a description under their title, so the header's height (and so
+  the nav row's position) stays identical everywhere.
 - **Data store**: [DuckDB](https://duckdb.org) (embedded, columnar, great for analytical
   queries over large CSV history) - no external database server required.
 
@@ -65,7 +83,8 @@
    - `POE_DATA_DIR` - folder containing `<League>/<League>.currency.csv` and
      `<League>.items.csv` exports (semicolon-delimited, columns
      `League;Date;Get;Pay;Value;Confidence` for currency and
-     `League;Date;Id;Type;Name;BaseType;Variant;Links;Value;Confidence` for items).
+     `League;Date;Id;Type;Name;BaseType;Variant;Links;Value;Confidence` for items) - see
+     **Historical price data** below for where these come from and how to lay them out.
    - `SITE_PASSWORD` - a shared password gating the whole app (see `proxy.ts` /
      `lib/site-auth.ts`). Not per-user auth, just a gate since this is shared with a
      handful of people. Required - unset, the login page rejects every attempt.
@@ -78,6 +97,30 @@
    ```bash
    npm run dev
    ```
+
+### Historical price data
+
+The app trains and backtests on real historical prices, not live poe.ninja data alone - this data
+isn't included in the repo (it's a per-league CSV export, not something to commit) and has to be
+downloaded once per machine before `npm run db:ingest` has anything to ingest.
+
+1. Go to [poe.ninja/poe1/data](https://poe.ninja/poe1/data) and download the currency and item
+   history export for each league below (a zip per league containing that league's currency and
+   item CSVs). This is a manual, per-league download - poe.ninja doesn't expose these as a stable
+   API endpoint.
+2. Unzip each league's export and arrange the CSVs under `POE_DATA_DIR` as
+   `<POE_DATA_DIR>/<League>/<League>.currency.csv` and `<POE_DATA_DIR>/<League>/<League>.items.csv`
+   - one subfolder per league, named exactly as poe.ninja names the league. `POE_DATA_DIR` can be
+   any folder on disk - the suggested default (`../poe-pricing/data`) is just a sibling folder next
+   to this repo, outside it entirely, so there's nothing to gitignore or commit; nothing about the
+   ingest script assumes a specific machine or location, only the folder layout above.
+3. The production model is trained on five specific leagues - `scripts/ingest-history.ts`'s
+   `PRODUCTION_LEAGUES` - so at minimum you need exports for: **Mirage, Keepers, Mercenaries,
+   Settlers, Phrecia 2.0**. (`POE_INCLUDED_LEAGUES`, a comma-separated env var, overrides this list
+   for an experiment without editing the script - see its comment.)
+4. Run `npm run db:ingest` (step 2 above) once the folders are in place. It rebuilds
+   `db/history.duckdb` from scratch every run, so re-download and re-ingest whenever you want to
+   pick up a league poe.ninja has since finished.
 
 ### Refreshing the learned model
 
@@ -106,7 +149,7 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
   database read-only because a function's filesystem is read-only.
 - Set `SITE_PASSWORD` under the project's Environment Variables; `PREDICTOR` is optional
   (set it to `baseline` to revert to the original forecast without a code change).
-- The learned model is a plain 1.9 MB JSON file, so it adds nothing to Git LFS storage or
+- The learned model is a plain 4.5 MB JSON file, so it adds nothing to Git LFS storage or
   bandwidth; scoring ~10k items takes roughly 0.2 s of CPU per request (repeat requests
   are cached in memory).
 
@@ -141,6 +184,8 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
   shrinkage, training-league selection, error budget) - not part of the running app.
 - `scripts/generate-faustus-*.ts` - regenerates the Currency Exchange name/id mapping
   and its doc from RePoE data.
+- `scripts/generate-divination-cards.ts` - regenerates `lib/divination-cards.ts` (stack
+  size + reward per card) from RePoE data.
 - `scripts/check-current-league.ts` - compares the hardcoded `CURRENT_LEAGUE` against
   poe.ninja's live leagues list; run via `npm run check-league`.
 - `scripts/export-training-features.ts`, `check-predictor-parity.ts`,
@@ -151,7 +196,9 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
   `fit_production.py`, which writes `lib/models/predictor.json`. See `ml/README.md`.
 - `lib/db.ts` - shared DuckDB connection.
 - `lib/poe-ninja.ts` - live poe.ninja price client (with caching), including each item's
-  7-day sparkline.
+  7-day sparkline. Falls back to poe.ninja's Currency Exchange-backed overview for any
+  category whose stash-listing scrape returns no data (most non-Currency/Fragment
+  categories did, as of 2026-09-20 - see the comment above `CURRENCY_OVERVIEW_TYPES`).
 - `lib/growth-ratios.ts` - core historical growth-ratio queries.
 - `lib/prediction-features.ts` - the one implementation of the learned model's inputs,
   shared by the live app, the Mirage simulator and the training export.
@@ -166,12 +213,19 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
 - `lib/mirage-simulator.ts` - backs the `/mirage-simulator` testing page.
 - `lib/faustus.ts` - GGG Currency Exchange client (live prices and buy/sell spreads).
 - `lib/faustus-gold.ts` - gold cost per item on the Currency Exchange.
-- `lib/liquidity.ts` - liquidity tiering for Currency Exchange spreads.
+- `lib/liquidity.ts` - liquidity tiering shared by Currency Exchange spreads and
+  Divination Card Flips' Confidence column.
+- `lib/divination-cards.ts` - generated card metadata (stack size, reward); see
+  `scripts/generate-divination-cards.ts` above.
+- `lib/divination-flips.ts` - live scoring for the Divination Card Flips page.
 - `lib/site-auth.ts` / `proxy.ts` - the shared-password login gate.
 - `app/api/*/route.ts` - read-only data endpoints used by the UI (deliberately Route
   Handlers, not Server Actions - see the comment in `mirage-simulation/route.ts`).
-- `app/currency_exchange_flip`, `app/mirage-simulator`, `app/current-league-tester` -
-  the app's secondary pages; the dashboard (flip suggestions) lives at `/`.
+- `app/currency_exchange_flip`, `app/divination-cards`, `app/mirage-simulator`,
+  `app/current-league-tester` - the app's secondary pages; the dashboard (flip
+  suggestions) lives at `/`.
+- `components/app-header.tsx` - the shared nav header every page renders; see
+  **Navigation** above.
 - `components/*.tsx` - dashboard UI (flip suggestions, category/confidence/liquidity
-  filters, price history chart), the Currency Exchange Flip panel, and the Mirage
-  simulator panel.
+  filters, price history chart), the Currency Exchange Flip panel, the Divination Card
+  Flips panel, and the Mirage simulator panel.

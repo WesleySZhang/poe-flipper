@@ -193,7 +193,7 @@ one env var away); a missing model file falls back to the formula, then baseline
 | poe.ninja 7-day sparkline plumbed through | `lib/poe-ninja.ts` |
 | extra cross-league aggregates (raw log ratio, spread, past price level, peer group), multi-league exclusion | `lib/growth-ratios.ts` |
 | features - the one implementation used by the live app, the simulator and the training export | `lib/prediction-features.ts`, `lib/history-now.ts` |
-| tree evaluator + formula tables + `PREDICTOR` switch | `lib/prediction-model.ts`, `lib/models/predictor.json` (1.9 MB) |
+| tree evaluator + formula tables + `PREDICTOR` switch | `lib/prediction-model.ts`, `lib/models/predictor.json` (4.5 MB - grew from 1.9 MB once the p10/p90 quantile heads below were added) |
 | used by | `lib/flip-suggestions.ts`, `lib/mirage-simulator.ts` (the single-item spot check still shows the historical ratio: it has no live price) |
 | training data export / fit / checks | `scripts/export-training-features.ts`, `ml/fit_production.py`, `scripts/check-predictor-parity.ts`, `scripts/backtest-predictor.ts` |
 
@@ -314,3 +314,5 @@ objective did.
 | `export_model.py` / `eval_model.mjs` | round-2 prototype of the portable model export + JS evaluator with parity + timing |
 | `fit_production.py` | fits + exports the shipped model (`lib/models/predictor.json`) from TypeScript-built rows; validation report |
 | `test_quantile_xgb.py` | exploratory: does a quantile spread predict point-model error (yes) - superseded by `fit_production.py`'s shipped custom-objective quantile heads |
+| `test_currency_leadlag.py` | exploratory: is there a learnable cross-currency lead-lag signal (X's move predicting Y's a few days later) beyond the single-item momentum/mean-reversion signal already shipped - real pairs vs a shuffled-pairs null, with out-of-sample sign replication on a held-out league; not wired into `fit_production.py` |
+| `test_sparkline_cnn.py` | exploratory: does a 1D CNN over the raw 7-point sparkline path beat the hand-built momentum scalars (`mom1`/`mom3`/`mom6`/`vol6`/`accel`/`dev_sm3`) already shipped, using `scripts/export-sparkline-paths.ts`'s complete-path rows; not wired into `fit_production.py` |
