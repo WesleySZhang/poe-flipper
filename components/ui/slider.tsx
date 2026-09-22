@@ -14,11 +14,15 @@ function Slider({
       className={cn("relative flex w-full touch-none select-none items-center", className)}
       {...props}
     >
-      <SliderPrimitive.Control className="flex w-full items-center py-1">
-        <SliderPrimitive.Track className="relative h-1.5 w-full grow rounded-full bg-muted">
+      <SliderPrimitive.Control className="flex w-full items-center py-2">
+        {/* bg-input, not bg-muted - muted (oklch 0.97) sits nearly on top of the card/background
+            (1.0) in light mode, so the unfilled track all but disappeared into the page. input
+            (0.922, the same tone this app's own text inputs use for their border) reads as a
+            clearly distinct gray track in both themes instead. */}
+        <SliderPrimitive.Track className="relative h-2.5 w-full grow rounded-full border border-border bg-input shadow-inner">
           <SliderPrimitive.Indicator className="absolute h-full rounded-full bg-primary" />
           <SliderPrimitive.Thumb
-            className="block size-4 rounded-full border border-primary bg-background shadow-sm outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            className="block size-5 rounded-full border-2 border-primary bg-background shadow-md outline-hidden transition-transform hover:scale-110 focus-visible:ring-4 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
           />
         </SliderPrimitive.Track>
       </SliderPrimitive.Control>

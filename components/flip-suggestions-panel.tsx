@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,13 +34,17 @@ import {
 } from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
+const MIN_DURATION_DAYS = 1;
 // Matches scripts/precompute-predictions.ts's own MAX_DURATION_DAYS - both cap at the learned
 // model's trained/validated range (see ml/README.md), and a value precomputed daily for every one
-// of these is instant to serve; a duration outside it would silently fall back to a live model run
-// anyway (see app/api/flip-suggestions/route.ts), so there's nothing meaningful past this point to
-// let the slider reach.
-const MIN_DURATION_DAYS = 1;
-const MAX_DURATION_DAYS = 30;
+// of these is instant to serve. A duration past this still works (see app/api/flip-suggestions/
+// route.ts's fallback), it just costs a live model run for that one request instead of being instant.
+const PRECOMPUTED_MAX_DURATION_DAYS = 30;
+// How far the slider itself can drag to - a few times the precomputed range so it's still usable to
+// explore longer horizons by dragging, not tied to any hard constraint (there's no upper bound on
+// what the model/live computation can be asked for). The paired number input below can type any
+// value past even this, same as every other "Days ahead" input in this app.
+const SLIDER_MAX_DURATION_DAYS = 90;
 
 type SortKey = "current" | "predicted" | "change";
 
@@ -52,10 +57,22 @@ async function fetchFlipSuggestions(durationDays: number): Promise<FlipSuggestio
 export function FlipSuggestionsPanel() {
   const [suggestions, setSuggestions] = useState<FlipSuggestion[]>([]);
   const [durationDays, setDurationDays] = useState(3);
-  // Separate from durationDays so dragging the slider updates the visible number instantly without
-  // re-fetching on every pixel of movement - only committing (mouse up, or a keyboard step) updates
-  // durationDays itself, which is what the effect below actually fetches on.
-  const [sliderValue, setSliderValue] = useState(durationDays);
+  // Set only while the thumb is actively being dragged, so dragging updates the visible number
+  // instantly without re-fetching on every pixel of movement - undefined the rest of the time, so the
+  // slider's displayed value (sliderValue below) just tracks durationDays directly, including when
+  // durationDays changes from elsewhere (typing in the number input). Committing (mouse up, or a
+  // keyboard step) clears this and updates durationDays itself, which is what the effect below
+  // actually fetches on.
+  const [dragValue, setDragValue] = useState<number | undefined>(undefined);
+  // Clamped: a typed value in the paired number input can exceed the slider's own max (that input is
+  // intentionally unbounded, same as every other "Days ahead" input in this app) - the thumb just
+  // pins at the end in that case rather than the slider having no valid position to show at all.
+  const sliderValue = dragValue ?? Math.min(durationDays, SLIDER_MAX_DURATION_DAYS);
+  // The number input mirrors whichever value is currently "live" - the drag value while dragging (so
+  // it updates in real time instead of only on release), durationDays otherwise. Deliberately NOT
+  // clamped to SLIDER_MAX_DURATION_DAYS like sliderValue above - a typed value past the slider's own
+  // max should still show the real typed number here, not the slider's clamped display value.
+  const inputValue = dragValue ?? durationDays;
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
     () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
   );
@@ -202,17 +219,43 @@ export function FlipSuggestionsPanel() {
                 <input type="range"> inside its Thumb, not on the root div an id here would land on,
                 so aria-label on the slider itself is the association that's actually guaranteed to
                 work; the visible "Days ahead" text above it is there for sighted users either way. */}
-            <Label>Days ahead: {sliderValue}</Label>
+            <Label>Days ahead</Label>
+            {/* Exact entry, unbounded - dragging a slider can't reliably land on a specific value
+                (especially past PRECOMPUTED_MAX_DURATION_DAYS, where the slider's own max is just an
+                arbitrary drag limit, not a real ceiling). Mirrors the slider's live drag value (see
+                inputValue above) so it's never stale while dragging, and fetches directly on change
+                when typed into, same as every other numeric "Days ahead" input in this app. */}
+            <Input
+              type="number"
+              aria-label="Days ahead (exact)"
+              min={MIN_DURATION_DAYS}
+              value={inputValue}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setDurationDays(Number.isFinite(value) && value > 0 ? Math.floor(value) : MIN_DURATION_DAYS);
+              }}
+              className="w-20"
+            />
             <Slider
               aria-label="Days ahead"
               min={MIN_DURATION_DAYS}
-              max={MAX_DURATION_DAYS}
+              max={SLIDER_MAX_DURATION_DAYS}
               step={1}
               value={sliderValue}
-              onValueChange={(value) => setSliderValue(value)}
-              onValueCommitted={(value) => setDurationDays(value)}
+              onValueChange={(value) => setDragValue(value)}
+              onValueCommitted={(value) => {
+                setDurationDays(value);
+                setDragValue(undefined);
+              }}
               className="w-56"
             />
+            {/* inputValue, not durationDays - so this appears/disappears live while dragging too,
+                instead of waiting for release like the actual fetch does. */}
+            {inputValue > PRECOMPUTED_MAX_DURATION_DAYS && (
+              <p className="text-xs text-muted-foreground">
+                Past {PRECOMPUTED_MAX_DURATION_DAYS} days - loads can be slower.
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-4">
@@ -323,6 +366,7 @@ export function FlipSuggestionsPanel() {
                   targetDay={currentDay + durationDays}
                   currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
+                  fetchPredictedCurve
                   priceUnit={priceUnit}
                   colSpan={7}
                 >

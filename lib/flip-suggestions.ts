@@ -24,6 +24,14 @@ const MIN_ITEM_SELLER_COUNT_FOR_EXTREME_RATIO = 5;
 const EXTREME_RATIO_HIGH = 2;
 const EXTREME_RATIO_LOW = 0.5;
 
+// The learned model's trained/validated range (see ml/README.md) - also what
+// scripts/precompute-predictions.ts precomputes daily and components/flip-suggestions-panel.tsx caps
+// its slider drag range to. Shared here (rather than each of those three redeclaring "1-30"
+// independently) so the precomputed file, the live per-item "predicted curve" fallback below, and the
+// UI's own notion of "past this point it's live, not precomputed" can never quietly drift apart.
+export const CURVE_MIN_DURATION_DAYS = 1;
+export const CURVE_MAX_DURATION_DAYS = 30;
+
 function isThinMarketOutlier(ratio: number, sellerCount: number | undefined): boolean {
   if (sellerCount === undefined || sellerCount >= MIN_ITEM_SELLER_COUNT_FOR_EXTREME_RATIO) return false;
   return ratio > EXTREME_RATIO_HIGH || ratio < EXTREME_RATIO_LOW;
@@ -241,4 +249,48 @@ export async function getFlipSuggestions(
   );
 
   return suggestions.sort((a, b) => b.avgGrowthRatio - a.avgGrowthRatio);
+}
+
+export interface PredictionCurvePoint {
+  durationDays: number;
+  predictedChaosValue: number | null;
+  predictedDivineValue: number | null;
+}
+
+/**
+ * One item's predicted price at every duration from CURVE_MIN_DURATION_DAYS to
+ * CURVE_MAX_DURATION_DAYS - the live fallback for lib/precomputed-predictions.ts's
+ * getPrecomputedPredictionCurve, used when today's precomputed file is missing or stale. Drawn on
+ * the price history chart as a detailed day-by-day forecast line instead of a single straight
+ * segment (see components/price-history-chart.tsx's predictedCurve prop).
+ *
+ * Deliberately reruns the full getFlipSuggestions() batch once per duration rather than a cheaper
+ * single-item path - there isn't one (the model's features are cross-sectional, scored against every
+ * other live-priced item at once), and this only ever runs on an explicit row expand, not on every
+ * page load, so the cost is bounded to "one click, when the precomputed file happens to be stale" -
+ * see scripts/precompute-predictions.ts's own module doc for the same 30-calls-is-fine reasoning.
+ */
+export async function getLiveFlipSuggestionCurve(
+  league: string,
+  currentDay: number,
+  category: "currency" | "item",
+  historyName: string,
+  variant: string | undefined
+): Promise<PredictionCurvePoint[]> {
+  const durations: number[] = [];
+  for (let d = CURVE_MIN_DURATION_DAYS; d <= CURVE_MAX_DURATION_DAYS; d++) durations.push(d);
+
+  return Promise.all(
+    durations.map(async (durationDays) => {
+      const suggestions = await getFlipSuggestions(league, currentDay, durationDays);
+      const match = suggestions.find(
+        (s) => s.category === category && s.historyName === historyName && (s.variant ?? "") === (variant ?? "")
+      );
+      return {
+        durationDays,
+        predictedChaosValue: match?.predictedChaosValue ?? null,
+        predictedDivineValue: match?.predictedDivineValue ?? null,
+      };
+    })
+  );
 }

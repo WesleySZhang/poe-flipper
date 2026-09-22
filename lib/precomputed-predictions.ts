@@ -1,5 +1,5 @@
 import "server-only";
-import { buildFlipRationale, type FlipSuggestion } from "./flip-suggestions";
+import { buildFlipRationale, type FlipSuggestion, type PredictionCurvePoint } from "./flip-suggestions";
 import type { PredictorMode } from "./prediction-model";
 
 /**
@@ -177,4 +177,39 @@ export async function getPrecomputedFlipSuggestions(
     if (s) suggestions.push(s);
   }
   return suggestions.sort((a, b) => b.avgGrowthRatio - a.avgGrowthRatio);
+}
+
+/**
+ * One item's predicted price at EVERY precomputed duration, straight from the cached file - the fast
+ * path for the price history chart's detailed day-by-day forecast line (see
+ * components/price-history-chart.tsx's predictedCurve prop and
+ * lib/flip-suggestions.ts's getLiveFlipSuggestionCurve for the live fallback this backs off to).
+ * Undefined on the same terms as getPrecomputedFlipSuggestions above (stale file, no file, league/day
+ * mismatch) or if this specific item isn't in the file at all (e.g. it wasn't priceable at any
+ * horizon today - see scripts/precompute-predictions.ts for how that can happen).
+ */
+export async function getPrecomputedPredictionCurve(
+  league: string,
+  currentDay: number,
+  category: "currency" | "item",
+  historyName: string,
+  variant: string | undefined
+): Promise<PredictionCurvePoint[] | undefined> {
+  const data = await fetchPrecomputed();
+  if (!data || data.league !== league || data.currentDay !== currentDay) return undefined;
+  const item = data.items.find(
+    (it) => it.category === category && it.historyName === historyName && (it.variant ?? "") === (variant ?? "")
+  );
+  if (!item) return undefined;
+
+  return data.durations.map((durationDays, i) => {
+    const ratio = item.r[i];
+    const ratioDivine = item.rd[i];
+    return {
+      durationDays,
+      predictedChaosValue: ratio === null ? null : item.currentChaosValue * ratio,
+      predictedDivineValue:
+        ratioDivine === null || item.currentDivineValue === null ? null : item.currentDivineValue * ratioDivine,
+    };
+  });
 }

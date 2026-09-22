@@ -1,6 +1,7 @@
 /**
  * Computes flip suggestions for every "Days ahead" value the UI's numeric input meaningfully
- * supports (1-30 - see MAX_DURATION_DAYS below) against TODAY's real league day, and writes them to
+ * supports (CURVE_MIN_DURATION_DAYS-CURVE_MAX_DURATION_DAYS, see lib/flip-suggestions.ts) against
+ * TODAY's real league day, and writes them to
  * predictions.json at the repo root. A scheduled GitHub Actions workflow
  * (.github/workflows/precompute-predictions.yml) runs this once a day and publishes the result to
  * this repo's "data" branch; lib/precomputed-predictions.ts reads it from there at request time
@@ -31,15 +32,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { getFlipSuggestions, type FlipSuggestion } from "../lib/flip-suggestions";
+import { getFlipSuggestions, CURVE_MIN_DURATION_DAYS, CURVE_MAX_DURATION_DAYS, type FlipSuggestion } from "../lib/flip-suggestions";
 import { currentLeagueDay } from "../lib/league-day";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "../lib/league-recency";
 
-const MIN_DURATION_DAYS = 1;
-// Matches the learned model's trained/validated range (see ml/README.md) - the UI's numeric input
-// allows larger values too, but those already fall outside the model's own scope and always compute
-// live today; there's nothing meaningful to precompute past this point.
-const MAX_DURATION_DAYS = 30;
 const OUTPUT_PATH = path.join(__dirname, "..", "predictions.json");
 
 // A forecast is never meaningfully precise to more than a handful of significant figures - rounding
@@ -59,7 +55,7 @@ function itemKey(s: FlipSuggestion): string {
 async function main() {
   const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
   const durations: number[] = [];
-  for (let d = MIN_DURATION_DAYS; d <= MAX_DURATION_DAYS; d++) durations.push(d);
+  for (let d = CURVE_MIN_DURATION_DAYS; d <= CURVE_MAX_DURATION_DAYS; d++) durations.push(d);
 
   // Keyed accumulators - filled in duration order below, so every array ends up index-aligned with
   // `durations`.

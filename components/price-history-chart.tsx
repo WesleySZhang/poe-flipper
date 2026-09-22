@@ -287,6 +287,7 @@ export function PriceHistoryChart({
   targetDay,
   currentValue,
   predictedValue,
+  predictedCurve,
   priceUnit,
 }: {
   state: PriceHistoryFetchState;
@@ -304,6 +305,14 @@ export function PriceHistoryChart({
    *  on a fetch it doesn't strictly depend on. */
   currentValue?: number;
   predictedValue?: number;
+  /** One point per precomputed duration (see lib/flip-suggestions.ts's CURVE_MAX_DURATION_DAYS),
+   *  already resolved to the active priceUnit by the caller, undefined where that duration has no
+   *  usable prediction - draws the "Predicted" line as a detailed day-by-day forecast instead of a
+   *  single straight segment to targetDay. If targetDay reaches further than this curve does (a
+   *  duration past CURVE_MAX_DURATION_DAYS), the line continues from the curve's last point out to
+   *  targetDay/predictedValue as one final straight segment, same as when this prop is omitted
+   *  entirely (e.g. the mirage simulator, which has no such curve at all - just the two-point line). */
+  predictedCurve?: Array<{ durationDays: number; value: number | undefined }>;
   priceUnit: PriceUnit;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -329,19 +338,28 @@ export function PriceHistoryChart({
       .filter((s) => s.points.length > 0);
     // Drawn as just another series (rather than separate, parallel logic) so it automatically
     // participates in the Y-axis range, the auto-zoom window, the hover tooltip and the legend below.
-    if (targetDay !== undefined && currentValue !== undefined && currentValue > 0 && predictedValue !== undefined && predictedValue > 0) {
-      series.push({
-        league: "Predicted",
-        color: "var(--foreground)",
-        dashed: true,
-        points: [
-          { dayOffset: currentDay, value: currentValue },
-          { dayOffset: targetDay, value: predictedValue },
-        ],
-      });
+    if (targetDay !== undefined && currentValue !== undefined && currentValue > 0) {
+      const curvePoints: PlottedPoint[] = [{ dayOffset: currentDay, value: currentValue }];
+      if (predictedCurve && predictedCurve.length > 0) {
+        for (const p of predictedCurve) {
+          if (p.value !== undefined && p.value > 0) curvePoints.push({ dayOffset: currentDay + p.durationDays, value: p.value });
+        }
+        // The curve only covers CURVE_MAX_DURATION_DAYS - if the selected duration goes further than
+        // that, extend with one final straight segment out to the actual target/predicted value,
+        // exactly like the no-curve case below does for its whole line.
+        const lastCurveDay = curvePoints[curvePoints.length - 1]?.dayOffset ?? currentDay;
+        if (targetDay > lastCurveDay && predictedValue !== undefined && predictedValue > 0) {
+          curvePoints.push({ dayOffset: targetDay, value: predictedValue });
+        }
+      } else if (predictedValue !== undefined && predictedValue > 0) {
+        curvePoints.push({ dayOffset: targetDay, value: predictedValue });
+      }
+      if (curvePoints.length > 1) {
+        series.push({ league: "Predicted", color: "var(--foreground)", dashed: true, points: curvePoints });
+      }
     }
     return series;
-  }, [state, priceUnit, currentDay, targetDay, currentValue, predictedValue]);
+  }, [state, priceUnit, currentDay, targetDay, currentValue, predictedValue, predictedCurve]);
 
   const allValues = plotted.flatMap((s) => s.points.map((p) => p.value));
   const allDays = plotted.flatMap((s) => s.points.map((p) => p.dayOffset));
