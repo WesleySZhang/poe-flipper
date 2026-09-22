@@ -87,6 +87,27 @@ interface Candidate {
   spark?: Array<number | null>;
 }
 
+/**
+ * The English explanation shown per row - pulled out as its own pure function (rather than inlined
+ * in buildSuggestion) so lib/precomputed-predictions.ts can reconstruct the identical text from the
+ * handful of numbers it actually stores, instead of needing to store this whole sentence per item
+ * per horizon (see that file's module doc for why that mattered).
+ */
+export function buildFlipRationale(
+  mode: PredictorMode,
+  avgGrowthRatio: number,
+  baselineGrowthRatio: number,
+  leagueCount: number,
+  durationDays: number
+): string {
+  const pctChange = Math.round((avgGrowthRatio - 1) * 100);
+  const basePct = Math.round((baselineGrowthRatio - 1) * 100);
+  const direction = pctChange >= 0 ? "risen" : "fallen";
+  return mode === "baseline"
+    ? `Historically has ${direction} ${Math.abs(pctChange)}% over the next ${durationDays} days from this point in the league, averaged over ${leagueCount} past leagues.`
+    : `Model expects ${pctChange >= 0 ? "+" : "-"}${Math.abs(pctChange)}% over the next ${durationDays} days. Past leagues averaged ${basePct >= 0 ? "+" : "-"}${Math.abs(basePct)}% from this point (${leagueCount} leagues); the forecast adjusts that for how today's price compares with those leagues' and for the last 7 days' trend.`;
+}
+
 function buildSuggestion(
   baseTrend: GrowthRatioRow,
   prediction: GrowthPrediction,
@@ -100,9 +121,6 @@ function buildSuggestion(
   // The learned predictor replaces the growth ratios (chaos and divine); everything else about the row - league
   // count, confidence, "N of M leagues gained" - still describes the past leagues it was learned from.
   const trend = { ...baseTrend, avgRatio: prediction.ratio, avgRatioDivine: prediction.ratioDivine };
-  const pctChange = Math.round((trend.avgRatio - 1) * 100);
-  const basePct = Math.round((baseTrend.avgRatio - 1) * 100);
-  const direction = pctChange >= 0 ? "risen" : "fallen";
   const displayName = formatItemDisplayName(trend.name, trend.variant);
   const currentDivineValue = divineRate ? currentChaosValue / divineRate : undefined;
   return {
@@ -133,10 +151,7 @@ function buildSuggestion(
     confidenceDivine: trend.confidenceDivine,
     upFraction: trend.upFraction,
     upFractionDivine: trend.upFractionDivine,
-    rationale:
-      mode === "baseline"
-        ? `Historically has ${direction} ${Math.abs(pctChange)}% over the next ${durationDays} days from this point in the league, averaged over ${trend.leagueCount} past leagues.`
-        : `Model expects ${pctChange >= 0 ? "+" : "-"}${Math.abs(pctChange)}% over the next ${durationDays} days. Past leagues averaged ${basePct >= 0 ? "+" : "-"}${Math.abs(basePct)}% from this point (${trend.leagueCount} leagues); the forecast adjusts that for how today's price compares with those leagues' and for the last 7 days' trend.`,
+    rationale: buildFlipRationale(mode, trend.avgRatio, baseTrend.avgRatio, trend.leagueCount, durationDays),
     baselineGrowthRatio: baseTrend.avgRatio,
     baselineGrowthRatioDivine: baseTrend.avgRatioDivine,
     predictor: mode,

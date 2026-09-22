@@ -1,0 +1,57 @@
+name: Precompute predictions
+
+# Runs the learned model once a day for every "Days ahead" value the UI supports and publishes the
+# result to the "data" branch - see lib/precomputed-predictions.ts (why: avoids every page load
+# waiting on a live model run) and vercel.json (why "data" is configured to never trigger a Vercel
+# deployment - this app's committed database is ~72MB, and a deployment re-bundles the whole app
+# regardless of how small the actual change was).
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # once daily - the league day this computes against only changes once a day anyway
+  workflow_dispatch: {} # manual trigger, e.g. right after fixing something
+
+permissions:
+  contents: write
+
+jobs:
+  precompute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          lfs: true # db/history.duckdb is Git LFS-tracked - without this the checkout only gets a pointer file
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Compute today's predictions
+        run: npx tsx --conditions=react-server scripts/precompute-predictions.ts
+
+      - name: Publish to the data branch
+        run: |
+          set -e
+          cp predictions.json /tmp/predictions.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Always a fresh orphan branch, force-pushed over whatever "data" currently is - this
+          # branch only ever needs to hold ONE file's latest snapshot, never a history of every past
+          # day's predictions. Committing on top of yesterday's commit instead would grow the branch
+          # by roughly this file's size (see scripts/precompute-predictions.ts's own doc for how big
+          # that got before it was made columnar) forever, one commit per day, with no benefit - there's
+          # nothing anyone needs to look back at on this branch.
+          git checkout --orphan data-publish
+          git rm -rf . > /dev/null
+
+          # predictions.json is .gitignore'd on every other branch (it's only ever meaningful here,
+          # freshly generated) - force-add to override that on this one-off branch.
+          cp /tmp/predictions.json predictions.json
+          git add -f predictions.json
+          git commit -m "Update precomputed predictions"
+          git push --force origin data-publish:data
