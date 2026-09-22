@@ -17,6 +17,10 @@ interface ItemHistoryRowProps {
   currentDay: number;
   /** currentDay + the prediction's duration - see PriceHistoryChart's targetDay prop. */
   targetDay?: number;
+  /** Already resolved to the active priceUnit - see PriceHistoryChart's matching props. Both (and
+   *  targetDay) are required to draw the dashed "Predicted" line at all. */
+  currentValue?: number;
+  predictedValue?: number;
   priceUnit: PriceUnit;
   /** Total column count of the table this row lives in, so the expanded chart row can span all of them. */
   colSpan: number;
@@ -39,6 +43,8 @@ export function ItemHistoryRow({
   variant,
   currentDay,
   targetDay,
+  currentValue,
+  predictedValue,
   priceUnit,
   colSpan,
   children,
@@ -102,6 +108,8 @@ export function ItemHistoryRow({
               state={state ?? { status: "loading" }}
               currentDay={currentDay}
               targetDay={targetDay}
+              currentValue={currentValue}
+              predictedValue={predictedValue}
               priceUnit={priceUnit}
             />
           </TableCell>

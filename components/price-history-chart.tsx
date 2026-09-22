@@ -105,6 +105,9 @@ interface PlottedPoint {
 interface PlottedSeries {
   league: string;
   color: string;
+  /** Drawn dashed instead of solid - used for the "Predicted" series (see PriceHistoryChart's
+   *  currentValue/predictedValue props), never for a real league's own price history. */
+  dashed?: boolean;
   points: PlottedPoint[];
 }
 
@@ -282,6 +285,8 @@ export function PriceHistoryChart({
   state,
   currentDay,
   targetDay,
+  currentValue,
+  predictedValue,
   priceUnit,
 }: {
   state: PriceHistoryFetchState;
@@ -289,6 +294,16 @@ export function PriceHistoryChart({
   /** currentDay + the prediction's duration - drawn as a second marker line, the "end" to
    *  currentDay's "start". Undefined skips drawing it (no duration concept for this caller). */
   targetDay?: number;
+  /** Today's live price and the model's predicted price at targetDay, both already resolved to the
+   *  active priceUnit (see lib/price-unit.ts's activePrice) by the caller - this component only
+   *  draws numbers, it doesn't know about chaos/divine itself. Provide both (and targetDay) to draw
+   *  a dashed "Predicted" line from today to the forecast; omit either to skip it (e.g. the current-
+   *  league tester has no live price to forecast from at all). Tied to `state` being "loaded" rather
+   *  than drawn independently of the historical fetch, even though it doesn't actually need that
+   *  data - keeps the loading/error branches below simple, at the cost of the forecast line waiting
+   *  on a fetch it doesn't strictly depend on. */
+  currentValue?: number;
+  predictedValue?: number;
   priceUnit: PriceUnit;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -301,7 +316,7 @@ export function PriceHistoryChart({
 
   const plotted: PlottedSeries[] = useMemo(() => {
     if (state.status !== "loaded") return [];
-    return state.series
+    const series: PlottedSeries[] = state.series
       .map((s) => ({
         league: s.league,
         color: leagueColor(s.league),
@@ -312,7 +327,21 @@ export function PriceHistoryChart({
           .filter((p): p is PlottedPoint => p.value !== undefined && p.value > 0),
       }))
       .filter((s) => s.points.length > 0);
-  }, [state, priceUnit]);
+    // Drawn as just another series (rather than separate, parallel logic) so it automatically
+    // participates in the Y-axis range, the auto-zoom window, the hover tooltip and the legend below.
+    if (targetDay !== undefined && currentValue !== undefined && currentValue > 0 && predictedValue !== undefined && predictedValue > 0) {
+      series.push({
+        league: "Predicted",
+        color: "var(--foreground)",
+        dashed: true,
+        points: [
+          { dayOffset: currentDay, value: currentValue },
+          { dayOffset: targetDay, value: predictedValue },
+        ],
+      });
+    }
+    return series;
+  }, [state, priceUnit, currentDay, targetDay, currentValue, predictedValue]);
 
   const allValues = plotted.flatMap((s) => s.points.map((p) => p.value));
   const allDays = plotted.flatMap((s) => s.points.map((p) => p.dayOffset));
@@ -617,6 +646,7 @@ export function PriceHistoryChart({
                   fill="none"
                   stroke={s.color}
                   strokeWidth={1}
+                  strokeDasharray={s.dashed ? "5 4" : undefined}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                   points={s.points.map((p) => `${xScale(p.dayOffset)},${yScale(p.value)}`).join(" ")}

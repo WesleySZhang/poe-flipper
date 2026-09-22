@@ -5,8 +5,8 @@ import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
@@ -33,6 +33,13 @@ import {
 } from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
+// Matches scripts/precompute-predictions.ts's own MAX_DURATION_DAYS - both cap at the learned
+// model's trained/validated range (see ml/README.md), and a value precomputed daily for every one
+// of these is instant to serve; a duration outside it would silently fall back to a live model run
+// anyway (see app/api/flip-suggestions/route.ts), so there's nothing meaningful past this point to
+// let the slider reach.
+const MIN_DURATION_DAYS = 1;
+const MAX_DURATION_DAYS = 30;
 
 type SortKey = "current" | "predicted" | "change";
 
@@ -45,6 +52,10 @@ async function fetchFlipSuggestions(durationDays: number): Promise<FlipSuggestio
 export function FlipSuggestionsPanel() {
   const [suggestions, setSuggestions] = useState<FlipSuggestion[]>([]);
   const [durationDays, setDurationDays] = useState(3);
+  // Separate from durationDays so dragging the slider updates the visible number instantly without
+  // re-fetching on every pixel of movement - only committing (mouse up, or a keyboard step) updates
+  // durationDays itself, which is what the effect below actually fetches on.
+  const [sliderValue, setSliderValue] = useState(durationDays);
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
     () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
   );
@@ -187,17 +198,20 @@ export function FlipSuggestionsPanel() {
             )}
           </CardTitle>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="durationDays">Days ahead</Label>
-            <Input
-              id="durationDays"
-              type="number"
-              min={1}
-              value={durationDays}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                setDurationDays(Number.isFinite(value) && value > 0 ? Math.floor(value) : 1);
-              }}
-              className="w-28"
+            {/* Not htmlFor/id-linked to a <Label> - Base UI's Slider nests the real, focusable
+                <input type="range"> inside its Thumb, not on the root div an id here would land on,
+                so aria-label on the slider itself is the association that's actually guaranteed to
+                work; the visible "Days ahead" text above it is there for sighted users either way. */}
+            <Label>Days ahead: {sliderValue}</Label>
+            <Slider
+              aria-label="Days ahead"
+              min={MIN_DURATION_DAYS}
+              max={MAX_DURATION_DAYS}
+              step={1}
+              value={sliderValue}
+              onValueChange={(value) => setSliderValue(value)}
+              onValueCommitted={(value) => setDurationDays(value)}
+              className="w-56"
             />
           </div>
         </div>
@@ -307,6 +321,8 @@ export function FlipSuggestionsPanel() {
                   variant={s.variant}
                   currentDay={currentDay}
                   targetDay={currentDay + durationDays}
+                  currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
+                  predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   priceUnit={priceUnit}
                   colSpan={7}
                 >

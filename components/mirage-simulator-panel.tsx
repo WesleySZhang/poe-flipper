@@ -343,6 +343,8 @@ export function MirageSimulatorPanel() {
                   variant={r.variant}
                   currentDay={currentDay}
                   targetDay={currentDay + durationDays}
+                  currentValue={activePrice(r.actualNowChaos, r.actualNowDivine, priceUnit)}
+                  predictedValue={activePrice(r.predictedChaosValue, r.predictedDivineValue, priceUnit)}
                   priceUnit={priceUnit}
                   colSpan={8}
                 >
