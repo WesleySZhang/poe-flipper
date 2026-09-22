@@ -1,9 +1,30 @@
 # TODO
 
 Ideas and known gaps not yet worth implementing, tracked here so they don't get lost. Not a
-schedule or a promise - just a running list to revisit.
+schedule or a promise - just a running list to revisit. Roughly ordered by importance, most first.
 
-## 1. Brand-new items (this league or a future one) aren't picked up automatically
+## 1. Better mobile support - no horizontal scrolling for the important stuff
+
+Every table (`components/ui/table.tsx`'s `Table`) wraps in a plain `overflow-x-auto` div, so a
+narrow screen's answer to "too many columns" today is "scroll sideways" rather than reflowing -
+there's already SOME responsive hiding (`flip-suggestions-panel.tsx`'s Category/Exchange Price
+columns and `divination-flips-panel.tsx`'s Stack/Min-Max columns are `hidden ... sm:table-cell`),
+but it's partial, and whatever's hidden is still only reachable by scrolling the table itself, not
+genuinely reflowed into the screen. The expanded chart has the same problem from a different
+angle: `components/price-history-chart.tsx` draws into a fixed `600x240` SVG `viewBox` with a
+small fixed `AXIS_FONT_SIZE` (7) - it scales down to fit a phone-width column fine visually
+(SVG + `aspect-ratio` already handles that part), but the axis labels, legend text, and hover
+tooltip were never checked against an actual small screen for legibility/tap-target size, only
+against desktop widths.
+
+Goal per the request: every important number (the table's key columns, the chart's key markers)
+visible on one screen on a phone, without a horizontal scroll being the only way to see it. Needs
+an actual pass with a real narrow viewport (or the `run` skill's Playwright pattern at a phone
+width), not just assuming the existing `hidden sm:table-cell` breakpoints already cover it - they
+were added for a "which columns are worth showing" tradeoff at various desktop widths, not audited
+specifically for a phone.
+
+## 2. Brand-new items (this league or a future one) aren't picked up automatically
 
 Several parts of the app depend on static, generated-at-a-point-in-time lists that don't notice
 when a new league's patch adds items that didn't exist before (Allflame Embers were the last
@@ -49,7 +70,30 @@ someone notices and does the manual regeneration step. Known spots:
   the same league-swap check, since a league swap is exactly when this problem is most likely to
   have just gotten worse.
 
-## 2. Daily price-history job has no way to recover a missed day
+## 3. A dedicated per-item detail page
+
+Every item currently only gets a small inline expand (`components/item-history-row.tsx`) inside
+whichever table it's already ranked in. Add a real page (e.g. `app/item/[name]/page.tsx`, keyed on
+name + variant/links the same way `lib/poe-ninja.ts`'s `itemPriceKey()` already disambiguates
+them) that a link from each table row navigates to, with:
+
+- Its own **Days ahead** input + slider, same pattern as `flip-suggestions-panel.tsx`'s (reuse
+  `lib/predicted-suggestion.ts`'s client-side reconstruction where possible, so dragging it doesn't
+  need a network round trip per value, same as the main table already achieves).
+- The full `components/price-history-chart.tsx`, same as today's inline expand.
+- EVERY metric available for that item, not just what the summary table row currently shows:
+  poe.ninja side - `chaosValue`/`divineValue`, `sellerCount`, the raw 7-point sparkline/momentum
+  inputs (`lib/prediction-features.ts`), category and (for currency) which overview type it came
+  from; Faustus side (`lib/faustus.ts`) - `buyChaosValue`/`sellChaosValue`, `spreadPercent`,
+  `volumeChaos`/`volumeItem`, `itemStock`/`chaosStock`, `goldCost`
+  (`lib/faustus-gold.ts`), and the liquidity tier those feed (`lib/liquidity.ts`); the confidence
+  score's own inputs (`lib/confidence.ts`), not just its final tier/badge, since the page has room
+  for it where a table row doesn't.
+- Needs a URL-safe encoding for a name+variant that can contain spaces, apostrophes, and (for a
+  divination card reward or a linked item) a comma - same disambiguation `itemPriceKey()` already
+  does internally, just needs to survive a round trip through a URL.
+
+## 4. Daily price-history job has no way to recover a missed day
 
 `scripts/precompute-price-history.ts` (run daily by
 `.github/workflows/precompute-predictions.yml`) only ever writes TODAY's row - its own doc
@@ -76,7 +120,7 @@ just needs to run automatically as part of the daily job instead of by hand.
    reconstruction, not a direct reading). A gap OLDER than the sparkline can reach is unrecoverable
    - the job should just log that plainly rather than silently leaving the hole unexplained.
 
-## 3. Expanding a row's chart can be slow to load
+## 5. Expanding a row's chart can be slow to load
 
 `lib/current-league-history.ts`'s cold-cache path fetches EVERY month's currency + items CSV for
 the whole league from the `data` branch (20-minute TTL) the first time any chart needs the current
@@ -88,7 +132,7 @@ once - worth profiling for real (which of these actually dominates in practice) 
 guessing, then deciding whether it's a caching-window tweak, a prefetch-on-page-load, or something
 more structural.
 
-## 4. Automate retraining the model when a new league starts
+## 6. Automate retraining the model when a new league starts
 
 Right now, per the README's own **Refreshing the learned model** section, this is a fully manual,
 by-hand process (download the new league's export, `npm run db:ingest`, run `ml/fit_production.py`
