@@ -47,6 +47,7 @@ jobs:
           set -e
           cp predictions.json /tmp/predictions.json
           rm -rf /tmp/history && cp -r history /tmp/history
+          cp vercel.json /tmp/vercel.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -65,6 +66,14 @@ jobs:
           # generated) - force-add to override that on this one-off branch.
           cp /tmp/predictions.json predictions.json
           cp -r /tmp/history history
-          git add -f predictions.json history
+          # vercel.json ALSO has to be re-added here, not just carried over from master - Vercel
+          # decides whether to deploy a push by reading git.deploymentEnabled from the vercel.json in
+          # the COMMIT ACTUALLY BEING PUSHED, not master's. git rm -rf . above wipes it out along with
+          # everything else, so without this copy every push here would silently lose its "never
+          # deploy this branch" rule and fall back to Vercel's default (deploy every push) - which is
+          # exactly what happened before this line existed: a Preview deployment was attempted (and
+          # failed, since this branch has no app to build) for every daily run.
+          cp /tmp/vercel.json vercel.json
+          git add -f predictions.json history vercel.json
           git commit -m "Update precomputed predictions and price history"
           git push --force origin data-publish:data
