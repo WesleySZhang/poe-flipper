@@ -145,3 +145,57 @@ the MECHANICAL half of this (kicking off `ml:export-features`/`fit_production.py
 `ml:backtest` on some trigger, maybe a manual `workflow_dispatch` right after deciding to include a
 league, rather than a fully scheduled/unattended run) is worth exploring separately from the
 "should this league count at all" judgment call, which should probably stay manual either way.
+
+## 7. Cache the precomputed-predictions API response
+
+`app/api/flip-suggestions/precomputed/route.ts` sets no `Cache-Control` header at all, and
+`lib/api-response.ts`'s `jsonResponse` gzip-compresses the payload fresh on every single request,
+invoking the Vercel Function from scratch each time - even though the underlying file
+(`predictions.json`) only actually changes once a day, whenever `scripts/precompute-predictions.ts`
+runs. Confirmed against Vercel's own current docs, not assumed:
+
+- Adding `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<window>` (a 20-minute TTL,
+  matching this app's other in-memory caches, would be a reasonable start) lets Vercel's Edge
+  Network serve repeat requests directly from the CDN - the Function isn't invoked at all on a
+  cache hit. Available on every plan including Hobby, not a paid-tier feature.
+- No need to add a `Vary: Accept-Encoding` header by hand - Vercel already includes
+  `Accept`/`Accept-Encoding` in its own cache key automatically.
+- Real ceiling to watch: Vercel's CDN won't cache a non-streaming Function response over **10MB**.
+  Today's file (30 durations) is 5.37MB gzipped - comfortably under it. See item 8 - this ceiling is
+  directly relevant to how far the duration count can go before this specific response stops being
+  cacheable at all, not just "less effective."
+- What this fixes and doesn't: eliminates the repeated server-side gzip work and Function
+  invocations (helps stay inside Hobby's Function Invocations/Active CPU allotments). It does NOT
+  reduce how many bytes each visitor's browser actually downloads - that's edge-to-client bandwidth,
+  identical on a cache hit or miss, and still paid on every single page load either way.
+
+## 8. Precompute predictions further than 30 days ahead? (60 under consideration, maybe 90)
+
+Extending `lib/flip-suggestions.ts`'s `CURVE_MAX_DURATION_DAYS` (30 today) would let the "Days
+ahead" slider's zero-network-request range, and the chart's detailed day-by-day predicted curve,
+both reach further before falling back to a coarser/live path. Measured against the REAL current
+file (not a guess): 30 days -> 20.6MB raw / 5.37MB gzipped `predictions.json`, 10,475 items. Broken
+down: ~2.4MB is fixed per-item overhead that doesn't grow with more durations; the rest averages
+~0.61MB raw per additional day. Projected from those real measurements:
+
+| Days ahead | Raw size | Gzipped | Precompute job time |
+| --- | --- | --- | --- |
+| 30 (today) | 20.6 MB | 5.37 MB | ~31s |
+| 60 | ~39 MB | ~10 MB | ~60s |
+| 90 | ~57 MB | ~15 MB | ~90s |
+
+The nightly job's extra time is free either way (public repo = unlimited GitHub Actions minutes,
+and the job has no per-request latency budget to protect). The real tradeoff is entirely on the
+file-serving side: this whole file is shipped to every visitor's browser on page load
+(`lib/precomputed-predictions.ts`/`components/flip-suggestions-panel.tsx`'s client-side
+reconstruction design), so a bigger file is a cost every visitor pays on every page load, not a
+one-time cost. 60 days lands right at Vercel's 10MB CDN-cacheable-response ceiling (see item 7); 90
+days is comfortably OVER it - `app/api/flip-suggestions/precomputed`'s response couldn't be
+CDN-cached at that size at all with the current single-whole-file design, so item 7's fix would stop
+helping this specific endpoint if 90 is where this lands. Also cuts directly against item 1 (mobile
+support) - a bigger payload matters more, not less, on a slower connection.
+
+Not decided yet whether to do this at all, or at 60 vs 90. If it does happen, worth revisiting
+whether shipping the whole file once still makes sense at that size, or whether it's time to only
+ship what's actually needed (e.g. paginating/lazy-loading durations beyond a smaller always-fetched
+reactive range) instead of scaling the current all-at-once design linearly.
