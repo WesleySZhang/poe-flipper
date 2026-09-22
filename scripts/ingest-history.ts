@@ -184,8 +184,13 @@ async function main() {
   fs.rmSync(DB_PATH, { force: true });
   fs.rmSync(`${DB_PATH}.wal`, { force: true });
 
-  // Each league folder has "<League>.currency.csv" and "<League>.items.csv".
-  const allCsvFiles = await glob("*/*.{currency,items}.csv", { cwd: DATA_DIR, absolute: true });
+  // Each league folder has "<League>.currency.csv" and "<League>.items.csv" - a real poe.ninja
+  // export, downloaded once after a league ends. A currently-active league instead accumulates
+  // "<League>.currency.YYYY-MM.csv"/"<League>.items.YYYY-MM.csv" chunks, one per calendar month (see
+  // scripts/precompute-price-history.ts's module doc for why it's chunked at all) - the trailing `*`
+  // matches both conventions, and every matched file for a league is UNIONed in by the loop below
+  // exactly the same way multiple files per league already were before chunking existed.
+  const allCsvFiles = await glob("*/*.{currency,items}*.csv", { cwd: DATA_DIR, absolute: true });
   if (allCsvFiles.length === 0) {
     throw new Error(`No CSV files found under ${DATA_DIR}`);
   }
@@ -236,7 +241,10 @@ async function main() {
     `);
 
     for (const file of csvFiles) {
-      const isItems = file.endsWith(".items.csv");
+      // Not `.endsWith(".items.csv")` - a monthly-chunked filename ends in ".items.YYYY-MM.csv"
+      // instead (see the glob comment above), so this matches on the ".items." substring both
+      // conventions share; a currency file never contains that substring, so this can't misclassify one.
+      const isItems = file.includes(".items.");
       const escapedPath = file.replace(/'/g, "''");
       if (isItems) {
         await connection.run(`

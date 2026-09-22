@@ -1,10 +1,16 @@
 name: Precompute predictions
 
-# Runs the learned model once a day for every "Days ahead" value the UI supports and publishes the
-# result to the "data" branch - see lib/precomputed-predictions.ts (why: avoids every page load
-# waiting on a live model run) and vercel.json (why "data" is configured to never trigger a Vercel
-# deployment - this app's committed database is ~72MB, and a deployment re-bundles the whole app
-# regardless of how small the actual change was).
+# Runs two independent daily jobs and publishes both to the "data" branch in one commit:
+#  - scripts/precompute-predictions.ts: the learned model for every "Days ahead" value the UI
+#    supports - see lib/precomputed-predictions.ts (why: avoids every page load waiting on a live
+#    model run).
+#  - scripts/precompute-price-history.ts: today's live prices, appended to a growing per-league CSV
+#    pair matching scripts/ingest-history.ts's own format - see that script's module doc for why (the
+#    currently active league otherwise has no daily price history at all until someone manually
+#    downloads poe.ninja's export after it ends).
+# "data" is configured (see vercel.json) to never trigger a Vercel deployment - this app's committed
+# database is ~72MB, and a deployment re-bundles the whole app regardless of how small the actual
+# change was.
 
 on:
   schedule:
@@ -33,25 +39,32 @@ jobs:
       - name: Compute today's predictions
         run: npx tsx --conditions=react-server scripts/precompute-predictions.ts
 
+      - name: Snapshot today's prices into the price-history CSVs
+        run: npx tsx scripts/precompute-price-history.ts
+
       - name: Publish to the data branch
         run: |
           set -e
           cp predictions.json /tmp/predictions.json
+          rm -rf /tmp/history && cp -r history /tmp/history
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Always a fresh orphan branch, force-pushed over whatever "data" currently is - this
-          # branch only ever needs to hold ONE file's latest snapshot, never a history of every past
-          # day's predictions. Committing on top of yesterday's commit instead would grow the branch
-          # by roughly this file's size (see scripts/precompute-predictions.ts's own doc for how big
-          # that got before it was made columnar) forever, one commit per day, with no benefit - there's
-          # nothing anyone needs to look back at on this branch.
+          # Always a fresh orphan branch, force-pushed over whatever "data" currently is, rather than
+          # committing on top of yesterday's commit - this branch is meant to hold LATEST FILE
+          # CONTENT, not a history of every past commit. predictions.json is deliberately a full,
+          # disposable snapshot every run (see its own module doc); history/'s CSVs deliberately DO
+          # grow (see scripts/precompute-price-history.ts's module doc), but that growth lives in the
+          # FILE CONTENT itself (this job downloaded yesterday's CSVs and appended to them before this
+          # step ran) - git's own commit history doesn't need to grow too for that to work, and
+          # keeping it flat is what stops this branch from bloating forever.
           git checkout --orphan data-publish
           git rm -rf . > /dev/null
 
-          # predictions.json is .gitignore'd on every other branch (it's only ever meaningful here,
-          # freshly generated) - force-add to override that on this one-off branch.
+          # Both are .gitignore'd on every other branch (only ever meaningful here, freshly
+          # generated) - force-add to override that on this one-off branch.
           cp /tmp/predictions.json predictions.json
-          git add -f predictions.json
-          git commit -m "Update precomputed predictions"
+          cp -r /tmp/history history
+          git add -f predictions.json history
+          git commit -m "Update precomputed predictions and price history"
           git push --force origin data-publish:data
