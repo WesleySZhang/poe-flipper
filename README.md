@@ -192,6 +192,14 @@ rather than Python, are in [`ml/README.md`](ml/README.md).
 
 The app deploys as a normal Next.js project; nothing is built or trained in production.
 
+- **Pushing to `master` no longer auto-deploys** (`vercel.json`'s `git.deploymentEnabled.master:
+  false`, same mechanism already used to keep the `data` branch from ever deploying). Deploying is
+  a deliberate, separate step: trigger `.github/workflows/deploy-production.yml` by hand (Actions
+  tab -> "Deploy to production" -> Run workflow), which hits a Vercel Deploy Hook - set up once via
+  Vercel dashboard -> Settings -> Git -> Deploy Hooks (branch `master`) and a matching
+  `VERCEL_DEPLOY_HOOK_URL` repo secret; see that workflow's own comment for the exact steps. It
+  always deploys whatever the latest commit on `master` happens to be at the moment it's run, not
+  necessarily anything freshly pushed.
 - `db/history.duckdb` (~72 MB) is committed through **Git LFS** (see `.gitattributes`), so the
   Vercel project needs its Git LFS setting enabled - if the database looks tiny or every
   query fails, the build checked out an LFS pointer instead of the file. `next.config.ts`

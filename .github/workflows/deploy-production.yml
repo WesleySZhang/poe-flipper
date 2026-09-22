@@ -1,0 +1,29 @@
+name: Deploy to production
+
+# Manual "deploy now" button. vercel.json disables automatic deployment on push for master (and
+# data), so pushing a commit here no longer updates the live site by itself - this workflow is the
+# replacement: it triggers a Vercel Deploy Hook, which builds and deploys master's CURRENT latest
+# commit (whatever that is at the moment this runs, not necessarily the commit that triggered this
+# workflow - there isn't one, since this only ever runs on workflow_dispatch).
+#
+# One-time setup this depends on (not automatable from here - needs the Vercel dashboard):
+#   1. Vercel project -> Settings -> Git -> Deploy Hooks -> create one named e.g. "manual-deploy",
+#      branch "master".
+#   2. Copy the generated URL and add it as a GitHub Actions secret on this repo named
+#      VERCEL_DEPLOY_HOOK_URL (Settings -> Secrets and variables -> Actions -> New repository
+#      secret) - never commit the URL itself anywhere; anyone with it can deploy this project.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the Vercel Deploy Hook
+        run: |
+          if [ -z "${{ secrets.VERCEL_DEPLOY_HOOK_URL }}" ]; then
+            echo "::error::VERCEL_DEPLOY_HOOK_URL secret is not set - see this workflow's own comment for setup steps."
+            exit 1
+          fi
+          curl -fsS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK_URL }}"
