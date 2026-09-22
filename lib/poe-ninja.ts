@@ -147,14 +147,6 @@ function fetchCurrencyOverviewRaw(league: string, type: CurrencyOverviewType): P
   return fetchJson<CurrencyOverviewResponse>(url);
 }
 
-export async function getCurrencyOverview(
-  league: string,
-  type: CurrencyOverviewType
-): Promise<CurrencyOverviewLine[]> {
-  const data = await fetchCurrencyOverviewRaw(league, type);
-  return data?.lines ?? [];
-}
-
 /**
  * poe.ninja's Currency Exchange (Faustus)-backed overview - a newer, separate endpoint from the
  * stash-listing scrape above. Verified this tracks Divine Orb within ~5% of GGG's own raw

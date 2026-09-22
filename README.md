@@ -39,8 +39,13 @@
 - **Price history charts**: click any row to expand a chart of that item's price across
   every past league used for training, with markers for the current day and the
   prediction's target day - lets you sanity-check a prediction against the real shape of
-  history rather than trusting the ratio blind (`components/price-history-chart.tsx`). On
-  the Flip Suggestions page this also draws the model's own day-by-day forecast for every
+  history rather than trusting the ratio blind (`components/price-history-chart.tsx`). The
+  currently active league also gets its own real, solid line up to today - built from the
+  daily precomputed snapshots below rather than the past-league database, which only ever
+  holds finished leagues (`lib/current-league-history.ts`) - drawn in the same color as,
+  and connecting directly into, the dashed forecast line, so the two read as one continuous
+  "actually happened, then predicted" story instead of two unrelated series. On the Flip
+  Suggestions page this also draws the model's own day-by-day forecast for every
   "Days ahead" value from 1-30, not just whichever one is currently selected, extending
   with one final straight segment past day 30 if the selected duration goes further -
   fetched lazily on row expand (`app/api/flip-suggestion-curve`), from today's precomputed
@@ -213,6 +218,10 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
 - `scripts/backtest-mirage.ts` - CLI backtest of the model against the Mirage holdout.
 - `scripts/discover-*.ts` - one-off analyses behind past modeling decisions (peer-group
   shrinkage, training-league selection, error budget) - not part of the running app.
+- `scripts/backfill-current-league-history.ts` - one-time script that reconstructs a
+  currently-active league's early days of price history from poe.ninja's own live 7-point
+  sparkline, for a league too new to have much real daily-collected history yet; not part
+  of the running app or the daily precompute job.
 - `scripts/generate-faustus-*.ts` - regenerates the Currency Exchange name/id mapping
   and its doc from RePoE data.
 - `scripts/generate-divination-cards.ts` - regenerates `lib/divination-cards.ts` (stack
@@ -240,6 +249,10 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
 - `lib/league-recency.ts` - per-league recency weighting, and the current league.
 - `lib/confidence.ts` - confidence-tier scoring for a prediction.
 - `lib/price-history.ts` - per-item price history across past leagues, for the chart.
+- `lib/current-league-history.ts` - the active league's own real price history, read
+  straight from the daily precomputed CSV snapshots on the `data` branch (see **Daily
+  precomputed data** above) rather than the past-league database - appended onto
+  `lib/price-history.ts`'s results as the chart's solid "up to today" line.
 - `lib/flip-suggestions.ts` - ranks live prices by projected growth.
 - `lib/mirage-simulator.ts` - backs the `/mirage-simulator` testing page.
 - `lib/faustus.ts` - GGG Currency Exchange client (live prices and buy/sell spreads).

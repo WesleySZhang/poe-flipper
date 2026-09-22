@@ -1,5 +1,7 @@
 import "server-only";
 import { getDb } from "./db";
+import { getCurrentLeagueCurrencyHistory, getCurrentLeagueItemHistory } from "./current-league-history";
+import { CURRENT_LEAGUE } from "./league-recency";
 
 export interface PriceHistoryPoint {
   dayOffset: number;
@@ -20,6 +22,19 @@ function divineValueFrom(chaosValue: number, chaosPerDivine: unknown): number | 
   const rate = Number(chaosPerDivine);
   if (!Number.isFinite(rate) || rate <= 0) return undefined;
   return chaosValue / rate;
+}
+
+/** Appends the current league's own (live-collected, not yet ingested) series onto the DB-backed
+ *  past-league series - see lib/current-league-history.ts for where it comes from. Filters out any
+ *  same-named DB entry first, purely as a safety net for the edge case right at a league boundary
+ *  (CURRENT_LEAGUE gets updated by hand once a league ends and is later ingested - there's no real
+ *  window where both sources would legitimately have the same league, but two lines for one league
+ *  would be a confusing enough bug to guard against anyway). `live` is undefined whenever nothing's
+ *  been collected yet (see that function's own doc) - nothing to append in that case. */
+function appendCurrentLeagueSeries(dbSeries: LeagueSeries[], live: LeagueSeries | undefined): LeagueSeries[] {
+  const series = dbSeries.filter((s) => s.league !== CURRENT_LEAGUE);
+  if (live) series.push(live);
+  return series;
 }
 
 function groupIntoSeries(rows: Record<string, unknown>[]): LeagueSeries[] {
@@ -57,7 +72,7 @@ export async function getCurrencyPriceHistory(name: string): Promise<LeagueSerie
     `,
     { name }
   );
-  return groupIntoSeries(reader.getRowObjects());
+  return appendCurrentLeagueSeries(groupIntoSeries(reader.getRowObjects()), await getCurrentLeagueCurrencyHistory(name));
 }
 
 /** Same as getCurrencyPriceHistory but for items/uniques/gems, keyed by (name, variant). */
@@ -76,5 +91,8 @@ export async function getItemPriceHistory(name: string, variant?: string): Promi
     `,
     { name, ...(variant ? { variant } : {}) }
   );
-  return groupIntoSeries(reader.getRowObjects());
+  return appendCurrentLeagueSeries(
+    groupIntoSeries(reader.getRowObjects()),
+    await getCurrentLeagueItemHistory(name, variant)
+  );
 }

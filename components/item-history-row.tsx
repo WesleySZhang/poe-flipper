@@ -64,12 +64,17 @@ export function ItemHistoryRow({
   children,
 }: ItemHistoryRowProps) {
   const [expanded, setExpanded] = useState(false);
+  // Sticks at true forever once the row's been expanded once - the chart row itself stays mounted
+  // after that (see the render below) so collapsing can play a closing animation instead of vanishing
+  // instantly, and so re-expanding doesn't need a fresh "grow from nothing" transition every time.
+  const [hasExpandedOnce, setHasExpandedOnce] = useState(false);
   const [state, setState] = useState<PriceHistoryFetchState | undefined>();
   const [curveState, setCurveState] = useState<CurveFetchState | undefined>();
 
   function toggle() {
     const next = !expanded;
     setExpanded(next);
+    if (next) setHasExpandedOnce(true);
     // Fetch once per row, on first expand - cached across collapse/re-expand like FaustusPriceButton
     // does, except a failed fetch is retried on the next expand rather than staying stuck on error.
     if (next && (state === undefined || state.status === "error")) {
@@ -145,21 +150,45 @@ export function ItemHistoryRow({
         </TableCell>
         {children}
       </TableRow>
-      {expanded && (
-        <TableRow>
-          <TableCell colSpan={colSpan} className="bg-muted/20">
-            <PriceHistoryChart
-              state={state ?? { status: "loading" }}
-              currentDay={currentDay}
-              targetDay={targetDay}
-              currentValue={currentValue}
-              predictedValue={predictedValue}
-              predictedCurve={predictedCurve}
-              priceUnit={priceUnit}
-            />
-          </TableCell>
-        </TableRow>
-      )}
+      {/* Always mounted (not gated on hasExpandedOnce) - a CSS transition needs the browser to have
+          already painted the "before" state (grid-template-rows: 0fr) at least one frame before the
+          "after" state, or there's nothing to interpolate from. Mounting this collapsed AND flipping
+          it open in the very same render (which gating on hasExpandedOnce would do on a row's first
+          expand) skips straight to the end state with no animation at all - confirmed by measuring
+          the row's actual height mid-transition in a real browser. PriceHistoryChart itself still
+          only mounts once hasExpandedOnce (below), so an unexpanded row costs just a couple of empty,
+          zero-height divs, not a chart instance. */}
+      <TableRow>
+        {/* p-0 - the animated wrapper below owns its own padding, so the grid row can actually
+            collapse to a true 0px (any padding left on the <td> itself would floor the collapsed
+            height there instead). The grid-template-rows 0fr<->1fr trick animates a height that's
+            otherwise "auto" (the chart's real height varies by content) without JS measuring it -
+            a plain max-height transition would need a guessed-too-large fixed end value instead. */}
+        <TableCell colSpan={colSpan} className="p-0">
+          <div
+            className="grid"
+            style={{ gridTemplateRows: expanded ? "1fr" : "0fr", transition: "grid-template-rows 250ms ease" }}
+          >
+            {/* min-h-0 overrides a grid item's default min-height:auto, which would otherwise keep
+                it (and so the row) at its content height regardless of the 0fr track size above. */}
+            <div className="min-h-0 overflow-hidden">
+              {hasExpandedOnce && (
+                <div className="bg-muted/20 p-2">
+                  <PriceHistoryChart
+                    state={state ?? { status: "loading" }}
+                    currentDay={currentDay}
+                    targetDay={targetDay}
+                    currentValue={currentValue}
+                    predictedValue={predictedValue}
+                    predictedCurve={predictedCurve}
+                    priceUnit={priceUnit}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </TableCell>
+      </TableRow>
     </>
   );
 }

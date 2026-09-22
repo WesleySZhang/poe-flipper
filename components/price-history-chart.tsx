@@ -36,9 +36,17 @@ const MIN_CHART_DRAG_VIEW_WIDTH = 8;
 // first. Still fully adjustable via the brush/drag afterward.
 // Default zoom padding around [currentDay, targetDay] (or just currentDay, absent a targetDay) -
 // proportional to that span rather than a fixed number of days, so Today/Target sit close to the
-// window's edges regardless of whether the prediction is a few days or a few months.
+// window's edges regardless of whether the prediction is a few days or a few months. The right
+// (Target-day) side keeps this padding; the left (Today) side deliberately uses much less (see
+// DEFAULT_ZOOM_LEFT_* below) so Today sits noticeably closer to the window's left edge than Target
+// sits to its right edge, rather than both being framed symmetrically.
 const DEFAULT_ZOOM_PADDING_FRACTION = 0.1;
 const DEFAULT_ZOOM_MIN_PADDING_DAYS = 2;
+// Bumped up further - now that the current league's own real history (lib/current-league-history.ts)
+// draws a solid line up to Today, more room on the left lets more of that actual lead-up be visible
+// instead of Today sitting close to the plot edge.
+const DEFAULT_ZOOM_LEFT_PADDING_FRACTION = 0.03;
+const DEFAULT_ZOOM_LEFT_MIN_PADDING_DAYS = 2;
 // Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
 // via a 0-100 viewBox, since the track is already positioned with percentages).
 const BRUSH_VIEW_HEIGHT = 40;
@@ -54,10 +62,14 @@ const CHART_COLOR_VARS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", 
 // Stable per-league color assignment - an index into whichever subset of leagues happen to have
 // data for one particular item would shift colors inconsistently between different items' charts
 // whenever a league is missing a name. allKnownLeagues() always lists the same leagues in the same
-// order, so filtering out the live current league (which never has history to plot anyway - see
-// lib/price-history.ts's header) gives a fixed, reusable name->color mapping.
+// order, so excluding the current league (given its own dedicated color below) from this list gives
+// a fixed, reusable name->color mapping for the rest.
 const COLOR_LEAGUES = allKnownLeagues().filter((league) => league !== CURRENT_LEAGUE);
 function leagueColor(league: string): string {
+  // The current league's own real history (lib/current-league-history.ts) gets the SAME color as the
+  // "Predicted" series, not a slot from the training-league palette - together they're one visual
+  // story (solid = actually happened, dashed = forecast), not just another comparison league.
+  if (league === CURRENT_LEAGUE) return "var(--foreground)";
   const idx = COLOR_LEAGUES.indexOf(league);
   return CHART_COLOR_VARS[idx >= 0 ? idx % CHART_COLOR_VARS.length : 0];
 }
@@ -381,9 +393,10 @@ export function PriceHistoryChart({
     // padding either overwhelming a short window or barely denting a long one.
     const coreMin = Math.min(currentDay, targetDay ?? currentDay);
     const coreMax = Math.max(currentDay, targetDay ?? currentDay);
-    const padding = Math.max(DEFAULT_ZOOM_MIN_PADDING_DAYS, (coreMax - coreMin) * DEFAULT_ZOOM_PADDING_FRACTION);
-    const desiredMin = Math.max(fullMin, coreMin - padding);
-    const desiredMax = Math.min(fullMax, coreMax + padding);
+    const rightPadding = Math.max(DEFAULT_ZOOM_MIN_PADDING_DAYS, (coreMax - coreMin) * DEFAULT_ZOOM_PADDING_FRACTION);
+    const leftPadding = Math.max(DEFAULT_ZOOM_LEFT_MIN_PADDING_DAYS, (coreMax - coreMin) * DEFAULT_ZOOM_LEFT_PADDING_FRACTION);
+    const desiredMin = Math.max(fullMin, coreMin - leftPadding);
+    const desiredMax = Math.min(fullMax, coreMax + rightPadding);
     if (desiredMin > fullMin || desiredMax < fullMax) {
       setZoomDomain([desiredMin, desiredMax]);
     }
@@ -549,7 +562,12 @@ export function PriceHistoryChart({
           })
           // Ignore a "nearest" point that's actually far away - a league whose tracking doesn't
           // reach anywhere near the hovered day shouldn't show a misleading value.
-          .filter(({ point }) => Math.abs(point.dayOffset - hoverDay) <= 5);
+          .filter(({ point }) => Math.abs(point.dayOffset - hoverDay) <= 5)
+          // The current league's own real history (lib/current-league-history.ts) can never have a
+          // point past today - hovering a future day would otherwise just re-show today's price
+          // under the "Allflame" label, right next to the Predicted line's actual forecast for that
+          // same day, reading as a confusing near-duplicate. Predicted alone speaks for future days.
+          .filter(({ league }) => !(league === CURRENT_LEAGUE && hoverDay > currentDay));
 
   const hoverPercent = hoverDay === undefined ? 0 : (xScale(hoverDay) / VIEW_WIDTH) * 100;
   // Centered on the hover point normally, but flipped to hang off the near edge instead once the
