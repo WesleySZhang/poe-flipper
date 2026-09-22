@@ -205,6 +205,9 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
 
 ## Known limitations
 
+See also [`TODO.md`](TODO.md) for known gaps and ideas that aren't implemented yet (not a
+schedule or a promise - just a running list).
+
 - poe.ninja's economy/pricing endpoints aren't part of any officially documented public
   API and may change or break without notice, though poe.ninja does publish a small API
   reference (poe.ninja/docs/api) covering some of what's used here, including the
@@ -238,6 +241,8 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
 
 ## Project structure
 
+- `TODO.md` - known gaps and unimplemented ideas, tracked outside this README since they're not
+  "how it works" - see **Known limitations** above.
 - `scripts/ingest-history.ts` - bulk-loads historical CSVs into `db/history.duckdb`.
 - `scripts/backtest-mirage.ts` - CLI backtest of the model against the Mirage holdout.
 - `scripts/discover-*.ts` - one-off analyses behind past modeling decisions (peer-group
