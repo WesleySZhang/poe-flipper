@@ -48,3 +48,56 @@ someone notices and does the manual regeneration step. Known spots:
   "poe.ninja is returning names that don't exist in FAUSTUS_NAME_TO_ID/DIVINATION_CARDS" as part of
   the same league-swap check, since a league swap is exactly when this problem is most likely to
   have just gotten worse.
+
+## 2. Daily price-history job has no way to recover a missed day
+
+`scripts/precompute-price-history.ts` (run daily by
+`.github/workflows/precompute-predictions.yml`) only ever writes TODAY's row - its own doc
+confirms re-running the same day safely replaces that day's rows, but says nothing about an
+earlier day it never got to run for at all (a GitHub Actions outage, a transient poe.ninja
+failure, the workflow itself breaking for a day before someone notices and fixes it). When that
+happens, the per-league CSV on the `data` branch just has a silent gap for that date - nothing
+errors, it's simply missing, the same way `lib/current-league-history.ts` already tolerates gaps
+in general (matches within its 5-day tooltip tolerance, etc.) - but a real day of history is gone
+for good once it's outside poe.ninja's live sparkline recall window.
+
+The fix already exists in prototype form: `scripts/backfill-current-league-history.ts` (written
+this session, one-time/manual) reconstructs a missing recent day's absolute prices from poe.ninja's
+own live 7-point sparkline, anchored on today's live price - the exact same trick would work here,
+just needs to run automatically as part of the daily job instead of by hand.
+
+**Two pieces needed:**
+1. **Detection** - before writing today's row, check whether the day(s) immediately before today
+   are actually present in the freshly-downloaded CSV (not just "does today exist yet"). A gap of
+   more than one day means at least one run was missed.
+2. **Backfill** - for any missed day still within the live sparkline's ~7-day recall window,
+   reconstruct it the same way `scripts/backfill-current-league-history.ts` already does, tagged
+   `Confidence=Medium` like that script does (not `High`, to stay honest that it's a same-day
+   reconstruction, not a direct reading). A gap OLDER than the sparkline can reach is unrecoverable
+   - the job should just log that plainly rather than silently leaving the hole unexplained.
+
+## 3. Expanding a row's chart can be slow to load
+
+`lib/current-league-history.ts`'s cold-cache path fetches EVERY month's currency + items CSV for
+the whole league from the `data` branch (20-minute TTL) the first time any chart needs the current
+league's history after a cache expiry, and `lib/precomputed-predictions.ts`'s equivalent file is a
+similar-shaped cold-start cost. Combined with `app/api/flip-suggestion-curve`'s live fallback path
+(a full `getFlipSuggestions` re-run per duration, 1-30, when the precomputed curve isn't usable),
+the FIRST row expansion after a cache expiry can end up waiting on several separate slow paths at
+once - worth profiling for real (which of these actually dominates in practice) rather than
+guessing, then deciding whether it's a caching-window tweak, a prefetch-on-page-load, or something
+more structural.
+
+## 4. Automate retraining the model when a new league starts
+
+Right now, per the README's own **Refreshing the learned model** section, this is a fully manual,
+by-hand process (download the new league's export, `npm run db:ingest`, run `ml/fit_production.py`
+with a GPU, `npm run ml:parity`/`ml:backtest`, then commit the new `predictor.json`) - and
+deliberately so: it also means deciding whether/when a given league is even worth training on
+(`scripts/ingest-history.ts`'s `PRODUCTION_LEAGUES` is intentionally curated, not "every league
+ever"), which isn't a decision to make unattended (see `.github/workflows/check-current-league-swap.yml`'s
+own reasoning for a similar "detect automatically, but keep a human checkpoint" split). Automating
+the MECHANICAL half of this (kicking off `ml:export-features`/`fit_production.py`/`ml:parity`/
+`ml:backtest` on some trigger, maybe a manual `workflow_dispatch` right after deciding to include a
+league, rather than a fully scheduled/unattended run) is worth exploring separately from the
+"should this league count at all" judgment call, which should probably stay manual either way.
