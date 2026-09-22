@@ -66,13 +66,21 @@
 - **Divination Card Flips** (`/divination-cards`): ranks divination cards by the profit
   from buying a full stack (poe.ninja's live card price x the card's stack size) and
   turning it in for its reward, at today's live prices. Only cards whose reward is a
-  single, deterministic, currently-priced unique item, currency amount, or other card are
-  included - cards with a randomized reward (a roll, a corruption, a random item of a
-  category) are excluded, since their true value can't be computed from a single number
+  single, deterministic, currently-priced unique item, plain named item (a specific
+  Scarab/Fragment with no randomness at all, e.g. "Sulphite Scarab"), currency amount, or
+  other card are included - cards with a randomized reward (a roll, a random item of a
+  category, a Magic/Rare base with randomly-rolled affixes) are excluded, since their true
+  value can't be computed from a single number. One deliberate exception: a card whose
+  reward is a specific unique item that's always corrupted is still included, priced via
+  the plain (non-corrupted-specific) price - the item itself is 100% guaranteed, poe.ninja
+  just doesn't track corrupted uniques as a separate price point
   (`lib/divination-cards.ts`, generated from RePoE's game data by
   `scripts/generate-divination-cards.ts`; `lib/divination-flips.ts` does the live
   scoring). Confidence here is the weaker of the two legs' live trade liquidity (buying
-  the card, selling the reward), not the historical-reliability score used elsewhere.
+  the card, selling the reward), not the historical-reliability score used elsewhere - a
+  low reading is expected and not a bug on an older, quieter league, since most card
+  trading happens off GGG's Currency Exchange (the confidence signal's only data source)
+  entirely; it should read higher on a fresh league with more active trading.
 - **Mirage simulator** (`/mirage-simulator`): a testing page that replays the model
   against the Mirage league - which is always excluded from the historical averages - so
   you can pick a day and duration and see the model's prediction next to what actually
