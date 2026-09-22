@@ -76,6 +76,17 @@
   the nav row's position) stays identical everywhere.
 - **Data store**: [DuckDB](https://duckdb.org) (embedded, columnar, great for analytical
   queries over large CSV history) - no external database server required.
+- **Daily precomputed data** (`scripts/precompute-predictions.ts`,
+  `scripts/precompute-price-history.ts`): a scheduled GitHub Actions job
+  (`.github/workflows/precompute-predictions.yml`) runs once a day and publishes to this
+  repo's `data` branch, which is configured (`vercel.json`) to never trigger a Vercel
+  deployment. It does two things: (1) runs the learned model once for every "Days ahead"
+  value, so a page load reads a ready-made result (`lib/precomputed-predictions.ts`)
+  instead of waiting on a live model run, falling back to computing live if that file is
+  missing or stale; (2) snapshots today's live prices into a growing, per-league CSV pair
+  matching `scripts/ingest-history.ts`'s own format (see **Historical price data** below) -
+  the currently active league otherwise has no daily price history at all until it ends
+  and someone manually downloads poe.ninja's export.
 
 ## Setup
 
@@ -121,6 +132,15 @@ downloaded once per machine before `npm run db:ingest` has anything to ingest.
 4. Run `npm run db:ingest` (step 2 above) once the folders are in place. It rebuilds
    `db/history.duckdb` from scratch every run, so re-download and re-ingest whenever you want to
    pick up a league poe.ninja has since finished.
+
+**The currently active league doesn't need a manual download at all** - the scheduled job described
+above (`scripts/precompute-price-history.ts`) has already been snapshotting its live prices daily
+onto the `data` branch, one CSV pair per calendar month
+(`<League>/<League>.currency.YYYY-MM.csv`/`<League>/<League>.items.YYYY-MM.csv` - chunked by month
+since one file for a whole league would otherwise grow past GitHub's 100MB push limit). Copy that
+league's folder from the `data` branch into `POE_DATA_DIR` alongside the others and run
+`npm run db:ingest` the same as any other league - `ingest-history.ts`'s file matching already
+handles both the chunked convention and a real one-file poe.ninja export the same way.
 
 ### Refreshing the learned model
 

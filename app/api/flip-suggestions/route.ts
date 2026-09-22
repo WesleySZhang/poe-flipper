@@ -1,5 +1,6 @@
 import { jsonResponse } from "@/lib/api-response";
 import { getFlipSuggestions } from "@/lib/flip-suggestions";
+import { getPrecomputedFlipSuggestions } from "@/lib/precomputed-predictions";
 import { currentLeagueDay } from "@/lib/league-day";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 
@@ -19,6 +20,14 @@ export async function GET(request: Request) {
   const currentDay = currentDayParam !== null ? Number(currentDayParam) : currentLeagueDay(CURRENT_LEAGUE_START_DATE);
   if (!Number.isFinite(currentDay)) {
     return jsonResponse({ error: "currentDay must be a number" }, request, { status: 400 });
+  }
+
+  // Only today's REAL league day can match a precomputed file (it's generated once daily against
+  // "today") - an explicit currentDay override (the current-league-tester's backtesting tool) always
+  // needs a live computation for that specific historical day, so it skips this entirely.
+  if (currentDayParam === null) {
+    const precomputed = await getPrecomputedFlipSuggestions(CURRENT_LEAGUE, currentDay, durationDays);
+    if (precomputed) return jsonResponse(precomputed, request);
   }
 
   const suggestions = await getFlipSuggestions(CURRENT_LEAGUE, currentDay, durationDays);

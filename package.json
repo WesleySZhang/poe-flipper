@@ -12,7 +12,8 @@
     "check-league": "tsx scripts/check-current-league.ts",
     "ml:export-features": "tsx scripts/export-training-features.ts",
     "ml:parity": "tsx scripts/check-predictor-parity.ts",
-    "ml:backtest": "tsx --conditions=react-server scripts/backtest-predictor.ts"
+    "ml:backtest": "tsx --conditions=react-server scripts/backtest-predictor.ts",
+    "predictions:precompute": "tsx --conditions=react-server scripts/precompute-predictions.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

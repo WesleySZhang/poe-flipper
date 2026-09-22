@@ -319,8 +319,10 @@ export function correctedItemType(type: string, baseType: string | undefined): s
 
 // Matches the bucket text ("1-4 links"/"5 links"/"6 links") the ingested historical data already
 // uses for its own "Links" CSV column (see scripts/ingest-history.ts) - poe.ninja's live API
-// reports an exact link count instead, so it has to be bucketed the same way to line up.
-function linksBucketLabel(links: number): string {
+// reports an exact link count instead, so it has to be bucketed the same way to line up. Exported
+// so scripts/precompute-price-history.ts can write this exact convention into its own generated
+// CSVs (see that file for why: it's built to be a drop-in match for poe.ninja's own export format).
+export function linksBucketLabel(links: number): string {
   if (links >= 6) return "6 links";
   if (links === 5) return "5 links";
   return "1-4 links";

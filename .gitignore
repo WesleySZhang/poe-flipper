@@ -54,3 +54,12 @@ ml/.venv/
 ml/cache/
 ml/*.log
 __pycache__/
+
+# Output of scripts/precompute-predictions.ts - only meaningful on the "data" branch (see
+# .github/workflows/precompute-predictions.yml, lib/precomputed-predictions.ts), where the workflow
+# force-adds it past this rule. A local dry run of the script elsewhere just produces a scratch file.
+/predictions.json
+
+# Same idea, for scripts/precompute-price-history.ts's growing per-league CSV pair - also only
+# meaningful on the "data" branch.
+/history/

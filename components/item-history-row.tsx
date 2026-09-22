@@ -4,8 +4,14 @@ import { useState } from "react";
 import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
-import type { PriceUnit } from "@/lib/price-unit";
+import { activePrice, type PriceUnit } from "@/lib/price-unit";
 import type { LeagueSeries } from "@/lib/price-history";
+import type { PredictionCurvePoint } from "@/lib/flip-suggestions";
+
+type CurveFetchState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "loaded"; points: PredictionCurvePoint[] };
 
 interface ItemHistoryRowProps {
   /** The name shown in the Item cell - already formatted with any variant suffix. */
@@ -17,6 +23,17 @@ interface ItemHistoryRowProps {
   currentDay: number;
   /** currentDay + the prediction's duration - see PriceHistoryChart's targetDay prop. */
   targetDay?: number;
+  /** Already resolved to the active priceUnit - see PriceHistoryChart's matching props. Both (and
+   *  targetDay) are required to draw the dashed "Predicted" line at all. */
+  currentValue?: number;
+  predictedValue?: number;
+  /** When true, also fetches this item's full day-1-30 predicted curve on expand (see
+   *  app/api/flip-suggestion-curve/route.ts) so the chart draws a detailed forecast line instead of
+   *  a single straight segment to targetDay - see PriceHistoryChart's predictedCurve prop. Only
+   *  meaningful for a row that's pricing TODAY's real league day against TODAY's live prices (the
+   *  curve endpoint always answers for "today"); the mirage simulator's replayed-history rows leave
+   *  this unset and keep the plain two-point line. */
+  fetchPredictedCurve?: boolean;
   priceUnit: PriceUnit;
   /** Total column count of the table this row lives in, so the expanded chart row can span all of them. */
   colSpan: number;
@@ -39,12 +56,16 @@ export function ItemHistoryRow({
   variant,
   currentDay,
   targetDay,
+  currentValue,
+  predictedValue,
+  fetchPredictedCurve,
   priceUnit,
   colSpan,
   children,
 }: ItemHistoryRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [state, setState] = useState<PriceHistoryFetchState | undefined>();
+  const [curveState, setCurveState] = useState<CurveFetchState | undefined>();
 
   function toggle() {
     const next = !expanded;
@@ -63,7 +84,36 @@ export function ItemHistoryRow({
         .then((series) => setState({ status: "loaded", series }))
         .catch(() => setState({ status: "error" }));
     }
+    // Same lazy-fetch-once-cached-on-error-retry pattern as price-history above, just a separate
+    // request/cache - the two are independent data sources that happen to land on the same chart.
+    if (next && fetchPredictedCurve && (curveState === undefined || curveState.status === "error")) {
+      setCurveState({ status: "loading" });
+      const params = new URLSearchParams({ category, name: historyName });
+      if (variant) params.set("variant", variant);
+      fetch(`/api/flip-suggestion-curve?${params}`)
+        .then((res) => {
+          if (!res.ok) throw new Error("flip-suggestion-curve request failed");
+          return res.json() as Promise<PredictionCurvePoint[]>;
+        })
+        .then((points) => setCurveState({ status: "loaded", points }))
+        .catch(() => setCurveState({ status: "error" }));
+    }
   }
+
+  // Resolved to the active priceUnit here (not in PriceHistoryChart, which only ever draws numbers -
+  // see its own currentValue/predictedValue doc) - a null chaos/divine value (the item wasn't
+  // priceable/trend-matched at that specific duration, see lib/flip-suggestions.ts's
+  // PredictionCurvePoint) becomes undefined, which the chart already knows to skip.
+  const predictedCurve =
+    curveState?.status === "loaded"
+      ? curveState.points.map((p) => ({
+          durationDays: p.durationDays,
+          value:
+            p.predictedChaosValue === null
+              ? undefined
+              : activePrice(p.predictedChaosValue, p.predictedDivineValue ?? undefined, priceUnit),
+        }))
+      : undefined;
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" || e.key === " ") {
@@ -102,6 +152,9 @@ export function ItemHistoryRow({
               state={state ?? { status: "loading" }}
               currentDay={currentDay}
               targetDay={targetDay}
+              currentValue={currentValue}
+              predictedValue={predictedValue}
+              predictedCurve={predictedCurve}
               priceUnit={priceUnit}
             />
           </TableCell>
