@@ -1,0 +1,73 @@
+name: Check for a new league
+
+# Detects when poe.ninja starts serving a different challenge league than lib/league-recency.ts's
+# hardcoded CURRENT_LEAGUE, and opens a pull request with the fix (scripts/sync-current-league.ts
+# does the actual detection + file edit - see its own comment for the full reasoning).
+#
+# Deliberately opens a PR rather than pushing straight to master, even though that means someone
+# still has to click Merge: this constant feeds live economy data (poe.ninja lookups, Faustus,
+# divination card pricing) to every visitor of the site, so a bad detection - a poe.ninja hiccup,
+# an unexpected reordering of its leagues endpoint - should get a human's eyes before it deploys,
+# not skip straight to it. In exchange, the actual noticing and editing is fully automatic - the
+# only manual step left is reviewing and merging a pull request GitHub already notified you about.
+#
+# Runs independently of precompute-predictions.yml (different concern, different schedule) - if a
+# swap happens, that job keeps computing against the outgoing league (harmlessly - poe.ninja simply
+# stops returning fresh data for an ended league) until this PR is merged, same one-day-ish lag the
+# manual process it replaces already had.
+
+on:
+  schedule:
+    - cron: "50 5 * * *" # once daily, shortly before precompute-predictions.yml's own 6am run
+  workflow_dispatch: {} # manual trigger, e.g. to check right after a league you know just launched
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-league:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Check poe.ninja's live league against the hardcoded CURRENT_LEAGUE
+        id: check
+        run: npx tsx scripts/sync-current-league.ts
+
+      - name: Open a pull request with the swap, if one was detected
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Swap CURRENT_LEAGUE to ${{ steps.check.outputs.new_league }}"
+          title: "New challenge league detected: ${{ steps.check.outputs.new_league }}"
+          body: |
+            poe.ninja is now serving **${{ steps.check.outputs.new_league }}** instead of
+            **${{ steps.check.outputs.old_league }}** - a new challenge league has likely launched.
+
+            Opened automatically by `.github/workflows/check-current-league-swap.yml`
+            (`scripts/sync-current-league.ts`). The only change is in `lib/league-recency.ts`:
+            the new league's release date (set to today, the day this was first detected) and
+            `CURRENT_LEAGUE` itself - everything else in the app already keys off those two exports.
+
+            **Before merging**, sanity-check this is a real launch and not a poe.ninja hiccup (a
+            briefly reordered or stale leagues endpoint) - merging deploys immediately and changes
+            what live economy every visitor's Flip Suggestions, Currency Exchange Flip, and
+            Divination Card Flips price against.
+
+            Once merged, also worth doing eventually (not automated, not urgent - see the README's
+            **Historical price data** section):
+            - Once ${{ steps.check.outputs.old_league }} is finalized, ingest its
+              already-collected `data`-branch history (`npm run db:ingest`) so it joins the
+              training set.
+            - Retrain the model (see `ml/README.md`) once enough leagues include it.
+          branch: auto/current-league-swap
+          delete-branch: true

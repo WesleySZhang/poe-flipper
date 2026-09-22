@@ -9,9 +9,12 @@
   `lib/league-recency.ts`) and is then adjusted by a learned model - see **Learned
   forecast** below - against today's live price. The current league and its start date are hardcoded in
   `lib/league-recency.ts` (`CURRENT_LEAGUE`) and need updating by hand each time a new
-  challenge league launches. `npm run check-league` compares it against poe.ninja's own
-  live leagues list and warns if it's gone stale (see below) - run this whenever you
-  suspect a new league has launched, then update `CURRENT_LEAGUE` by hand.
+  challenge league launches - though this is now caught and fixed automatically rather
+  than requiring someone to notice (see **Known limitations** below for how). `npm run
+  check-league` still exists for an instant manual check (read-only, just reports
+  staleness) and `npm run league:sync` for a manual write (same edit the scheduled job's
+  pull request makes, applied directly instead), for whenever you don't want to wait for
+  the next scheduled run.
 - **Learned forecast** (`lib/prediction-model.ts`, `lib/prediction-features.ts`): the
   historical average alone is a weak predictor - in a backtest it ranked late-league items
   about as well as a coin flip. The forecast therefore also uses (1) how today's price
@@ -204,10 +207,20 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
   plain historical ratio. The confidence tier still describes how consistently an item
   gained in past leagues, not the learned forecast, and varies with how many past leagues
   have data for it.
-- The current league is hardcoded (see above) rather than fully auto-detected - poe.ninja
-  does expose a live leagues list, but switching `CURRENT_LEAGUE` also requires adding
-  the new league's release date and deciding whether/when to start training on it, which
-  isn't something to do unattended.
+- The current league is still hardcoded (see above), but swapping it is no longer a
+  fully manual chore: a scheduled job (`.github/workflows/check-current-league-swap.yml`,
+  `scripts/sync-current-league.ts`) checks poe.ninja's live leagues list daily and, on a
+  mismatch, opens a pull request with the exact edit already made (the new league's
+  release date plus the `CURRENT_LEAGUE` flip) - review and merge it and the live site
+  picks up the new league on the next deploy. It stops short of pushing straight to
+  master itself on purpose: this constant feeds live economy data to every visitor, and a
+  bad detection (a poe.ninja hiccup, an unexpected reordering of that endpoint) should get
+  a human's eyes before it deploys. Deciding whether/when to start *training* on the new
+  league (ingesting it, retraining the model) is separate and still fully manual, same as
+  always - see **Historical price data** and **Refreshing the learned model** below.
+  **One-time repo setup this relies on**: Settings -> Actions -> General -> Workflow
+  permissions -> "Allow GitHub Actions to create and approve pull requests", otherwise the
+  job can detect a swap but can't open the PR for it.
 - GGG's Currency Exchange API is purely historical (roughly 2 hours stale) and has no
   gold-cost field at all - the Currency Exchange Flip page's buy/sell spreads and gold
   costs are the best available approximation, not a live order book.
@@ -228,6 +241,10 @@ The app deploys as a normal Next.js project; nothing is built or trained in prod
   size + reward per card) from RePoE data.
 - `scripts/check-current-league.ts` - compares the hardcoded `CURRENT_LEAGUE` against
   poe.ninja's live leagues list; run via `npm run check-league`.
+- `scripts/sync-current-league.ts` - same check, but on a mismatch actually rewrites
+  `lib/league-recency.ts` with the fix; run via `npm run league:sync`, or automatically
+  daily by `.github/workflows/check-current-league-swap.yml` (which opens the result as a
+  pull request rather than committing it directly - see **Known limitations** above).
 - `scripts/export-training-features.ts`, `check-predictor-parity.ts`,
   `backtest-predictor.ts` - the learned model's training-data export, TypeScript/Python
   parity check and out-of-sample Mirage replay (`npm run ml:*`);
