@@ -567,7 +567,13 @@ export function PriceHistoryChart({
           // point past today - hovering a future day would otherwise just re-show today's price
           // under the "Allflame" label, right next to the Predicted line's actual forecast for that
           // same day, reading as a confusing near-duplicate. Predicted alone speaks for future days.
-          .filter(({ league }) => !(league === CURRENT_LEAGUE && hoverDay > currentDay));
+          .filter(({ league }) => !(league === CURRENT_LEAGUE && hoverDay > currentDay))
+          // Symmetric case: the Predicted line's own first point sits exactly AT today (its seed
+          // value - literally the same number as Allflame's today reading, not a forecast that's
+          // diverged from reality yet), so it'd otherwise show as a redundant duplicate row both
+          // today and (via the same 5-day tolerance above) for a few days before today too. Allflame
+          // alone speaks for today and every day up to it; Predicted only for days strictly after.
+          .filter(({ league }) => !(league === "Predicted" && hoverDay <= currentDay));
 
   const hoverPercent = hoverDay === undefined ? 0 : (xScale(hoverDay) / VIEW_WIDTH) * 100;
   // Centered on the hover point normally, but flipped to hang off the near edge instead once the
