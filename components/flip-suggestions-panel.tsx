@@ -20,6 +20,7 @@ import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
 import type { FlipSuggestion } from "@/lib/flip-suggestions";
+import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { activeConfidence, confidenceTier, type ConfidenceTier } from "@/lib/confidence";
@@ -39,12 +40,12 @@ const MIN_DURATION_DAYS = 1;
 // model's trained/validated range (see ml/README.md), and a value precomputed daily for every one
 // of these is instant to serve. A duration past this still works (see app/api/flip-suggestions/
 // route.ts's fallback), it just costs a live model run for that one request instead of being instant.
+// Also the slider's own drag max: past this, dragging no longer updates the table reactively (see
+// clientSuggestions below) - every pixel past PRECOMPUTED_MAX_DURATION_DAYS would need a live model
+// run to answer, so there's nothing to gain by letting the drag reach further than the range it's
+// actually instant across. The paired number input can still type any value past this, same as every
+// other "Days ahead" input in this app - it just costs a live compute for that one request.
 const PRECOMPUTED_MAX_DURATION_DAYS = 30;
-// How far the slider itself can drag to - a few times the precomputed range so it's still usable to
-// explore longer horizons by dragging, not tied to any hard constraint (there's no upper bound on
-// what the model/live computation can be asked for). The paired number input below can type any
-// value past even this, same as every other "Days ahead" input in this app.
-const SLIDER_MAX_DURATION_DAYS = 90;
 
 type SortKey = "current" | "predicted" | "change";
 
@@ -54,8 +55,30 @@ async function fetchFlipSuggestions(durationDays: number): Promise<FlipSuggestio
   return res.json();
 }
 
+/** Today's whole precomputed file (every item, every duration 1-30) - fetched once so every
+ *  duration's table can be reconstructed locally afterward, with zero further network round-trips.
+ *  Resolves to null on any failure (network error, non-200, malformed body), same "just fall back"
+ *  contract as fetchFlipSuggestions above - see the component for how that fallback works. */
+async function fetchPrecomputedFile(): Promise<PrecomputedPredictions | null> {
+  try {
+    const res = await fetch("/api/flip-suggestions/precomputed");
+    if (!res.ok) return null;
+    return (await res.json()) as PrecomputedPredictions | null;
+  } catch {
+    return null;
+  }
+}
+
 export function FlipSuggestionsPanel() {
+  // Server-fetched fallback, used only for a duration the precomputed file below doesn't cover
+  // (past PRECOMPUTED_MAX_DURATION_DAYS, or the file itself missing/stale) - see displaySuggestions.
   const [suggestions, setSuggestions] = useState<FlipSuggestion[]>([]);
+  // undefined = not fetched yet; null = fetched but unusable (missing/stale/network error) - both
+  // just mean "fall back to suggestions above", same distinction lib/precomputed-predictions.ts's own
+  // cache makes server-side. Fetched ONCE (see the effect below), not per duration - the whole point
+  // is that every duration 1-30 is already in this one payload, so switching durations (including
+  // while dragging the slider) needs zero further network round-trips.
+  const [precomputedData, setPrecomputedData] = useState<PrecomputedPredictions | null | undefined>(undefined);
   const [durationDays, setDurationDays] = useState(3);
   // Set only while the thumb is actively being dragged, so dragging updates the visible number
   // instantly without re-fetching on every pixel of movement - undefined the rest of the time, so the
@@ -67,11 +90,11 @@ export function FlipSuggestionsPanel() {
   // Clamped: a typed value in the paired number input can exceed the slider's own max (that input is
   // intentionally unbounded, same as every other "Days ahead" input in this app) - the thumb just
   // pins at the end in that case rather than the slider having no valid position to show at all.
-  const sliderValue = dragValue ?? Math.min(durationDays, SLIDER_MAX_DURATION_DAYS);
+  const sliderValue = dragValue ?? Math.min(durationDays, PRECOMPUTED_MAX_DURATION_DAYS);
   // The number input mirrors whichever value is currently "live" - the drag value while dragging (so
   // it updates in real time instead of only on release), durationDays otherwise. Deliberately NOT
-  // clamped to SLIDER_MAX_DURATION_DAYS like sliderValue above - a typed value past the slider's own
-  // max should still show the real typed number here, not the slider's clamped display value.
+  // clamped to PRECOMPUTED_MAX_DURATION_DAYS like sliderValue above - a typed value past the slider's
+  // own max should still show the real typed number here, not the slider's clamped display value.
   const inputValue = dragValue ?? durationDays;
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
     () => new Set(ALL_CATEGORIES.filter((c) => !isDefaultEnabledCategory(c)))
@@ -92,18 +115,55 @@ export function FlipSuggestionsPanel() {
   // league, but that correlation collapses past ~day 30 once the economy has largely settled.
   const isStaleLeagueDay = currentDay > 30;
 
+  // Once, on mount - not keyed on anything, since the file itself only changes once a day and
+  // covers every duration this page can show. See fetchPrecomputedFile's own doc.
   useEffect(() => {
+    fetchPrecomputedFile().then(setPrecomputedData);
+  }, []);
+
+  // Reconstructed straight from the already-fetched file, for whichever duration is CURRENTLY
+  // displayed - inputValue, not durationDays, so this updates on every drag tick, not just on
+  // commit. Undefined (not null/[]) when the file isn't available yet/at all, or doesn't cover this
+  // duration (past PRECOMPUTED_MAX_DURATION_DAYS) - displaySuggestions below falls back to the
+  // server-fetched `suggestions` state in exactly that case, same as if this feature didn't exist.
+  const clientSuggestions = useMemo(
+    () => reconstructAllFlipSuggestions(precomputedData, inputValue),
+    [precomputedData, inputValue]
+  );
+  // Same reconstruction, but for the COMMITTED duration - drives the effect below: only worth a
+  // network request when the client-side file can't already answer for the duration that's about to
+  // actually be fetched-for. Recomputed separately from clientSuggestions (which tracks the live drag
+  // value) so dragging alone never triggers or skips a fetch - only committing does.
+  const committedClientSuggestions = useMemo(
+    () => reconstructAllFlipSuggestions(precomputedData, durationDays),
+    [precomputedData, durationDays]
+  );
+  // What's actually shown in the table right now, and which duration it's actually FOR - prefers the
+  // instant, client-reconstructed data whenever it covers the live (possibly mid-drag) duration, so
+  // dragging updates the table with zero network round-trips; falls back to the slower server-fetched
+  // path (and the committed duration, since that's the only duration `suggestions` can be for) only
+  // when the precomputed file can't answer at all, e.g. past PRECOMPUTED_MAX_DURATION_DAYS.
+  const displaySuggestions = clientSuggestions ?? suggestions;
+  const displayDurationDays = clientSuggestions !== undefined ? inputValue : durationDays;
+  // Gates the loading/empty states below on "do we have anything to show" rather than on isPending
+  // directly - isPending only ever reflects the (now rarer) server-fetch fallback, and once
+  // displaySuggestions has real rows there's nothing to wait on even if some earlier, now-irrelevant
+  // fetch happens to still be in flight.
+  const hasData = displaySuggestions.length > 0;
+
+  useEffect(() => {
+    if (committedClientSuggestions !== undefined) return; // already answerable locally - no request needed
     startTransition(async () => {
       setSuggestions(await fetchFlipSuggestions(durationDays));
       setPage(0);
     });
-  }, [durationDays]);
+  }, [durationDays, committedClientSuggestions]);
 
   // Re-sort whenever the unit changes too: in divine mode a price/change column should order by
   // real value, not chaos value. Rows with no divine figure for the active sort column sort last.
   const sortedSuggestions = useMemo(
     () =>
-      sortByKey(suggestions, sort, (s, key) => {
+      sortByKey(displaySuggestions, sort, (s, key) => {
         switch (key) {
           case "current":
             return activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit);
@@ -113,7 +173,7 @@ export function FlipSuggestionsPanel() {
             return activeRatio(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit);
         }
       }),
-    [suggestions, sort, priceUnit]
+    [displaySuggestions, sort, priceUnit]
   );
   const normalizedSearch = searchText.trim().toLowerCase();
   const visibleSuggestions = sortedSuggestions.filter((s) => {
@@ -239,7 +299,7 @@ export function FlipSuggestionsPanel() {
             <Slider
               aria-label="Days ahead"
               min={MIN_DURATION_DAYS}
-              max={SLIDER_MAX_DURATION_DAYS}
+              max={PRECOMPUTED_MAX_DURATION_DAYS}
               step={1}
               value={sliderValue}
               onValueChange={(value) => setDragValue(value)}
@@ -309,16 +369,16 @@ export function FlipSuggestionsPanel() {
             Exchange price available
           </Badge>
         </div>
-        {isPending && (
+        {!hasData && isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="size-6 animate-spin" />
             <p className="text-sm">Loading flip suggestions...</p>
           </div>
         )}
-        {!isPending && suggestions.length === 0 && (
+        {!hasData && !isPending && (
           <p className="text-sm text-muted-foreground">No historical matches found for current live prices yet.</p>
         )}
-        {!isPending && suggestions.length > 0 && (
+        {hasData && (
           // Keyed on suggestions.length, not pagedSuggestions.length - the header (and the
           // Confidence column's tier filter it carries) must stay visible even when every row is
           // currently filtered out, or there'd be no way to re-enable a hidden tier once all three
@@ -363,7 +423,7 @@ export function FlipSuggestionsPanel() {
                   historyName={s.historyName}
                   variant={s.variant}
                   currentDay={currentDay}
-                  targetDay={currentDay + durationDays}
+                  targetDay={currentDay + displayDurationDays}
                   currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   fetchPredictedCurve
@@ -408,7 +468,7 @@ export function FlipSuggestionsPanel() {
             </TableBody>
           </Table>
         )}
-        {!isPending && suggestions.length > 0 && visibleSuggestions.length === 0 && (
+        {hasData && visibleSuggestions.length === 0 && (
           <p className="text-sm text-muted-foreground">No suggestions match the current filters.</p>
         )}
         <Pagination

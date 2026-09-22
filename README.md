@@ -39,7 +39,12 @@
 - **Price history charts**: click any row to expand a chart of that item's price across
   every past league used for training, with markers for the current day and the
   prediction's target day - lets you sanity-check a prediction against the real shape of
-  history rather than trusting the ratio blind (`components/price-history-chart.tsx`).
+  history rather than trusting the ratio blind (`components/price-history-chart.tsx`). On
+  the Flip Suggestions page this also draws the model's own day-by-day forecast for every
+  "Days ahead" value from 1-30, not just whichever one is currently selected, extending
+  with one final straight segment past day 30 if the selected duration goes further -
+  fetched lazily on row expand (`app/api/flip-suggestion-curve`), from today's precomputed
+  file when possible or a live per-duration rerun otherwise.
 - **Category filters**: tables can be filtered by category - an item's BaseType, or
   "Currency" for every currency row - built from whatever categories are actually
   present in the current results.
@@ -86,7 +91,13 @@
   missing or stale; (2) snapshots today's live prices into a growing, per-league CSV pair
   matching `scripts/ingest-history.ts`'s own format (see **Historical price data** below) -
   the currently active league otherwise has no daily price history at all until it ends
-  and someone manually downloads poe.ninja's export.
+  and someone manually downloads poe.ninja's export. The Flip Suggestions page fetches
+  this whole file once (`/api/flip-suggestions/precomputed`) and reconstructs every
+  duration's rows itself in the browser (`lib/predicted-suggestion.ts`, shared with the
+  server so both sides stay in sync) - so its "Days ahead" slider, bounded to the
+  precomputed 1-30 day range, updates the table live while being dragged with zero further
+  network requests; a separate exact-entry number input allows any value beyond that too,
+  at the cost of a live compute for that one request.
 
 ## Setup
 

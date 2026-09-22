@@ -1,6 +1,6 @@
 import "server-only";
-import { buildFlipRationale, type FlipSuggestion, type PredictionCurvePoint } from "./flip-suggestions";
-import type { PredictorMode } from "./prediction-model";
+import type { FlipSuggestion, PredictionCurvePoint } from "./flip-suggestions";
+import { reconstructAllFlipSuggestions, isPrecomputedPredictions, type PrecomputedPredictions } from "./predicted-suggestion";
 
 /**
  * Reads today's flip suggestions from a small file a scheduled GitHub Actions job publishes once a
@@ -37,53 +37,6 @@ const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated wi
 // correctness issue either way.
 const CACHE_TTL_MS = 20 * 60 * 1000;
 
-/**
- * One item's stored fields - column-per-field, one entry per duration in the file's top-level
- * `durations` list (see scripts/precompute-predictions.ts's module doc for why this is columnar
- * rather than a duplicated FlipSuggestion[] per duration: the naive version was 225MB).
- */
-interface PrecomputedItem {
-  name: string;
-  historyName: string;
-  variant?: string;
-  category: "currency" | "item";
-  filterCategory: string;
-  faustusTradeable: boolean;
-  predictor: PredictorMode;
-  currentChaosValue: number;
-  currentDivineValue: number | null;
-  r: (number | null)[];
-  rd: (number | null)[];
-  lc: (number | null)[];
-  lcd: (number | null)[];
-  cf: (number | null)[];
-  cfd: (number | null)[];
-  uf: (number | null)[];
-  ufd: (number | null)[];
-  br: (number | null)[];
-  brd: (number | null)[];
-  fs: (number | null)[];
-}
-
-interface PrecomputedPredictions {
-  league: string;
-  currentDay: number;
-  generatedAt: string;
-  durations: number[];
-  items: PrecomputedItem[];
-}
-
-function isPrecomputedPredictions(value: unknown): value is PrecomputedPredictions {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.league === "string" &&
-    typeof v.currentDay === "number" &&
-    Array.isArray(v.durations) &&
-    Array.isArray(v.items)
-  );
-}
-
 interface CacheEntry {
   // null = fetched but unusable (missing/malformed) - still cached, so a broken file doesn't get
   // re-fetched on every single request within the TTL window.
@@ -115,42 +68,14 @@ async function fetchPrecomputed(): Promise<PrecomputedPredictions | null> {
   return data;
 }
 
-/** Rebuilds one FlipSuggestion from an item's stored columns at duration index `i` - the inverse of
- *  scripts/precompute-predictions.ts's accumulation. Returns undefined if this item has no usable
- *  row at that exact horizon (a null slot - the item wasn't priceable/trend-matched there). */
-function reconstruct(item: PrecomputedItem, i: number, durationDays: number): FlipSuggestion | undefined {
-  const avgGrowthRatio = item.r[i];
-  const leagueCount = item.lc[i];
-  const baselineGrowthRatio = item.br[i];
-  if (avgGrowthRatio === null || leagueCount === null || baselineGrowthRatio === null) return undefined;
-
-  const avgGrowthRatioDivine = item.rd[i] ?? undefined;
-  const currentDivineValue = item.currentDivineValue ?? undefined;
-  return {
-    name: item.name,
-    historyName: item.historyName,
-    variant: item.variant,
-    category: item.category,
-    filterCategory: item.filterCategory,
-    faustusTradeable: item.faustusTradeable,
-    currentChaosValue: item.currentChaosValue,
-    currentDivineValue,
-    predictedChaosValue: item.currentChaosValue * avgGrowthRatio,
-    predictedDivineValue: currentDivineValue !== undefined && avgGrowthRatioDivine !== undefined ? currentDivineValue * avgGrowthRatioDivine : undefined,
-    avgGrowthRatio,
-    avgGrowthRatioDivine,
-    leagueCount,
-    leagueCountDivine: item.lcd[i] ?? leagueCount,
-    confidence: item.cf[i] ?? 0,
-    confidenceDivine: item.cfd[i] ?? undefined,
-    upFraction: item.uf[i] ?? 0,
-    upFractionDivine: item.ufd[i] ?? undefined,
-    rationale: buildFlipRationale(item.predictor, avgGrowthRatio, baselineGrowthRatio, leagueCount, durationDays),
-    baselineGrowthRatio,
-    baselineGrowthRatioDivine: item.brd[i] ?? undefined,
-    predictor: item.predictor,
-    forecastSpread: item.fs[i] ?? undefined,
-  };
+/** Fetches the cached file and checks it's actually usable for TODAY's (league, currentDay) - the
+ *  job only ever computes against "today", so a wrong league or stale league-day means the file is
+ *  from before today's cache window rolled over (or hasn't run yet at all). Shared by every exported
+ *  function below so this check can't drift between them. */
+async function fetchValidPrecomputed(league: string, currentDay: number): Promise<PrecomputedPredictions | undefined> {
+  const data = await fetchPrecomputed();
+  if (!data || data.league !== league || data.currentDay !== currentDay) return undefined;
+  return data;
 }
 
 /**
@@ -164,19 +89,27 @@ export async function getPrecomputedFlipSuggestions(
   currentDay: number,
   durationDays: number
 ): Promise<FlipSuggestion[] | undefined> {
-  const data = await fetchPrecomputed();
-  if (!data || data.league !== league || data.currentDay !== currentDay) return undefined;
-  const i = data.durations.indexOf(durationDays);
-  if (i === -1) return undefined;
-
+  const data = await fetchValidPrecomputed(league, currentDay);
   // item.name is already display-formatted (buildSuggestion() ran formatItemDisplayName() before
   // scripts/precompute-predictions.ts ever saw the row), so no re-formatting is needed here.
-  const suggestions: FlipSuggestion[] = [];
-  for (const item of data.items) {
-    const s = reconstruct(item, i, durationDays);
-    if (s) suggestions.push(s);
-  }
-  return suggestions.sort((a, b) => b.avgGrowthRatio - a.avgGrowthRatio);
+  return reconstructAllFlipSuggestions(data, durationDays);
+}
+
+/**
+ * The raw precomputed file, validated for TODAY's (league, currentDay) exactly like
+ * getPrecomputedFlipSuggestions above, but not reconstructed into any one duration - backs
+ * app/api/flip-suggestions/precomputed/route.ts, which ships the whole thing to the browser ONCE so
+ * components/flip-suggestions-panel.tsx can reconstruct every duration locally (via
+ * lib/predicted-suggestion.ts's reconstructAllFlipSuggestions) with zero further network round-trips,
+ * including while the "Days ahead" slider is being dragged - see that component for why that matters.
+ * Undefined on the same terms as every other function here (stale/missing file) - the panel already
+ * falls back to its normal per-duration fetch in that case, same as if this endpoint didn't exist.
+ */
+export async function getPrecomputedPredictionsFile(
+  league: string,
+  currentDay: number
+): Promise<PrecomputedPredictions | undefined> {
+  return fetchValidPrecomputed(league, currentDay);
 }
 
 /**
@@ -195,8 +128,8 @@ export async function getPrecomputedPredictionCurve(
   historyName: string,
   variant: string | undefined
 ): Promise<PredictionCurvePoint[] | undefined> {
-  const data = await fetchPrecomputed();
-  if (!data || data.league !== league || data.currentDay !== currentDay) return undefined;
+  const data = await fetchValidPrecomputed(league, currentDay);
+  if (!data) return undefined;
   const item = data.items.find(
     (it) => it.category === category && it.historyName === historyName && (it.variant ?? "") === (variant ?? "")
   );
