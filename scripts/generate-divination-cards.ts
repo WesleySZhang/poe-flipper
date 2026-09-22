@@ -17,24 +17,27 @@
  * A card is only emitted when its description resolves to EXACTLY ONE <tag>{text} segment - a
  * multi-tag description means a randomized outcome (a roll, a corruption, a random item of a
  * category) that can't be priced from a single number, which this app's divination-flips feature
- * deliberately excludes (see lib/divination-flips.ts) - WITH ONE EXCEPTION: exactly
- * <uniqueitem>{X} <corrupted>{Corrupted}. The item you receive is still 100% guaranteed and
- * identifiable - "corrupted" isn't a randomized choice of WHICH item you get, just a guaranteed
- * extra state on it - so this is treated as a single-reward card, priced via the plain (non-
- * corrupted-specific) unique price, since poe.ninja doesn't track corrupted uniques separately
- * (verified live: Headhunter has exactly one blended chaosValue, no "Corrupted" variant row). A
- * genuinely randomized multi-tag reward (a roll, a random-category pick, a random gem) still
- * requires more than one tag beyond that, or a different second tag, and stays excluded.
+ * deliberately excludes (see lib/divination-flips.ts). This INCLUDES <uniqueitem>{X}
+ * <corrupted>{Corrupted} - even though the item itself is guaranteed and identifiable, a corrupted
+ * unique typically trades for LESS than its pristine price (not a rounding-error-sized difference),
+ * and poe.ninja doesn't track a separate corrupted price point to measure that gap from - so rather
+ * than model a real, meaningful discount this app has no data for, these are excluded outright.
  *
- * Recognizes four reward tags now, not the original three: uniqueitem, currencyitem, divination,
- * and (newly) whiteitem - a specific NAMED Normal-rarity item (zero affixes, no randomness at
- * all - e.g. "Sulphite Scarab", "Divine Vessel"), mapped to the same "currency" reward kind as
- * currencyitem since it needs the exact same lookup (poe.ninja's currency/Scarab/Fragment price
- * map, not the unique-item one - these aren't equippable gear). magicitem/rareitem are
- * deliberately NOT recognized even though some of their text looks equally specific ("Perandus'
- * Gold Ring") - Magic/Rare rarity means the actual item you receive still carries 1-2 or 4-6
- * RANDOMLY ROLLED affixes, so despite a fixed-looking base name its true value isn't a single
- * number at all, the same reasoning multi-tag rewards are excluded for.
+ * Recognizes six reward tags now, not the original three: uniqueitem, currencyitem, divination,
+ * whiteitem, magicitem, and rareitem. The latter three all map to the same "currency" reward kind
+ * as currencyitem (same lookup: poe.ninja's currency/Scarab/Fragment/BaseType price map, not the
+ * equippable-unique one) and are treated identically here despite their different in-game
+ * rarities:
+ *   - whiteitem: a specific NAMED Normal-rarity item, zero affixes, no randomness at all (e.g.
+ *     "Sulphite Scarab", "Divine Vessel").
+ *   - magicitem/rareitem: the base item's identity (and, for gear, its link count) is still fixed
+ *     and guaranteed, but the actual affixes rolled onto it are random - by design, this is priced
+ *     as if it were just the plain BASE TYPE (e.g. a card whose text reads "Six-Link Astral Plate"
+ *     under a rareitem tag is priced the exact same way as one that reads it under whiteitem),
+ *     deliberately ignoring whatever the rolled affixes might add. This is a real simplification,
+ *     not a precise number for what you'll actually receive - but the base type itself is usually
+ *     most of a low/mid-tier magic or rare reward's value anyway, and there's no live data source
+ *     for "this specific rare item with unknown future affixes" to do better than that.
  *
  * None of this step can tell a real reward name ("Mageblood", "Sulphite Scarab") apart from a
  * single-tag placeholder ("Axe", "Map", "Scarab") or a currently-untracked/misremembered one - that
@@ -75,7 +78,12 @@ const REWARD_TAG_TO_KIND: Record<string, RewardKind> = {
   uniqueitem: "unique",
   currencyitem: "currency",
   divination: "card",
-  whiteitem: "currency", // same lookup as currencyitem - see this file's module doc
+  // All three priced as a plain base-type/currency lookup, same mechanism as currencyitem - see
+  // this file's module doc for why magicitem/rareitem are folded in here despite carrying random
+  // affixes in-game (deliberately priced AS the base type, not as the true randomized item).
+  whiteitem: "currency",
+  magicitem: "currency",
+  rareitem: "currency",
 };
 
 // Matches "3x Chaos Orb" -> qty 3, name "Chaos Orb"; "1,500x Vivid Crystallised Lifeforce" -> qty
@@ -109,18 +117,15 @@ function main() {
       }
       const description = entry.properties?.description ?? "";
       const parts = parseReward(description);
-      // Zero-tag (plain text / disabled) and multi-tag (randomized outcome) descriptions are both
-      // out of scope - only a single, unambiguous <tag>{text} segment is a deterministic reward -
-      // WITH ONE EXCEPTION: <uniqueitem>{X} <corrupted>{Corrupted} - see this file's module doc.
-      let rewardPart: { tag: string; text: string } | undefined;
-      if (parts.length === 1) {
-        rewardPart = parts[0];
-      } else if (parts.length === 2 && parts[0].tag === "uniqueitem" && parts[1].tag === "corrupted") {
-        rewardPart = parts[0];
-      } else {
+      // Multi-tag (randomized outcome, including a guaranteed-corrupted unique - see this file's
+      // module doc for why that one stays excluded) and zero-tag (plain text / disabled)
+      // descriptions are both out of scope - only a single, unambiguous <tag>{text} segment is a
+      // deterministic reward.
+      if (parts.length !== 1) {
         noSingleTag++;
         continue;
       }
+      const rewardPart = parts[0];
       const rewardKind = REWARD_TAG_TO_KIND[rewardPart.tag];
       if (!rewardKind) {
         unknownTag++;
@@ -133,9 +138,7 @@ function main() {
     }
 
     console.log(`${noStackSize} entries had no stack_size (skipped).`);
-    console.log(
-      `${noSingleTag} entries had a multi-tag (other than uniqueitem+corrupted) or plain-text description (randomized outcome, skipped).`
-    );
+    console.log(`${noSingleTag} entries had a multi-tag or plain-text description (randomized outcome, skipped).`);
     console.log(`${unknownTag} entries had a reward tag this generator doesn't recognize yet (skipped) - review manually if > 0.`);
     console.log(`\nResolved ${cards.length} deterministic-reward cards.`);
     const byKind = { unique: 0, currency: 0, card: 0 };

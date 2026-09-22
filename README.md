@@ -69,12 +69,15 @@
   single, deterministic, currently-priced unique item, plain named item (a specific
   Scarab/Fragment with no randomness at all, e.g. "Sulphite Scarab"), currency amount, or
   other card are included - cards with a randomized reward (a roll, a random item of a
-  category, a Magic/Rare base with randomly-rolled affixes) are excluded, since their true
-  value can't be computed from a single number. One deliberate exception: a card whose
-  reward is a specific unique item that's always corrupted is still included, priced via
-  the plain (non-corrupted-specific) price - the item itself is 100% guaranteed, poe.ninja
-  just doesn't track corrupted uniques as a separate price point
-  (`lib/divination-cards.ts`, generated from RePoE's game data by
+  category) are excluded, since their true value can't be computed from a single number.
+  This also excludes a guaranteed-corrupted unique reward (Headhunter, Kaom's Heart, ...) -
+  the item itself is guaranteed, but a corrupted unique typically trades for meaningfully
+  LESS than its pristine price, and poe.ninja doesn't track a separate corrupted price
+  point to measure that real gap from. A Magic/Rare-rarity reward (e.g. a rare "Six-Link
+  Astral Plate") IS included, but deliberately priced as if it were just its plain base
+  type, ignoring whatever affixes actually get rolled onto it - a real simplification, not
+  an exact number, but usually close since the base itself is most of a reward like this
+  one's value (`lib/divination-cards.ts`, generated from RePoE's game data by
   `scripts/generate-divination-cards.ts`; `lib/divination-flips.ts` does the live
   scoring). Confidence here is the weaker of the two legs' live trade liquidity (buying
   the card, selling the reward), not the historical-reliability score used elsewhere - a
