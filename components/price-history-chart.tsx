@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "cn";
 import { allKnownLeagues, CURRENT_LEAGUE } from "@/lib/league-recency";
@@ -22,9 +22,22 @@ const VIEW_HEIGHT = 240;
 // typical output, e.g. "123.4c"). bottom fits two stacked rows of x-axis text: the current/target
 // day labels, and below them the plotted day-range labels.
 const MARGIN = { top: 12, right: 16, bottom: 34, left: 38 };
+// The SVG's viewBox is a FIXED logical size (600x240) regardless of the container's real rendered
+// width - on a narrow mobile card (a couple hundred real px), that fixed viewBox is scaled down a
+// lot more than on a wide desktop table cell, so the same viewBox-unit font size that reads fine on
+// desktop shrinks to illegible real pixels on mobile. Bigger axis text needs a bigger margin to fit
+// without crowding/clipping, hence both are bumped together here.
+const MOBILE_AXIS_FONT_SIZE = 11;
+const MOBILE_MARGIN = { top: 14, right: 14, bottom: 46, left: 50 };
 const PLOT_WIDTH = VIEW_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
+const MOBILE_PLOT_WIDTH = VIEW_WIDTH - MOBILE_MARGIN.left - MOBILE_MARGIN.right;
+const MOBILE_PLOT_HEIGHT = VIEW_HEIGHT - MOBILE_MARGIN.top - MOBILE_MARGIN.bottom;
 const CHART_ASPECT_RATIO = `${VIEW_WIDTH} / ${VIEW_HEIGHT}`;
+// Tailwind's own `sm` breakpoint - below this, the app shows the card list (see
+// flip-suggestions-panel.tsx) instead of the table, so this is also where the chart itself should
+// switch to its mobile layout.
+const MOBILE_BREAKPOINT_QUERY = "(max-width: 639px)";
 // The brush window can't shrink narrower than this many days, to avoid a degenerate/inverted zoom.
 const MIN_ZOOM_DAYS = 1;
 // A drag shorter than this (in view units) on the main chart is treated as a click/hover, not a
@@ -47,6 +60,14 @@ const DEFAULT_ZOOM_MIN_PADDING_DAYS = 2;
 // instead of Today sitting close to the plot edge.
 const DEFAULT_ZOOM_LEFT_PADDING_FRACTION = 0.03;
 const DEFAULT_ZOOM_LEFT_MIN_PADDING_DAYS = 2;
+// Mobile's card is a lot narrower in real pixels than a desktop table cell, so the same padding
+// fractions/floors as desktop leave the Today->Target span (the part that actually matters) as a
+// smaller fraction of an already-small chart - tightened further here so that span fills more of
+// the mobile chart's width, making it and its axis labels easier to read at a glance.
+const MOBILE_DEFAULT_ZOOM_PADDING_FRACTION = 0.05;
+const MOBILE_DEFAULT_ZOOM_MIN_PADDING_DAYS = 1;
+const MOBILE_DEFAULT_ZOOM_LEFT_PADDING_FRACTION = 0.02;
+const MOBILE_DEFAULT_ZOOM_LEFT_MIN_PADDING_DAYS = 1;
 // Logical height of the brush's own mini-preview chart (its width tracks the track's rendered width
 // via a 0-100 viewBox, since the track is already positioned with percentages).
 const BRUSH_VIEW_HEIGHT = 40;
@@ -334,6 +355,37 @@ export function PriceHistoryChart({
   const [chartDragStartDay, setChartDragStartDay] = useState<number | undefined>();
   const [chartDragCurrentDay, setChartDragCurrentDay] = useState<number | undefined>();
   const [hasAutoZoomed, setHasAutoZoomed] = useState(false);
+  // The auto-computed [currentDay, targetDay]-centered window (see below) - remembered so "Reset
+  // zoom" can return to this sensible default instead of the full, unzoomed history. undefined
+  // only until the first real data shows up (mirrors hasAutoZoomed's own timing).
+  const [defaultZoomDomain, setDefaultZoomDomain] = useState<[number, number] | undefined>();
+  // Lazily read once, synchronously, on first render - matchMedia isn't available during SSR (this
+  // "use client" component still renders once on the server for the initial HTML), hence the
+  // typeof guard defaulting to desktop there; the client's own first render then immediately
+  // corrects it before paint. The effect below only SUBSCRIBES to further changes (rotating a
+  // phone, resizing a desktop window across the breakpoint) - it never calls setState synchronously
+  // itself, just in the listener callback.
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(MOBILE_BREAKPOINT_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  const margin = isMobile ? MOBILE_MARGIN : MARGIN;
+  const plotWidth = isMobile ? MOBILE_PLOT_WIDTH : PLOT_WIDTH;
+  const plotHeight = isMobile ? MOBILE_PLOT_HEIGHT : PLOT_HEIGHT;
+  const axisFontSize = isMobile ? MOBILE_AXIS_FONT_SIZE : AXIS_FONT_SIZE;
+  const zoomPaddingFraction = isMobile ? MOBILE_DEFAULT_ZOOM_PADDING_FRACTION : DEFAULT_ZOOM_PADDING_FRACTION;
+  const zoomMinPaddingDays = isMobile ? MOBILE_DEFAULT_ZOOM_MIN_PADDING_DAYS : DEFAULT_ZOOM_MIN_PADDING_DAYS;
+  const zoomLeftPaddingFraction = isMobile
+    ? MOBILE_DEFAULT_ZOOM_LEFT_PADDING_FRACTION
+    : DEFAULT_ZOOM_LEFT_PADDING_FRACTION;
+  const zoomLeftMinPaddingDays = isMobile
+    ? MOBILE_DEFAULT_ZOOM_LEFT_MIN_PADDING_DAYS
+    : DEFAULT_ZOOM_LEFT_MIN_PADDING_DAYS;
 
   const plotted: PlottedSeries[] = useMemo(() => {
     if (state.status !== "loaded") return [];
@@ -393,10 +445,13 @@ export function PriceHistoryChart({
     // padding either overwhelming a short window or barely denting a long one.
     const coreMin = Math.min(currentDay, targetDay ?? currentDay);
     const coreMax = Math.max(currentDay, targetDay ?? currentDay);
-    const rightPadding = Math.max(DEFAULT_ZOOM_MIN_PADDING_DAYS, (coreMax - coreMin) * DEFAULT_ZOOM_PADDING_FRACTION);
-    const leftPadding = Math.max(DEFAULT_ZOOM_LEFT_MIN_PADDING_DAYS, (coreMax - coreMin) * DEFAULT_ZOOM_LEFT_PADDING_FRACTION);
+    const rightPadding = Math.max(zoomMinPaddingDays, (coreMax - coreMin) * zoomPaddingFraction);
+    const leftPadding = Math.max(zoomLeftMinPaddingDays, (coreMax - coreMin) * zoomLeftPaddingFraction);
     const desiredMin = Math.max(fullMin, coreMin - leftPadding);
     const desiredMax = Math.min(fullMax, coreMax + rightPadding);
+    // Remembered regardless of whether it's actually narrower than the full range (a short
+    // history where the two happen to coincide still has a well-defined "default" to reset to).
+    setDefaultZoomDomain([desiredMin, desiredMax]);
     if (desiredMin > fullMin || desiredMax < fullMax) {
       setZoomDomain([desiredMin, desiredMax]);
     }
@@ -476,8 +531,8 @@ export function PriceHistoryChart({
     fullValueMax += fullPadding;
   }
 
-  const xScale = (day: number) => MARGIN.left + ((day - dayMin) / dayRange) * PLOT_WIDTH;
-  const yScale = (value: number) => MARGIN.top + (1 - (value - valueMin) / (valueMax - valueMin)) * PLOT_HEIGHT;
+  const xScale = (day: number) => margin.left + ((day - dayMin) / dayRange) * plotWidth;
+  const yScale = (value: number) => margin.top + (1 - (value - valueMin) / (valueMax - valueMin)) * plotHeight;
 
   const yTicks = niceLinearTicks(valueMin, valueMax);
   const isZoomed = zoomDomain !== undefined;
@@ -489,7 +544,7 @@ export function PriceHistoryChart({
     const rect = svg.getBoundingClientRect();
     const fraction = (clientX - rect.left) / rect.width;
     const viewX = fraction * VIEW_WIDTH;
-    const day = dayMin + ((viewX - MARGIN.left) / PLOT_WIDTH) * dayRange;
+    const day = dayMin + ((viewX - margin.left) / plotWidth) * dayRange;
     return Math.min(dayMax, Math.max(dayMin, day));
   }
 
@@ -593,7 +648,7 @@ export function PriceHistoryChart({
                 reference resolves document-wide, not per-<svg>, so a shared literal id would let one
                 chart's clip accidentally apply to another's. */}
             <clipPath id={clipId}>
-              <rect x={MARGIN.left} y={MARGIN.top} width={PLOT_WIDTH} height={PLOT_HEIGHT} />
+              <rect x={margin.left} y={margin.top} width={plotWidth} height={plotHeight} />
             </clipPath>
           </defs>
 
@@ -602,19 +657,19 @@ export function PriceHistoryChart({
           {yTicks.map((value, i) => (
             <g key={i}>
               <line
-                x1={MARGIN.left}
-                x2={VIEW_WIDTH - MARGIN.right}
+                x1={margin.left}
+                x2={VIEW_WIDTH - margin.right}
                 y1={yScale(value)}
                 y2={yScale(value)}
                 stroke="var(--border)"
                 strokeWidth={1}
               />
               <text
-                x={MARGIN.left - 4}
+                x={margin.left - 4}
                 y={yScale(value)}
                 textAnchor="end"
                 dominantBaseline="middle"
-                fontSize={AXIS_FONT_SIZE}
+                fontSize={axisFontSize}
                 fill={AXIS_LABEL_COLOR}
               >
                 {formatTick(value, priceUnit)}
@@ -626,19 +681,19 @@ export function PriceHistoryChart({
               plotted day-range underneath. Rendered outside the clipped group below (which only
               covers the plot area itself) since these live in the bottom margin. */}
           {currentDay >= dayMin && currentDay <= dayMax && (
-            <text x={xScale(currentDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
+            <text x={xScale(currentDay)} y={VIEW_HEIGHT - margin.bottom + 10} textAnchor="middle" fontSize={axisFontSize} fill={AXIS_LABEL_COLOR}>
               Today (Day {currentDay})
             </text>
           )}
           {targetDay !== undefined && targetDay >= dayMin && targetDay <= dayMax && (
-            <text x={xScale(targetDay)} y={VIEW_HEIGHT - MARGIN.bottom + 10} textAnchor="middle" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
+            <text x={xScale(targetDay)} y={VIEW_HEIGHT - margin.bottom + 10} textAnchor="middle" fontSize={axisFontSize} fill={AXIS_LABEL_COLOR}>
               Day {targetDay}
             </text>
           )}
-          <text x={MARGIN.left} y={VIEW_HEIGHT - 6} textAnchor="start" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
+          <text x={margin.left} y={VIEW_HEIGHT - 6} textAnchor="start" fontSize={axisFontSize} fill={AXIS_LABEL_COLOR}>
             Day {Math.round(dayMin)}
           </text>
-          <text x={VIEW_WIDTH - MARGIN.right} y={VIEW_HEIGHT - 6} textAnchor="end" fontSize={AXIS_FONT_SIZE} fill={AXIS_LABEL_COLOR}>
+          <text x={VIEW_WIDTH - margin.right} y={VIEW_HEIGHT - 6} textAnchor="end" fontSize={axisFontSize} fill={AXIS_LABEL_COLOR}>
             Day {Math.round(dayMax)}
           </text>
 
@@ -651,8 +706,8 @@ export function PriceHistoryChart({
               <line
                 x1={xScale(currentDay)}
                 x2={xScale(currentDay)}
-                y1={MARGIN.top}
-                y2={VIEW_HEIGHT - MARGIN.bottom}
+                y1={margin.top}
+                y2={VIEW_HEIGHT - margin.bottom}
                 stroke="var(--destructive)"
                 strokeWidth={1.5}
               />
@@ -661,8 +716,8 @@ export function PriceHistoryChart({
               <line
                 x1={xScale(targetDay)}
                 x2={xScale(targetDay)}
-                y1={MARGIN.top}
-                y2={VIEW_HEIGHT - MARGIN.bottom}
+                y1={margin.top}
+                y2={VIEW_HEIGHT - margin.bottom}
                 stroke="var(--destructive)"
                 strokeWidth={1.5}
               />
@@ -673,8 +728,8 @@ export function PriceHistoryChart({
               <line
                 x1={xScale(hoverDay)}
                 x2={xScale(hoverDay)}
-                y1={MARGIN.top}
-                y2={VIEW_HEIGHT - MARGIN.bottom}
+                y1={margin.top}
+                y2={VIEW_HEIGHT - margin.bottom}
                 stroke="var(--foreground)"
                 strokeWidth={1}
                 strokeOpacity={0.3}
@@ -688,7 +743,7 @@ export function PriceHistoryChart({
                   fill="none"
                   stroke={s.color}
                   strokeWidth={1}
-                  strokeDasharray={s.dashed ? "5 4" : undefined}
+                  strokeDasharray={s.dashed ? "1.5 2" : undefined}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                   points={s.points.map((p) => `${xScale(p.dayOffset)},${yScale(p.value)}`).join(" ")}
@@ -711,9 +766,9 @@ export function PriceHistoryChart({
             {isChartDragging && chartDragStartDay !== undefined && chartDragCurrentDay !== undefined && (
               <rect
                 x={Math.min(xScale(chartDragStartDay), xScale(chartDragCurrentDay))}
-                y={MARGIN.top}
+                y={margin.top}
                 width={Math.abs(xScale(chartDragCurrentDay) - xScale(chartDragStartDay))}
-                height={PLOT_HEIGHT}
+                height={plotHeight}
                 fill="var(--primary)"
                 fillOpacity={0.15}
                 stroke="var(--foreground)"
@@ -724,10 +779,10 @@ export function PriceHistoryChart({
 
           {/* Transparent overlay capturing pointer position for hover + drag-to-zoom. */}
           <rect
-            x={MARGIN.left}
-            y={MARGIN.top}
-            width={PLOT_WIDTH}
-            height={PLOT_HEIGHT}
+            x={margin.left}
+            y={margin.top}
+            width={plotWidth}
+            height={plotHeight}
             fill="transparent"
             style={{ touchAction: "none", cursor: "crosshair" }}
             onPointerDown={handleChartPointerDown}
@@ -775,7 +830,7 @@ export function PriceHistoryChart({
 
       {/* Range brush - aligned under the plot area (not the Y-axis labels) via the same margin
           proportions as the chart above it. */}
-      <div style={{ paddingLeft: `${(MARGIN.left / VIEW_WIDTH) * 100}%`, paddingRight: `${(MARGIN.right / VIEW_WIDTH) * 100}%` }}>
+      <div style={{ paddingLeft: `${(margin.left / VIEW_WIDTH) * 100}%`, paddingRight: `${(margin.right / VIEW_WIDTH) * 100}%` }}>
         <RangeBrush
           fullMin={fullDayMin}
           fullMax={fullDayMax}
@@ -791,7 +846,7 @@ export function PriceHistoryChart({
         {isZoomed && (
           <button
             type="button"
-            onClick={() => setZoomDomain(undefined)}
+            onClick={() => setZoomDomain(defaultZoomDomain)}
             className="text-xs font-medium text-foreground underline-offset-2 hover:underline"
           >
             Reset zoom

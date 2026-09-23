@@ -13,20 +13,11 @@ type CurveFetchState =
   | { status: "error" }
   | { status: "loaded"; points: PredictionCurvePoint[] };
 
-interface ItemHistoryRowProps {
-  /** The name shown in the Item cell - already formatted with any variant suffix. */
-  displayName: string;
+interface UseItemHistoryExpandArgs {
   category: "currency" | "item";
   /** Raw, pre-display-formatting name the price-history API keys on - see FlipSuggestion.historyName. */
   historyName: string;
   variant?: string;
-  currentDay: number;
-  /** currentDay + the prediction's duration - see PriceHistoryChart's targetDay prop. */
-  targetDay?: number;
-  /** Already resolved to the active priceUnit - see PriceHistoryChart's matching props. Both (and
-   *  targetDay) are required to draw the dashed "Predicted" line at all. */
-  currentValue?: number;
-  predictedValue?: number;
   /** When true, also fetches this item's full day-1-30 predicted curve on expand (see
    *  app/api/flip-suggestion-curve/route.ts) so the chart draws a detailed forecast line instead of
    *  a single straight segment to targetDay - see PriceHistoryChart's predictedCurve prop. Only
@@ -35,38 +26,26 @@ interface ItemHistoryRowProps {
    *  this unset and keep the plain two-point line. */
   fetchPredictedCurve?: boolean;
   priceUnit: PriceUnit;
-  /** Total column count of the table this row lives in, so the expanded chart row can span all of them. */
-  colSpan: number;
-  /** Every other <TableCell> in the summary row (Category, Current, Predicted, ...), unchanged. */
-  children: React.ReactNode;
 }
 
 /**
- * Wraps a table row with a click-to-expand chart of the item's price history across every past
- * league - see components/price-history-chart.tsx. Owns its own expand/fetch state per row (one
- * component instance per row, same reasoning as FaustusPriceButton: React hooks need a component
- * instance per row, not an inline call inside a .map() callback), and consolidates the Item-cell
- * markup that used to be duplicated identically in both flip-suggestions-panel.tsx and
- * mirage-simulator-panel.tsx.
+ * Owns the expand/fetch state for one item's price-history chart - split out of ItemHistoryRow so
+ * both the desktop table row and the mobile card (components/item-history-card.tsx) can drive the
+ * same chart from the same lazy-fetched data, without duplicating the fetch logic in two places.
+ * One hook call per item, same reasoning as FaustusPriceButton: React hooks need a component
+ * instance per row, not an inline call inside a .map() callback.
  */
-export function ItemHistoryRow({
-  displayName,
+export function useItemHistoryExpand({
   category,
   historyName,
   variant,
-  currentDay,
-  targetDay,
-  currentValue,
-  predictedValue,
   fetchPredictedCurve,
   priceUnit,
-  colSpan,
-  children,
-}: ItemHistoryRowProps) {
+}: UseItemHistoryExpandArgs) {
   const [expanded, setExpanded] = useState(false);
-  // Sticks at true forever once the row's been expanded once - the chart row itself stays mounted
-  // after that (see the render below) so collapsing can play a closing animation instead of vanishing
-  // instantly, and so re-expanding doesn't need a fresh "grow from nothing" transition every time.
+  // Sticks at true forever once expanded once - the chart stays mounted after that (see callers)
+  // so collapsing can play a closing animation instead of vanishing instantly, and re-expanding
+  // doesn't need a fresh "grow from nothing" transition every time.
   const [hasExpandedOnce, setHasExpandedOnce] = useState(false);
   const [state, setState] = useState<PriceHistoryFetchState | undefined>();
   const [curveState, setCurveState] = useState<CurveFetchState | undefined>();
@@ -119,6 +98,66 @@ export function ItemHistoryRow({
               : activePrice(p.predictedChaosValue, p.predictedDivineValue ?? undefined, priceUnit),
         }))
       : undefined;
+
+  return { expanded, hasExpandedOnce, state, predictedCurve, toggle };
+}
+
+interface ItemHistoryRowProps {
+  /** The name shown in the Item cell - already formatted with any variant suffix. */
+  displayName: string;
+  category: "currency" | "item";
+  /** Raw, pre-display-formatting name the price-history API keys on - see FlipSuggestion.historyName. */
+  historyName: string;
+  variant?: string;
+  currentDay: number;
+  /** currentDay + the prediction's duration - see PriceHistoryChart's targetDay prop. */
+  targetDay?: number;
+  /** Already resolved to the active priceUnit - see PriceHistoryChart's matching props. Both (and
+   *  targetDay) are required to draw the dashed "Predicted" line at all. */
+  currentValue?: number;
+  predictedValue?: number;
+  /** When true, also fetches this item's full day-1-30 predicted curve on expand (see
+   *  app/api/flip-suggestion-curve/route.ts) so the chart draws a detailed forecast line instead of
+   *  a single straight segment to targetDay - see PriceHistoryChart's predictedCurve prop. Only
+   *  meaningful for a row that's pricing TODAY's real league day against TODAY's live prices (the
+   *  curve endpoint always answers for "today"); the mirage simulator's replayed-history rows leave
+   *  this unset and keep the plain two-point line. */
+  fetchPredictedCurve?: boolean;
+  priceUnit: PriceUnit;
+  /** Total column count of the table this row lives in, so the expanded chart row can span all of them. */
+  colSpan: number;
+  /** Every other <TableCell> in the summary row (Category, Current, Predicted, ...), unchanged. */
+  children: React.ReactNode;
+}
+
+/**
+ * Wraps a table row with a click-to-expand chart of the item's price history across every past
+ * league - see components/price-history-chart.tsx. Consolidates the Item-cell markup that used to
+ * be duplicated identically in both flip-suggestions-panel.tsx and mirage-simulator-panel.tsx.
+ * Desktop-table-only - components/item-history-card.tsx is the mobile-card equivalent, sharing the
+ * same useItemHistoryExpand hook above.
+ */
+export function ItemHistoryRow({
+  displayName,
+  category,
+  historyName,
+  variant,
+  currentDay,
+  targetDay,
+  currentValue,
+  predictedValue,
+  fetchPredictedCurve,
+  priceUnit,
+  colSpan,
+  children,
+}: ItemHistoryRowProps) {
+  const { expanded, hasExpandedOnce, state, predictedCurve, toggle } = useItemHistoryExpand({
+    category,
+    historyName,
+    variant,
+    fetchPredictedCurve,
+    priceUnit,
+  });
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" || e.key === " ") {

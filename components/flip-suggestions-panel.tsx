@@ -14,6 +14,7 @@ import { ConfidenceBadge } from "@/components/confidence-badge";
 import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { ItemHistoryRow } from "@/components/item-history-row";
+import { ItemHistoryCard } from "@/components/item-history-card";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -379,11 +380,61 @@ export function FlipSuggestionsPanel() {
           <p className="text-sm text-muted-foreground">No historical matches found for current live prices yet.</p>
         )}
         {hasData && (
+          // -mx-4 cancels CardContent's own px-4, so these rows bleed out to the Card's edge
+          // instead of sitting doubly-inset (Card's padding + the card's own) - only Dashboard's
+          // outer p-2 remains as the gap to the actual screen edge on mobile.
+          <div className="-mx-4 flex flex-col gap-2 sm:hidden">
+            {pagedSuggestions.map((s) => (
+              <ItemHistoryCard
+                key={`${s.category}-${s.name}`}
+                displayName={s.name}
+                category={s.category}
+                historyName={s.historyName}
+                variant={s.variant}
+                currentDay={currentDay}
+                targetDay={currentDay + displayDurationDays}
+                currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
+                predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
+                fetchPredictedCurve
+                priceUnit={priceUnit}
+                fields={[
+                  {
+                    label: "Confidence",
+                    value: (
+                      <ConfidenceBadge
+                        score={activeConfidence(s.confidence, s.confidenceDivine, priceUnit)}
+                        upFraction={priceUnit === "chaos" ? s.upFraction : s.upFractionDivine}
+                        leagueCount={priceUnit === "chaos" ? s.leagueCount : s.leagueCountDivine}
+                        forecastSpread={priceUnit === "chaos" ? s.forecastSpread : undefined}
+                      />
+                    ),
+                    emphasized: true,
+                  },
+                  { label: "Category", value: humanizeCategoryName(s.filterCategory) },
+                  {
+                    label: "Exchange",
+                    value: s.faustusTradeable ? <FaustusPriceButton name={s.name} priceUnit={priceUnit} /> : "—",
+                  },
+                ]}
+                rightFields={[
+                  { label: `Current (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.currentChaosValue, s.currentDivineValue, priceUnit) },
+                  { label: `Predicted (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.predictedChaosValue, s.predictedDivineValue, priceUnit) },
+                  {
+                    label: "Change",
+                    value: formatPercentChange(s.avgGrowthRatio, s.avgGrowthRatioDivine, priceUnit),
+                    emphasized: true,
+                  },
+                ]}
+              />
+            ))}
+          </div>
+        )}
+        {hasData && (
           // Keyed on suggestions.length, not pagedSuggestions.length - the header (and the
           // Confidence column's tier filter it carries) must stay visible even when every row is
           // currently filtered out, or there'd be no way to re-enable a hidden tier once all three
           // are off and the table disappears out from under the controls that could undo it.
-          <Table>
+          <Table className="hidden sm:table">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[280px]">Item</TableHead>

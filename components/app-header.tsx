@@ -51,7 +51,12 @@ export function AppHeader({ title }: { title: string }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4">
       <h1 className="text-2xl font-semibold">{title}</h1>
-      <div className="flex items-center gap-4">
+      {/* flex-wrap (not a single unbreakable row) - on a narrow phone, five nav destinations plus the
+          theme toggle are wider than the screen; without this the row silently overflowed the page
+          horizontally instead of visibly wrapping, so "seeing the whole header" meant scrolling the
+          entire page sideways (and dragging every other section along with it) rather than just
+          reading a second line of buttons here. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-4">
         <NavButton href="/" active={pathname === "/"}>
           Flip Suggestions
         </NavButton>
