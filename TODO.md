@@ -281,3 +281,37 @@ chaos-conversion approach only when no direct divine pair exists at all for that
 mirroring the "prefer direct data, convert only as a last resort" pattern the Divine-pair FALLBACK
 branch (`id` has no chaos pair at all) already uses for the chaos side, just applied to the more
 common case in reverse.
+
+## 10. Global item search, with live suggestions, linking straight to the item's detail page
+
+Every table today only has `components/search-input.tsx` - a per-table, client-side text filter
+over whatever rows that ONE table already fetched, with no destination beyond narrowing the visible
+rows. There's no way to jump directly to a specific item's dedicated page
+(`app/item/[category]/[key]/page.tsx`) without first finding it in whichever table happens to list
+it. `components/app-header.tsx` is the natural home for this - it's already the one shared
+component every real page renders, so a search box there is available everywhere, not just on
+pages that happen to have their own table.
+
+**What this needs, roughly:**
+- A search box in the header (collapsed to an icon on mobile, given how tight the nav row already
+  gets - see `TODO.md` item 1/README's **Navigation** section) that shows a live suggestion
+  dropdown as you type, not just a "press enter to search" box - matches on both currency and item
+  names, likely with a debounce so it isn't re-querying on every single keystroke.
+- A backing data source to search AGAINST. Nothing today exposes "every currency/item name
+  currently live-priced" as one flat, searchable list - `getAllCurrentCurrencyPrices`/
+  `getAllCurrentItemPrices` (`lib/poe-ninja.ts`) have the names but return full price maps, and
+  matching purely against `lib/flip-suggestions.ts`'s candidates would miss anything without a
+  historical trend (the exact "no live price"/category-migration gaps item 5 and this session's
+  work already ran into) - worth deciding whether search should also surface an item with NO
+  prediction at all, same as the detail page itself now gracefully handles that case.
+- Each suggestion needs to resolve to a real `(category, historyName, variant)` triple to link to,
+  built the same way `ItemHistoryRow`/`ItemHistoryCard` already do
+  (`itemDetailUrlKey`/`parseItemDetailUrlKey`, `lib/poe-ninja.ts`) - and the SAME category-ambiguity
+  this session repeatedly hit (a divination card/Scarab/Essence/etc. filed under "item" in some
+  data but requested as "currency" elsewhere, see item 2 and `lib/flip-suggestions.ts`'s migration
+  comment) needs a real answer here too, not another silent mismatch: probably resolve to whichever
+  category actually has a live price for that name, the same fallback direction
+  `fetchItemDetailWithFallback` (`components/item-detail-panel.tsx`) already uses.
+- Keyboard navigation (arrow keys + Enter to accept a suggestion) and a sensible empty/no-match
+  state, matching the UI conciseness guideline (AGENTS.md's **Keep on-page text short**) rather than
+  a verbose "no results found for..." message.
