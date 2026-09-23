@@ -13,13 +13,11 @@ const RESPONSE_CACHE_TTL_MS = 60 * 1000;
 // app/api/mirage-simulation/route.ts for why.
 //
 // cachedJsonResponse (not plain jsonResponse) for both branches below - this is every item/currency
-// in the app, at one specific duration, and it's fetched repeatedly: the main Flip Suggestions table
-// on every duration change, AND the per-item detail page's own "predicted curve" fetch calls
-// lib/flip-suggestions.ts's getLiveFlipSuggestionCurve, which fires 30 of these (one per duration)
-// in parallel whenever the precomputed file isn't usable. The underlying data is already
-// cached/coalesced (see getFlipSuggestions and getPrecomputedFlipSuggestions/
+// in the app, at one specific duration, fetched repeatedly (the main Flip Suggestions table on every
+// duration change, the item detail page's own live-fallback duration, ...). The underlying data is
+// already cached/coalesced (see getFlipSuggestions and getPrecomputedFlipSuggestions/
 // getPrecomputedPredictionsFile's own caches), but without this, JSON.stringify + gzip of that full
-// list would still re-run, synchronously, on every one of those repeat/parallel requests regardless.
+// list would still re-run, synchronously, on every one of those repeat requests regardless.
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const durationDays = Number(searchParams.get("durationDays"));

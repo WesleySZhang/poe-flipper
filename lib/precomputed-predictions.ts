@@ -121,26 +121,22 @@ export async function getPrecomputedPredictionsFile(
 }
 
 /**
- * One item's predicted price at EVERY precomputed duration, straight from the cached file - the fast
- * path for the price history chart's detailed day-by-day forecast line (see
- * components/price-history-chart.tsx's predictedCurve prop and
- * lib/flip-suggestions.ts's getLiveFlipSuggestionCurve for the live fallback this backs off to).
- * Undefined on the same terms as getPrecomputedFlipSuggestions above (stale file, no file, league/day
- * mismatch) or if this specific item isn't in the file at all (e.g. it wasn't priceable at any
- * horizon today - see scripts/precompute-predictions.ts for how that can happen).
+ * One item's predicted price at EVERY precomputed duration, straight from the cached file - the
+ * price history chart's detailed day-by-day forecast line (see components/price-history-chart.tsx's
+ * predictedCurve prop). Undefined on the same terms as getPrecomputedFlipSuggestions above (stale
+ * file, no file, league/day mismatch) or if this specific item isn't in the file at all (e.g. it
+ * wasn't priceable at any horizon today - see scripts/precompute-predictions.ts). There is
+ * deliberately NO live fallback for this one (see app/api/flip-suggestion-curve/route.ts's own
+ * comment) - undefined here just means the chart draws a plain straight line instead of a detailed
+ * curve, not "recompute the whole catalog live," which used to cause multi-minute, CPU-pegging
+ * stalls for the (common, not rare) case of an item simply missing from today's file.
  *
  * The item lookup tries the caller's own `category` first, then falls back to matching on
  * historyName/variant alone - lib/flip-suggestions.ts's own comment on the poe.ninja category
  * migration (Scarabs/Essences/Fossils/Oils/Omens/Resonators/Tattoos/Delirium Orbs/Divination Cards)
  * explains why: this file stores each item under whichever category it was ingested as ("item" for
  * every one of those types), but a divination card's own detail page/table row (Divination Card
- * Flips, Currency Exchange Flip) always requests category "currency" to match its live price. Before
- * this fallback, that exact-match `.find()` NEVER matched for any of those items, so this always
- * returned undefined here - not just a missed fast path, but the actual severe bug: the caller
- * (app/api/flip-suggestion-curve/route.ts) then fell all the way to getLiveFlipSuggestionCurve,
- * which reruns the full cross-sectional prediction for the ENTIRE catalog once per duration (30
- * durations, so 30x the normal per-request cost) - EVERY single time ANY divination card's detail
- * page loaded, which is exactly the "whole app frozen, fans spinning" symptom reported live.
+ * Flips, Currency Exchange Flip) always requests category "currency" to match its live price.
  */
 export async function getPrecomputedPredictionCurve(
   league: string,
