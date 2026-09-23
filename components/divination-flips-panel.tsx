@@ -9,12 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
+import { ItemHistoryRow } from "@/components/item-history-row";
+import { ItemHistoryCard } from "@/components/item-history-card";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { DivinationFlip } from "@/lib/divination-flips";
 import type { LiquidityTier } from "@/lib/liquidity";
+import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
+import { currentLeagueDay } from "@/lib/league-day";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import { activePrice, activeRatio, formatPercentChange, formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 
@@ -51,6 +55,7 @@ export function DivinationFlipsPanel() {
   // the listed profit is more likely to be one lucky listing than an actually fillable flip.
   const [hiddenConfidenceTiers, setHiddenConfidenceTiers] = useState<Set<LiquidityTier>>(() => new Set(["low"]));
   const [isPending, startTransition] = useTransition();
+  const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
 
   useEffect(() => {
     startTransition(async () => {
@@ -178,19 +183,68 @@ export function DivinationFlipsPanel() {
           <p className="text-sm text-muted-foreground">No priceable divination card flips available right now.</p>
         )}
         {!isPending && flips.length > 0 && (
+          // -mx-4 cancels CardContent's own px-4, so these rows bleed out to the Card's edge -
+          // same pattern as flip-suggestions-panel.tsx's own mobile card list.
+          <div className="-mx-4 flex flex-col gap-2 sm:hidden">
+            {paged.map((f) => (
+              <ItemHistoryCard
+                key={f.name}
+                displayName={f.name}
+                category="currency"
+                historyName={f.name}
+                currentDay={currentDay}
+                priceUnit={priceUnit}
+                fields={[
+                  {
+                    label: "Confidence",
+                    value: (
+                      <Badge
+                        variant={LIQUIDITY_VARIANT[f.confidence]}
+                        title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
+                      >
+                        {LIQUIDITY_LABEL[f.confidence]}
+                      </Badge>
+                    ),
+                    emphasized: true,
+                  },
+                  { label: "Stack", value: `x${f.stackSize}` },
+                  { label: "Reward", value: f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName },
+                  {
+                    label: "Min/Max",
+                    value:
+                      f.buyMinChaosValue !== undefined && f.buyMaxChaosValue !== undefined ? (
+                        <>
+                          {formatPriceValue(f.buyMinChaosValue, f.buyMinDivineValue, priceUnit)} &ndash;{" "}
+                          {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
+                        </>
+                      ) : f.faustusTradeable ? (
+                        <FaustusPriceButton name={f.name} priceUnit={priceUnit} />
+                      ) : (
+                        "—"
+                      ),
+                  },
+                  { label: `Profit (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.profitChaosValue, f.profitDivineValue, priceUnit) },
+                ]}
+                rightFields={[
+                  { label: `Cost (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit) },
+                  { label: `Sell (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit) },
+                  { label: "Profit %", value: formatPercentChange(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit), emphasized: true },
+                ]}
+              />
+            ))}
+          </div>
+        )}
+        {!isPending && flips.length > 0 && (
           // Keyed on flips.length, not paged.length - the header (and the Confidence column's tier
           // filter it carries) must stay visible even when every row is currently filtered out, same
           // reasoning as the flip-suggestions table's Confidence column.
-          <Table>
+          <Table className="hidden sm:table">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[180px]">Card</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">Stack</TableHead>
+                <TableHead className="text-right">Stack</TableHead>
                 <SortableHeader label={`Cost (${priceUnitLabel(priceUnit)})`} sortKey="cost" sort={sort} onSort={handleSort} />
-                {/* Min/Max and the Exchange Price button are dropped below `sm` - mobile keeps
-                    Card/Cost/Reward/Sell/Profit %/Confidence, the "should I even look at this"
-                    essentials, same reasoning as the other tables' mobile column set. */}
-                <TableHead className="hidden text-right sm:table-cell">Min/Max</TableHead>
+                <TableHead className="text-right">Min/Max</TableHead>
                 <TableHead>Reward</TableHead>
                 <SortableHeader label={`Sell (${priceUnitLabel(priceUnit)})`} sortKey="reward" sort={sort} onSort={handleSort} />
                 <SortableHeader label="Profit %" sortKey="profitPercent" sort={sort} onSort={handleSort} />
@@ -199,7 +253,6 @@ export function DivinationFlipsPanel() {
                   sortKey="profitAbs"
                   sort={sort}
                   onSort={handleSort}
-                  className="hidden sm:table-cell"
                 />
                 <TableHead>
                   <div className="flex flex-col items-center gap-1">
@@ -211,15 +264,20 @@ export function DivinationFlipsPanel() {
             </TableHeader>
             <TableBody>
               {paged.map((f) => (
-                <TableRow key={f.name}>
-                  <TableCell className="max-w-[140px] truncate sm:max-w-[180px]" title={f.name}>
-                    {f.name}
-                  </TableCell>
-                  <TableCell className="hidden text-right text-muted-foreground sm:table-cell">x{f.stackSize}</TableCell>
+                <ItemHistoryRow
+                  key={f.name}
+                  displayName={f.name}
+                  category="currency"
+                  historyName={f.name}
+                  currentDay={currentDay}
+                  priceUnit={priceUnit}
+                  colSpan={9}
+                >
+                  <TableCell className="text-right text-muted-foreground">x{f.stackSize}</TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit)}
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">
+                  <TableCell>
                     <div className="flex items-center justify-end gap-2">
                       {f.buyMinChaosValue !== undefined && f.buyMaxChaosValue !== undefined ? (
                         <span className="text-right text-muted-foreground">
@@ -240,7 +298,7 @@ export function DivinationFlipsPanel() {
                   <TableCell className="text-right font-medium">
                     {formatPercentChange(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit)}
                   </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell">
+                  <TableCell className="text-right">
                     {formatPriceValue(f.profitChaosValue, f.profitDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell>
@@ -253,7 +311,7 @@ export function DivinationFlipsPanel() {
                       </Badge>
                     </div>
                   </TableCell>
-                </TableRow>
+                </ItemHistoryRow>
               ))}
             </TableBody>
           </Table>
