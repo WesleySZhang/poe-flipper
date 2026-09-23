@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -70,6 +70,19 @@ function formatMomentum(logValue: number | undefined): string {
   if (logValue === undefined || !Number.isFinite(logValue)) return "—";
   const pct = (Math.exp(logValue) - 1) * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+/** poewiki.net (independently hosted MediaWiki, NOT Fandom - verified live: its own domain, own
+ *  Cloudflare, no fandom.com anywhere in the response) titles an item page after its plain
+ *  in-game name with spaces replaced by underscores - no lookup table needed, this is a pure,
+ *  instant, local string transform, not a live query. encodeURIComponent leaves an apostrophe
+ *  un-escaped (it's in its unreserved-character set), matching how these URLs actually look on the
+ *  wiki itself (e.g. "Doedre's_Malevolence") - verified live against a handful of real item names,
+ *  including one with an apostrophe. Not guaranteed for every single name (a rare disambiguation
+ *  page could differ), but right for the vast majority - a best-effort convenience link, not a
+ *  guaranteed-correct one. */
+function poeWikiUrl(name: string): string {
+  return `https://www.poewiki.net/wiki/${encodeURIComponent(name.replace(/ /g, "_"))}`;
 }
 
 interface ItemDetailPanelProps {
@@ -174,6 +187,15 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
 
   return (
     <div className="flex flex-col gap-4">
+      <a
+        href={poeWikiUrl(historyName)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
+      >
+        View on poewiki
+        <ExternalLink className="size-3.5" />
+      </a>
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-1.5">
