@@ -81,7 +81,7 @@ export function FlipSuggestionsPanel() {
   // is that every duration 1-30 is already in this one payload, so switching durations (including
   // while dragging the slider) needs zero further network round-trips.
   const [precomputedData, setPrecomputedData] = useState<PrecomputedPredictions | null | undefined>(undefined);
-  const [durationDays, setDurationDays] = useState(3);
+  const [durationDays, setDurationDays] = useState(7);
   // Set only while the thumb is actively being dragged, so dragging updates the visible number
   // instantly without re-fetching on every pixel of movement - undefined the rest of the time, so the
   // slider's displayed value (sliderValue below) just tracks durationDays directly, including when

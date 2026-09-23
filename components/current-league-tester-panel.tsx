@@ -63,7 +63,7 @@ export function CurrentLeagueTesterPanel() {
   const [selected, setSelected] = useState<KnownItemName | null>(null);
   const [price, setPrice] = useState<number>(0);
   const [currentDay, setCurrentDay] = useState(() => currentLeagueDay(CURRENT_LEAGUE_START_DATE));
-  const [durationDays, setDurationDays] = useState(3);
+  const [durationDays, setDurationDays] = useState(7);
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   const [prediction, setPrediction] = useState<PredictResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
