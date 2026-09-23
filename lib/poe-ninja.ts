@@ -382,3 +382,17 @@ export function formatItemDisplayName(name: string, variant?: string | null): st
   const shownParts = variant.split(", ").filter((part) => part !== "1-4 links");
   return shownParts.length > 0 ? `${name} (${shownParts.join(", ")})` : name;
 }
+
+/** poewiki.net (independently hosted MediaWiki, NOT Fandom - verified live: its own domain, own
+ *  Cloudflare, no fandom.com anywhere in the response) titles an item page after its plain
+ *  in-game name with spaces replaced by underscores - no lookup table needed, this is a pure,
+ *  instant, local string transform, not a live query. encodeURIComponent leaves an apostrophe
+ *  un-escaped (it's in its unreserved-character set), matching how these URLs actually look on the
+ *  wiki itself (e.g. "Doedre's_Malevolence") - verified live against a handful of real item names,
+ *  including one with an apostrophe. Not guaranteed for every single name (a rare disambiguation
+ *  page could differ), but right for the vast majority - a best-effort convenience link, not a
+ *  guaranteed-correct one. Takes the plain base name (historyName), never the variant-suffixed
+ *  display name - the wiki article is for the item itself, not one specific quality/link roll. */
+export function poeWikiUrl(name: string): string {
+  return `https://www.poewiki.net/wiki/${encodeURIComponent(name.replace(/ /g, "_"))}`;
+}

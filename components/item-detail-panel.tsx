@@ -17,6 +17,7 @@ import type { ItemDetail } from "@/lib/item-detail";
 import type { LeagueSeries } from "@/lib/price-history";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
+import { poeWikiUrl } from "@/lib/poe-ninja";
 import { describeConfidence } from "@/lib/confidence";
 import { liquidityTier } from "@/lib/liquidity";
 import {
@@ -70,19 +71,6 @@ function formatMomentum(logValue: number | undefined): string {
   if (logValue === undefined || !Number.isFinite(logValue)) return "—";
   const pct = (Math.exp(logValue) - 1) * 100;
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
-}
-
-/** poewiki.net (independently hosted MediaWiki, NOT Fandom - verified live: its own domain, own
- *  Cloudflare, no fandom.com anywhere in the response) titles an item page after its plain
- *  in-game name with spaces replaced by underscores - no lookup table needed, this is a pure,
- *  instant, local string transform, not a live query. encodeURIComponent leaves an apostrophe
- *  un-escaped (it's in its unreserved-character set), matching how these URLs actually look on the
- *  wiki itself (e.g. "Doedre's_Malevolence") - verified live against a handful of real item names,
- *  including one with an apostrophe. Not guaranteed for every single name (a rare disambiguation
- *  page could differ), but right for the vast majority - a best-effort convenience link, not a
- *  guaranteed-correct one. */
-function poeWikiUrl(name: string): string {
-  return `https://www.poewiki.net/wiki/${encodeURIComponent(name.replace(/ /g, "_"))}`;
 }
 
 interface ItemDetailPanelProps {

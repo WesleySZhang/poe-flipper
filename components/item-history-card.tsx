@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { PriceHistoryChart } from "@/components/price-history-chart";
 import { useItemHistoryExpand } from "@/components/item-history-row";
-import { itemPriceKey } from "@/lib/poe-ninja";
+import { itemPriceKey, poeWikiUrl } from "@/lib/poe-ninja";
 import type { PriceUnit } from "@/lib/price-unit";
 
 export interface ItemHistoryCardField {
@@ -82,16 +83,30 @@ export function ItemHistoryCard({
         onKeyDown={handleKeyDown}
         className={cn("flex cursor-pointer flex-col gap-1.5 p-2 active:bg-muted/50", expanded && "bg-muted/50")}
       >
-        {/* A real link to the full per-item detail page - see ItemHistoryRow's identical comment
-            for why this is separate from the card's own click-to-expand (stopPropagation below). */}
-        <Link
-          href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
-          onClick={(e) => e.stopPropagation()}
-          className="block truncate text-sm font-medium text-primary hover:underline"
-          title={displayName}
-        >
-          {displayName}
-        </Link>
+        <div className="flex items-center gap-1">
+          {/* A real link to the full per-item detail page - see ItemHistoryRow's identical comment
+              for why this is separate from the card's own click-to-expand (stopPropagation below). */}
+          <Link
+            href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
+            onClick={(e) => e.stopPropagation()}
+            className="min-w-0 flex-1 truncate text-sm font-medium text-primary hover:underline"
+            title={displayName}
+          >
+            {displayName}
+          </Link>
+          {/* poewiki.net (not Fandom - see poeWikiUrl's own comment) cross-reference, opened in a
+              new tab so it never navigates away from the card list. */}
+          <a
+            href={poeWikiUrl(historyName)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="View on poewiki"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
+        </div>
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1.5">
             {fields.map((f, i) => (

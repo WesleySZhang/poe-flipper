@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { activePrice, type PriceUnit } from "@/lib/price-unit";
-import { itemPriceKey } from "@/lib/poe-ninja";
+import { itemPriceKey, poeWikiUrl } from "@/lib/poe-ninja";
 import type { LeagueSeries } from "@/lib/price-history";
 import type { PredictionCurvePoint } from "@/lib/flip-suggestions";
 
@@ -181,18 +182,34 @@ export function ItemHistoryRow({
         className={cn("cursor-pointer", expanded && "bg-muted/50")}
       >
         <TableCell>
-          {/* A real link to the full per-item detail page (app/item/[category]/[key]/page.tsx) -
-              deliberately distinct from the row's own click-to-expand behavior below: clicking the
-              name navigates away, clicking anywhere else on the row still just expands the inline
-              chart. stopPropagation keeps the row's own onClick from ALSO firing on a name click. */}
-          <Link
-            href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
-            onClick={(e) => e.stopPropagation()}
-            className="block max-w-[140px] truncate text-primary hover:overflow-x-auto hover:text-clip hover:underline focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
-            title={displayName}
-          >
-            {displayName}
-          </Link>
+          <div className="flex max-w-[140px] items-center gap-1 sm:max-w-[200px] lg:max-w-[280px]">
+            {/* A real link to the full per-item detail page (app/item/[category]/[key]/page.tsx) -
+                deliberately distinct from the row's own click-to-expand behavior below: clicking
+                the name navigates away, clicking anywhere else on the row still just expands the
+                inline chart. stopPropagation keeps the row's own onClick from ALSO firing on a
+                name click. */}
+            <Link
+              href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
+              onClick={(e) => e.stopPropagation()}
+              className="min-w-0 flex-1 truncate text-primary hover:overflow-x-auto hover:text-clip hover:underline focus:overflow-x-auto focus:text-clip"
+              title={displayName}
+            >
+              {displayName}
+            </Link>
+            {/* poewiki.net (not Fandom - see poeWikiUrl's own comment) cross-reference, opened in a
+                new tab so it never navigates away from the table; stopPropagation for the same
+                reason as the name link above. */}
+            <a
+              href={poeWikiUrl(historyName)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title="View on poewiki"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <ExternalLink className="size-3" />
+            </a>
+          </div>
         </TableCell>
         {children}
       </TableRow>
