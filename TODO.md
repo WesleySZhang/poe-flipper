@@ -5,29 +5,40 @@ schedule or a promise - just a running list to revisit. Roughly ordered by impor
 
 ## 1. Better mobile support - no horizontal scrolling for the important stuff
 
-**Done for the Flip Suggestions page and the chart itself:**
-- Below the `sm` breakpoint, `flip-suggestions-panel.tsx` renders a stacked list of cards
-  (`components/item-history-card.tsx`) instead of the table - every column's value (Current,
-  Predicted, Change, Confidence, Category, Exchange) is still shown, just laid out vertically per
-  item instead of as table columns, so nothing needs horizontal scrolling to read. Tapping a card
-  expands the same chart a table row would.
+**Done for Flip Suggestions, the Mirage simulator, and the chart itself:**
+- Below the `sm` breakpoint, `flip-suggestions-panel.tsx` and `mirage-simulator-panel.tsx` both
+  render a stacked list of cards (`components/item-history-card.tsx`) instead of the table - every
+  column's value is still shown, just laid out vertically per item instead of as table columns, so
+  nothing needs horizontal scrolling to read. Tapping a card expands the same chart a table row
+  would. Each panel picks its own `fields` (wrapping, left) vs. `rightFields` (unwrapped, right -
+  kept to 2-3 items so it can't overflow) split - Flip Suggestions puts Current/Predicted/Change on
+  the right; the Mirage simulator puts just Predicted %/Actual % there, the two figures the whole
+  tool exists to compare, and wraps Confidence/Category/Now/Predicted/Actual future on the left.
 - `components/price-history-chart.tsx` now detects a narrow viewport (`matchMedia`) and switches to
-  a bigger axis font size, bigger margins to fit it, and a tighter default zoom window around
-  today/target - verified with Playwright at 390px width that both the card list and the expanded
-  chart (including the Today/Target markers) fit with zero horizontal scrolling. This chart
-  component is shared by every page, so the legibility fix applies everywhere, not just Flip
-  Suggestions.
+  a bigger axis font size (15, up from a first pass at 11 that was still too small), bigger margins
+  to fit it, and a tighter default zoom window around today/target - verified with Playwright at
+  390px width that both the card list and the expanded chart (including the Today/Target markers)
+  fit with zero horizontal scrolling. This chart component is shared by every page, so the
+  legibility fix applies everywhere, not just these two pages.
+- The chart's hover tooltip now actually works on a touch device: a tap used to be indistinguishable
+  from the start of a drag-to-zoom gesture (touch has no separate "hover" the way a mouse does,
+  and any natural finger wobble during a tap easily exceeded the drag-vs-click threshold at this
+  chart's scale), so a tap could zoom instead of showing the tooltip, and the tooltip could never
+  actually be read. Touch input (`e.pointerType === "touch"`) now always just shows/scrubs the
+  tooltip and never starts a zoom drag, and doesn't get cleared by the `pointerleave` a touch
+  pointer fires right after lifting a finger - `RangeBrush` below the chart remains the deliberate
+  zoom control on a touch device.
 - `components/app-header.tsx`'s nav row now wraps onto multiple lines on a narrow screen instead of
   silently overflowing the whole page horizontally (it only had `flex-wrap` on the outer `<header>`,
   not the row of nav buttons itself).
 
-**Still open**: Currency Exchange Flip, Divination Card Flips, the Mirage simulator, and the
-current league tester all still render their tables via the plain `components/ui/table.tsx`
-`Table` (a bare `overflow-x-auto` div) with no mobile-card equivalent - `ItemHistoryCard` and the
-`useItemHistoryExpand` hook it shares with `ItemHistoryRow` (`components/item-history-row.tsx`)
-were written to be reusable, so extending this to the other panels should mostly be a matter of
-building each panel's own `fields`/`rightFields` array the way `flip-suggestions-panel.tsx` does,
-not re-solving the underlying expand/fetch or chart-legibility problems again.
+**Still open**: Currency Exchange Flip, Divination Card Flips, and the current league tester still
+render their tables via the plain `components/ui/table.tsx` `Table` (a bare `overflow-x-auto` div)
+with no mobile-card equivalent - `ItemHistoryCard` and the `useItemHistoryExpand` hook it shares
+with `ItemHistoryRow` (`components/item-history-row.tsx`) were written to be reusable, so extending
+this to the remaining panels should mostly be a matter of building each one's own
+`fields`/`rightFields` array the way the two done panels do, not re-solving the underlying
+expand/fetch, chart-legibility, or touch-interaction problems again.
 
 ## 2. Brand-new items (this league or a future one) aren't picked up automatically
 

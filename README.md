@@ -59,16 +59,19 @@
   file when possible or a live per-duration rerun otherwise. The chart's own axis text,
   margins and default zoom level adapt for a narrow/mobile screen (same fixed SVG
   `viewBox`, just bigger text and a tighter default window around today/target so it stays
-  legible without pinch-zooming).
+  legible without pinch-zooming). On a touch device, tapping the chart always shows/moves
+  the hover tooltip instead of ever starting a drag-to-zoom - touch has no separate "hover"
+  the way a mouse does, so without this a tap could be indistinguishable from the start of
+  a zoom drag; the range brush below the chart is the deliberate way to zoom on touch.
 - **Category filters**: tables can be filtered by category - an item's BaseType, or
   "Currency" for every currency row - built from whatever categories are actually
   present in the current results.
-- **Mobile layout**: on a narrow screen, the Flip Suggestions table becomes a stacked list
-  of cards instead (`components/item-history-card.tsx`) - every column's value is still
-  visible, just laid out vertically instead of sideways, so nothing needs horizontal
-  scrolling to read. Tapping a card expands the same price history chart as a table row
-  would. The other pages' tables (Currency Exchange Flip, Divination Card Flips, Mirage
-  simulator, current league tester) don't have this treatment yet - see `TODO.md`.
+- **Mobile layout**: on a narrow screen, the Flip Suggestions and Mirage simulator tables
+  both become a stacked list of cards instead (`components/item-history-card.tsx`) - every
+  column's value is still visible, just laid out vertically instead of sideways, so nothing
+  needs horizontal scrolling to read. Tapping a card expands the same price history chart
+  as a table row would. The other pages' tables (Currency Exchange Flip, Divination Card
+  Flips, current league tester) don't have this treatment yet - see `TODO.md`.
 - **Currency Exchange Flip** (`/currency_exchange_flip`): a separate, non-predictive
   page showing live buy/sell spreads on GGG's in-game Currency Exchange ("Faustus"),
   for same-day flipping rather than long-range prediction. Includes a liquidity signal
@@ -115,10 +118,19 @@
 - **Data store**: [DuckDB](https://duckdb.org) (embedded, columnar, great for analytical
   queries over large CSV history) - no external database server required.
 - **Daily precomputed data** (`scripts/precompute-predictions.ts`,
-  `scripts/precompute-price-history.ts`): a scheduled GitHub Actions job
+  `scripts/precompute-price-history.ts`): a GitHub Actions job
   (`.github/workflows/precompute-predictions.yml`, cron `10 0 * * *` - shortly after UTC
   midnight, taking about 2 minutes end to end) runs once a day and publishes to this
   repo's `data` branch, which is configured (`vercel.json`) to never trigger a Vercel
+  deployment. It also runs automatically on any push to `master` that touches the
+  prediction algorithm itself (`lib/flip-suggestions.ts`, `lib/prediction-model.ts`,
+  `lib/models/predictor.json`, and the rest of that call chain - see the workflow's own
+  `push.paths` filter for the exact list), so a merged algorithm change doesn't sit stale
+  in production for up to a day waiting on the next scheduled run - plus `workflow_dispatch`
+  for triggering it by hand any other time. Each run fully replaces `predictions.json` (a
+  disposable snapshot, not appended to) and today's row in the price-history CSVs (dropped
+  and re-added, so re-running the same day is safe). It does two things: (1) runs the
+  learned model once for every "Days ahead"
   deployment. It does two things: (1) runs the learned model once for every "Days ahead"
   value, so a page load reads a ready-made result (`lib/precomputed-predictions.ts`)
   instead of waiting on a live model run, falling back to computing live if that file is
