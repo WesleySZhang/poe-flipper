@@ -7,8 +7,13 @@ export type PriceUnit = "chaos" | "divine";
  * many places to use once the value is >= 1 (differs between chaos and divine below).
  */
 function decimalsFor(value: number, wholeDecimals: number): number {
-  if (value < 0.01) return 4;
-  if (value < 1) return 3;
+  // Magnitude, not the raw signed value - a large negative price/profit (e.g. -167000, a real
+  // loss on House of Mirrors) is "< 0.01" for any negative number, which used to force it into
+  // the small-value 4-decimal branch and print "-167000.0000c" instead of "-167000.0c".
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return wholeDecimals;
+  if (magnitude < 0.01) return 4;
+  if (magnitude < 1) return 3;
   return wholeDecimals;
 }
 

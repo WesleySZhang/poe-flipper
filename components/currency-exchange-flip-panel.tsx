@@ -215,6 +215,7 @@ export function CurrencyExchangeFlipPanel() {
                 historyName={s.name}
                 currentDay={currentDay}
                 priceUnit={priceUnit}
+                expandable={false}
                 fields={[
                   {
                     label: "Liquidity",
@@ -288,6 +289,7 @@ export function CurrencyExchangeFlipPanel() {
                   currentDay={currentDay}
                   priceUnit={priceUnit}
                   colSpan={7}
+                  expandable={false}
                 >
                   <TableCell className="text-right">{formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit)}</TableCell>
                   <TableCell className="text-right">{formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit)}</TableCell>

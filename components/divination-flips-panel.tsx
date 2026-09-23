@@ -194,6 +194,7 @@ export function DivinationFlipsPanel() {
                 historyName={f.name}
                 currentDay={currentDay}
                 priceUnit={priceUnit}
+                expandable={false}
                 fields={[
                   {
                     label: "Confidence",
@@ -272,6 +273,7 @@ export function DivinationFlipsPanel() {
                   currentDay={currentDay}
                   priceUnit={priceUnit}
                   colSpan={9}
+                  expandable={false}
                 >
                   <TableCell className="text-right text-muted-foreground">x{f.stackSize}</TableCell>
                   <TableCell className="text-right">
