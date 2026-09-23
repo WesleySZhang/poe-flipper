@@ -207,7 +207,14 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
       (s) => s.category === category && s.historyName === historyName && (s.variant ?? "") === (variant ?? "")
     ) ?? displaySuggestions.find((s) => s.historyName === historyName && (s.variant ?? "") === (variant ?? ""));
 
-  const currentValue = suggestion ? activePrice(suggestion.currentChaosValue, suggestion.currentDivineValue, priceUnit) : undefined;
+  // Falls back to `detail`'s own live price when there's no FlipSuggestion for this duration (see
+  // ItemDetail.currentChaosValue's own doc) - today's price/the chart's "current day" stitch don't
+  // depend on a prediction existing at all, only Predicted/Change do.
+  const currentValue = suggestion
+    ? activePrice(suggestion.currentChaosValue, suggestion.currentDivineValue, priceUnit)
+    : detail
+      ? activePrice(detail.currentChaosValue, detail.currentDivineValue, priceUnit)
+      : undefined;
   const predictedValue = suggestion
     ? activePrice(suggestion.predictedChaosValue, suggestion.predictedDivineValue, priceUnit)
     : undefined;
@@ -306,15 +313,33 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
           <CardTitle>Overview</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-x-8 gap-y-3">
-          {!suggestion && (
+          {/* !detail (still loading/genuinely no live price anywhere) vs. detail-but-no-suggestion
+              (a real live price exists, there's just no prediction AT THIS DURATION - e.g. an item
+              whose past leagues are too short to project this far ahead, see
+              lib/flip-suggestions.ts's growth-ratio matching) used to both show the same "no live
+              price" message, which was simply wrong in the second, common case - ItemDetail.
+              currentChaosValue now lets Current still show even without a prediction. */}
+          {!detail && (
             <p className="text-sm text-muted-foreground">No live price for this item right now.</p>
           )}
-          {suggestion && (
+          {detail && (
+            <Stat
+              label={`Current (${priceUnitLabel(priceUnit)})`}
+              value={formatPriceValue(detail.currentChaosValue, detail.currentDivineValue, priceUnit)}
+            />
+          )}
+          {suggestion ? (
             <>
-              <Stat label={`Current (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(suggestion.currentChaosValue, suggestion.currentDivineValue, priceUnit)} />
               <Stat label={`Predicted (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(suggestion.predictedChaosValue, suggestion.predictedDivineValue, priceUnit)} />
               <Stat label="Change" value={formatPercentChange(suggestion.avgGrowthRatio, suggestion.avgGrowthRatioDivine, priceUnit)} />
             </>
+          ) : (
+            detail && (
+              <p className="text-sm text-muted-foreground">
+                No prediction for a {displayDurationDays}-day forecast - this item&apos;s past leagues don&apos;t
+                reach that far ahead. Try a shorter Days-ahead value.
+              </p>
+            )
           )}
           <Stat label="Category" value={detail?.filterCategory ? humanizeCategoryName(detail.filterCategory) : "—"} />
           {/* sellerCount is only ever set for an "item"-category lookup (see lib/item-detail.ts) -
@@ -499,7 +524,11 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   </div>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">Not enough data to score this item right now.</p>
+                <p className="text-sm text-muted-foreground">
+                  {detail
+                    ? `No prediction for a ${displayDurationDays}-day forecast - this item's past leagues don't reach that far ahead. Try a shorter Days-ahead value.`
+                    : "Not enough data to score this item right now."}
+                </p>
               )}
             </CardContent>
           </Card>

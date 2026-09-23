@@ -31,6 +31,14 @@ export interface ItemDetail {
   variant?: string;
   /** poe.ninja's own category bucket (SkillGem, Scarab, Currency, ...) - see ItemPrice.type/CurrencyPrice.type. */
   filterCategory: string;
+  /** Today's live price, independent of any prediction - see this interface's own doc. Shown in the
+   *  Overview even when there's no FlipSuggestion for the chosen duration (see components/
+   *  item-detail-panel.tsx), which is a real, expected state for an item whose past leagues are too
+   *  short to support a longer-duration forecast (see lib/flip-suggestions.ts's growth-ratio
+   *  matching) - that's "no PREDICTION for this duration", not "no live price", and the two used to
+   *  be conflated into one misleading "no live price" message. */
+  currentChaosValue: number;
+  currentDivineValue?: number;
   /** Items only - how many distinct people are currently selling this exact name+variant. */
   sellerCount?: number;
   spark?: Array<number | null>;
@@ -59,11 +67,14 @@ export async function getItemDetail(
     const price = prices.get(historyName);
     if (!price) return undefined;
 
+    const divineRate = prices.get("Divine Orb")?.chaosValue;
     const faustus = spreads.find((s) => s.name === historyName);
     return {
       category,
       historyName,
       filterCategory: price.type,
+      currentChaosValue: price.chaosValue,
+      currentDivineValue: divineRate ? price.chaosValue / divineRate : undefined,
       spark: price.spark,
       momentum: price.spark ? momentumFromPath(sparkToLogPath(price.spark)) : undefined,
       faustus,
@@ -71,15 +82,23 @@ export async function getItemDetail(
     };
   }
 
-  const prices = await getAllCurrentItemPrices(league);
+  const [prices, currencyPrices] = await Promise.all([
+    getAllCurrentItemPrices(league),
+    // Only needed for Divine Orb's own chaos rate, to derive currentDivineValue the same way
+    // lib/flip-suggestions.ts's buildSuggestion does - not fetched for its own item data.
+    getAllCurrentCurrencyPrices(league),
+  ]);
   const price = prices.get(itemPriceKey(historyName, variant));
   if (!price) return undefined;
 
+  const divineRate = currencyPrices.get("Divine Orb")?.chaosValue;
   return {
     category,
     historyName,
     variant,
     filterCategory: price.type,
+    currentChaosValue: price.chaosValue,
+    currentDivineValue: divineRate ? price.chaosValue / divineRate : undefined,
     sellerCount: price.sellerCount,
     spark: price.spark,
     momentum: price.spark ? momentumFromPath(sparkToLogPath(price.spark)) : undefined,
