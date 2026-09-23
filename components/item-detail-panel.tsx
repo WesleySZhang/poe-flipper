@@ -324,28 +324,38 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             <CardContent className="flex flex-col gap-3">
               {suggestion ? (
                 <>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <ConfidenceBadge
-                      score={priceUnit === "chaos" ? suggestion.confidence : suggestion.confidenceDivine}
-                      upFraction={priceUnit === "chaos" ? suggestion.upFraction : suggestion.upFractionDivine}
-                      leagueCount={priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine}
-                      forecastSpread={priceUnit === "chaos" ? suggestion.forecastSpread : undefined}
+                  <ConfidenceBadge
+                    score={priceUnit === "chaos" ? suggestion.confidence : suggestion.confidenceDivine}
+                    upFraction={priceUnit === "chaos" ? suggestion.upFraction : suggestion.upFractionDivine}
+                    leagueCount={priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine}
+                    forecastSpread={priceUnit === "chaos" ? suggestion.forecastSpread : undefined}
+                  />
+                  {/* The same facts buildFlipRationale() (lib/predicted-suggestion.ts) used to word as
+                      one long sentence, as scannable stats instead - a narrow sidebar card reads a
+                      wall of prose worse than a table does, and every number here (model prediction,
+                      the past-leagues baseline it adjusted, league count, hit rate, forecast width) is
+                      already independently meaningful without the connecting sentence. */}
+                  <div className="flex flex-wrap gap-x-8 gap-y-3">
+                    <Stat
+                      label={`Model prediction (${displayDurationDays}d)`}
+                      value={formatPercentChange(suggestion.avgGrowthRatio, suggestion.avgGrowthRatioDivine, priceUnit)}
                     />
-                    <span className="text-sm text-muted-foreground">
-                      {(priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine)} past league
-                      {(priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine) === 1 ? "" : "s"} of data
-                    </span>
+                    <Stat
+                      label="Past-leagues avg"
+                      value={formatPercentChange(suggestion.baselineGrowthRatio, suggestion.baselineGrowthRatioDivine, priceUnit)}
+                    />
+                    <Stat
+                      label="Leagues used"
+                      value={`${priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine}`}
+                    />
+                    <Stat
+                      label="Leagues up"
+                      value={`${Math.round((priceUnit === "chaos" ? suggestion.upFraction : (suggestion.upFractionDivine ?? suggestion.upFraction)) * 100)}%`}
+                    />
+                    {priceUnit === "chaos" && suggestion.forecastSpread !== undefined && (
+                      <Stat label="Forecast precision" value={`~${suggestion.forecastSpread.toFixed(1)}x`} />
+                    )}
                   </div>
-                  <p className="text-sm">{suggestion.rationale}</p>
-                  {/* Just the one non-redundant fact describeConfidence() would otherwise add - its
-                      confidence-score/league-count restatement and "reflects how consistently..."
-                      disclaimer are already covered by the badge/rationale above, so only the forecast-
-                      precision figure (not shown anywhere else on this page) is worth its own line here. */}
-                  {priceUnit === "chaos" && suggestion.forecastSpread !== undefined && (
-                    <p className="text-sm text-muted-foreground">
-                      Forecast precision: ~{suggestion.forecastSpread.toFixed(1)}x range - narrower means the model is more sure of this number.
-                    </p>
-                  )}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">Not enough data to score this item right now.</p>
@@ -379,8 +389,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground">
-                  GGG&apos;s own exchange data - purely historical (the last fully-closed hour, roughly 2 hours
-                  stale), not two live standing orders.
+                  Prices are roughly 2 hours stale
                 </p>
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
                   <Stat label={`Buy (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, priceUnit)} />
