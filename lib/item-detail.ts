@@ -1,5 +1,6 @@
 import "server-only";
-import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey } from "./poe-ninja";
+import { itemPriceKey } from "./poe-ninja";
+import { getCurrencyPricesPreferSnapshot, getItemPricesPreferSnapshot } from "./price-snapshot";
 import { getFaustusSpreads, isFaustusTradeable, type FaustusSpread } from "./faustus";
 import { liquidityTier, type LiquidityTier } from "./liquidity";
 import { momentumFromPath, sparkToLogPath } from "./prediction-features";
@@ -59,7 +60,7 @@ export async function getItemDetail(
   if (category === "currency") {
     const tradeable = isFaustusTradeable(historyName);
     const [prices, spreads] = await Promise.all([
-      getAllCurrentCurrencyPrices(league),
+      getCurrencyPricesPreferSnapshot(league),
       // Skip the whole exchange-market fetch when this name could never be in it anyway - same
       // guard lib/flip-suggestions.ts's own faustusTradeable field already uses.
       tradeable ? getFaustusSpreads(league) : Promise.resolve<FaustusSpread[]>([]),
@@ -83,10 +84,10 @@ export async function getItemDetail(
   }
 
   const [prices, currencyPrices] = await Promise.all([
-    getAllCurrentItemPrices(league),
+    getItemPricesPreferSnapshot(league),
     // Only needed for Divine Orb's own chaos rate, to derive currentDivineValue the same way
     // lib/flip-suggestions.ts's buildSuggestion does - not fetched for its own item data.
-    getAllCurrentCurrencyPrices(league),
+    getCurrencyPricesPreferSnapshot(league),
   ]);
   const price = prices.get(itemPriceKey(historyName, variant));
   if (!price) return undefined;

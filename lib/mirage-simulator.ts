@@ -5,7 +5,8 @@ import {
   getActualCurrencyValueAtDay,
   getActualItemValueAtDay,
 } from "./growth-ratios";
-import { itemPriceKey, getAllCurrentCurrencyPrices, formatItemDisplayName } from "./poe-ninja";
+import { itemPriceKey, formatItemDisplayName } from "./poe-ninja";
+import { getCurrencyPricesPreferSnapshot } from "./price-snapshot";
 import { SIMULATED_LEAGUE } from "./mirage-league";
 import { CURRENT_LEAGUE } from "./league-recency";
 import { currentPredictorMode, predictGrowth, type PredictorMode, type PredictorRuntime } from "./prediction-model";
@@ -101,7 +102,7 @@ export async function simulateMirageLeague(
     // from (that's the whole reason the historical DB exists). Its type-bucket taxonomy (Scarab,
     // Essence, Fossil, ...) is fixed and league-agnostic though, so the current league's live
     // buckets are a safe proxy purely for categorizing a currency name - not for its price.
-    getAllCurrentCurrencyPrices(CURRENT_LEAGUE),
+    getCurrencyPricesPreferSnapshot(CURRENT_LEAGUE),
   ]);
 
   // Predict for EVERY item that has a price on the replayed day - not only those with a known outcome later - so the

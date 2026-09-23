@@ -1,6 +1,7 @@
 import "server-only";
 import { DIVINATION_CARDS, type DivinationRewardKind } from "./divination-cards";
 import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey } from "./poe-ninja";
+import { getActiveTypes } from "./price-snapshot";
 import { getFaustusSpreads, isFaustusTradeable, type FaustusSpread } from "./faustus";
 import { liquidityTier, type LiquidityTier } from "./liquidity";
 
@@ -106,9 +107,13 @@ export async function getDivinationFlips(league: string): Promise<DivinationFlip
 }
 
 async function computeDivinationFlips(league: string): Promise<DivinationFlip[]> {
+  // Prices stay live here (a profit calculation worth acting on), but the daily snapshot's list of
+  // non-empty category buckets lets the live fetch skip the ones with no listings at all - same
+  // prices, ~a quarter fewer requests. See lib/price-snapshot.ts's getActiveTypes.
+  const activeTypes = await getActiveTypes(league);
   const [currencyPrices, itemPrices, faustusSpreads] = await Promise.all([
-    getAllCurrentCurrencyPrices(league),
-    getAllCurrentItemPrices(league),
+    getAllCurrentCurrencyPrices(league, activeTypes.currency),
+    getAllCurrentItemPrices(league, activeTypes.item),
     getFaustusSpreads(league),
   ]);
   const spreadByName = new Map<string, FaustusSpread>(faustusSpreads.map((s) => [s.name, s]));

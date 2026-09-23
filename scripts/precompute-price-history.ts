@@ -56,6 +56,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getAllCurrentCurrencyPrices, getItemOverview, correctedItemType, linksBucketLabel, ITEM_OVERVIEW_TYPES } from "../lib/poe-ninja";
+import { installRawResponseCache } from "./raw-response-cache";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
 
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
@@ -98,6 +99,7 @@ function dropExistingDay(csvText: string | undefined, dateColumnIndex: number, d
 }
 
 async function main() {
+  installRawResponseCache(); // share poe.ninja responses with the other daily-job scripts - see raw-response-cache.ts
   const today = new Date().toISOString().slice(0, 10); // UTC calendar day, matching poe.ninja's own daily-snapshot convention
   const month = today.slice(0, 7); // YYYY-MM - see the module doc above for why files are chunked by month
   fs.mkdirSync(path.join(HISTORY_DIR, CURRENT_LEAGUE), { recursive: true });

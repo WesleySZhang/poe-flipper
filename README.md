@@ -186,6 +186,20 @@
   in-memory fetch caches (`lib/precomputed-predictions.ts`, `lib/current-league-history.ts`)
   use a short (2-minute) TTL for the same reason: picking up a freshly-published day
   quickly rather than serving an already-warm instance's stale fetch for longer.
+- **poe.ninja price snapshot** (`scripts/precompute-price-snapshot.ts`,
+  `lib/price-snapshot.ts`): the same daily job also publishes `prices.json` - poe.ninja's
+  whole price map (776 currency + ~15k items with type, 7-day sparkline and seller count,
+  about 1.2 MB) plus which category buckets had any listings. The running app reads it
+  instead of calling poe.ninja (~48 requests per cold server instance): the per-item detail
+  page and the Mirage simulator take their price/sparkline/momentum/seller/category data
+  from it, matching the day the predictions were computed on, and fall back to live
+  poe.ninja if the file is missing, for another league, or over 36 hours old. Divination
+  Card Flips (a live profit calculation) and the flip-suggestions live fallback still fetch
+  prices live, but skip the category buckets that had no listings at snapshot time (12 of
+  46 currently - about a quarter fewer requests). The job's three scripts share one set of
+  poe.ninja responses through a disk cache (`POE_NINJA_DISK_CACHE`,
+  `scripts/raw-response-cache.ts`), so a run makes ~48 requests total instead of ~48 per
+  script.
 
 ## Setup
 
@@ -372,6 +386,8 @@ schedule or a promise - just a running list).
 - `lib/divination-cards.ts` - generated card metadata (stack size, reward); see
   `scripts/generate-divination-cards.ts` above.
 - `lib/divination-flips.ts` - live scoring for the Divination Card Flips page.
+- `lib/price-snapshot.ts` - reader/builder for the daily `prices.json` poe.ninja snapshot; see
+  **poe.ninja price snapshot** above.
 - `lib/item-detail.ts` - one item's live "extras" a table row doesn't show (seller count,
   raw sparkline/momentum, Faustus spread) - see **Per-item detail page** above.
 - `lib/site-auth.ts` / `proxy.ts` - the shared-password login gate.

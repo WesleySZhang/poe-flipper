@@ -121,10 +121,32 @@ interface CacheEntry<T> {
 // Unofficial, undocumented endpoints - cache aggressively to avoid hammering poe.ninja.
 const cache = new Map<string, CacheEntry<unknown>>();
 
+/**
+ * Optional second-level store for raw poe.ninja responses, used by the offline precompute scripts
+ * only: the daily job runs several separate processes (predictions, price snapshot, price history)
+ * that each need the same ~48 responses, and an in-memory cache can't span processes. A script
+ * installs a file-backed store here once at startup so the first process fetches and the rest reuse
+ * it. Injected (not imported from node:fs here) because this module is also bundled client-side
+ * via lib/category-reliability.ts's constant imports. Never set in the running app.
+ */
+export interface RawResponseStore {
+  get(url: string): unknown | undefined;
+  set(url: string, data: unknown): void;
+}
+let rawResponseStore: RawResponseStore | undefined;
+export function setRawResponseStore(store: RawResponseStore | undefined): void {
+  rawResponseStore = store;
+}
+
 async function fetchJson<T>(url: string): Promise<T | null> {
   const cached = cache.get(url) as CacheEntry<T> | undefined;
   if (cached && cached.expiresAt > Date.now()) {
     return cached.data;
+  }
+  const stored = rawResponseStore?.get(url) as T | undefined;
+  if (stored !== undefined) {
+    cache.set(url, { data: stored, expiresAt: Date.now() + CACHE_TTL_MS });
+    return stored;
   }
 
   try {
@@ -135,6 +157,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     }
     const data = (await res.json()) as T;
     cache.set(url, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+    rawResponseStore?.set(url, data);
     return data;
   } catch (err) {
     console.warn(`poe.ninja request errored: ${url}`, err);
@@ -210,8 +233,16 @@ export interface CurrencyPrice {
 const STASH_SCRAPE_TYPES: readonly CurrencyOverviewType[] = ["Currency", "Fragment"];
 
 /** Price (+ type, for filtering) keyed by currency/fragment name, merged across all currency overview types. */
-export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<string, CurrencyPrice>> {
+export async function getAllCurrentCurrencyPrices(
+  league: string,
+  /** Category buckets worth requesting at all (see lib/price-snapshot.ts's getActiveTypes) - types
+   *  outside it are skipped rather than fetched, since they returned zero lines at the last daily
+   *  snapshot. Omitted = request every type (what the precompute scripts do, to build that list). */
+  activeTypes?: readonly string[]
+): Promise<Map<string, CurrencyPrice>> {
   const prices = new Map<string, CurrencyPrice>();
+  const exchangeTypes = activeTypes ? CURRENCY_OVERVIEW_TYPES.filter((t) => activeTypes.includes(t)) : CURRENCY_OVERVIEW_TYPES;
+  const stashTypes = activeTypes ? STASH_SCRAPE_TYPES.filter((t) => activeTypes.includes(t)) : STASH_SCRAPE_TYPES;
   // Both batches requested concurrently - the exchange overview below doesn't depend on the stash
   // batch's results, only on the tradeIdToName lookup built FROM the Currency-type stash response
   // further down, so there's no reason to wait for the stash batch to finish before even starting
@@ -219,8 +250,8 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   // measured at ~1.6s on its own, one of the single slowest calls in the whole fan-out, entirely
   // wasted as serial latency).
   const [stashResults, exchangeResults] = await Promise.all([
-    Promise.all(STASH_SCRAPE_TYPES.map((type) => fetchCurrencyOverviewRaw(league, type))),
-    Promise.all(CURRENCY_OVERVIEW_TYPES.map((type) => getExchangeOverview(league, type))),
+    Promise.all(stashTypes.map((type) => fetchCurrencyOverviewRaw(league, type))),
+    Promise.all(exchangeTypes.map((type) => getExchangeOverview(league, type))),
   ]);
 
   // Currency Exchange's Currency-type lines are keyed by a short id ("chaos", "alch") that its own
@@ -238,7 +269,7 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   }
 
   stashResults.forEach((data, i) => {
-    const type = STASH_SCRAPE_TYPES[i];
+    const type = stashTypes[i];
     for (const line of data?.lines ?? []) {
       if (!prices.has(line.currencyTypeName)) {
         prices.set(line.currencyTypeName, {
@@ -261,7 +292,7 @@ export async function getAllCurrentCurrencyPrices(league: string): Promise<Map<s
   // still prefers the tradeIdToName path above instead, since that was independently verified
   // (Divine Orb within ~5% of GGG's own exchange data) and items[] wasn't cross-checked against it.
   exchangeResults.forEach((exchange, i) => {
-    const type = CURRENCY_OVERVIEW_TYPES[i];
+    const type = exchangeTypes[i];
     const idToName = new Map(exchange.items?.map((item) => [item.id, item.name]));
     for (const line of exchange.lines ?? []) {
       const name = type === "Currency" ? tradeIdToName.get(line.id) : idToName.get(line.id);
@@ -335,11 +366,16 @@ function effectiveVariant(variant?: string | null, links?: number | null): strin
 }
 
 /** Price (+ type, for filtering) keyed by item name+variant (see itemPriceKey), merged across all item overview types. */
-export async function getAllCurrentItemPrices(league: string): Promise<Map<string, ItemPrice>> {
+export async function getAllCurrentItemPrices(
+  league: string,
+  /** See getAllCurrentCurrencyPrices's activeTypes. */
+  activeTypes?: readonly string[]
+): Promise<Map<string, ItemPrice>> {
   const prices = new Map<string, ItemPrice>();
-  const results = await Promise.all(ITEM_OVERVIEW_TYPES.map((type) => getItemOverview(league, type)));
+  const types = activeTypes ? ITEM_OVERVIEW_TYPES.filter((t) => activeTypes.includes(t)) : ITEM_OVERVIEW_TYPES;
+  const results = await Promise.all(types.map((type) => getItemOverview(league, type)));
   results.forEach((lines, i) => {
-    const type = ITEM_OVERVIEW_TYPES[i];
+    const type = types[i];
     for (const line of lines) {
       const key = itemPriceKey(line.name, effectiveVariant(line.variant, line.links));
       if (!prices.has(key)) {

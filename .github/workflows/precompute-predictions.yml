@@ -1,6 +1,11 @@
 name: Precompute predictions
 
-# Runs two independent daily jobs and publishes both to the "data" branch in one commit:
+# Runs three daily jobs and publishes all of them to the "data" branch in one commit:
+#  - scripts/precompute-price-snapshot.ts: today's whole poe.ninja price map + which category
+#    buckets have any listings - see lib/price-snapshot.ts (why: the running app reads this instead
+#    of calling poe.ninja itself for anything that doesn't need to be fresher than the predictions).
+#    All three scripts share one set of poe.ninja responses via POE_NINJA_DISK_CACHE below, so the
+#    whole run is ~48 poe.ninja requests, not ~48 per script.
 #  - scripts/precompute-predictions.ts: the learned model for every "Days ahead" value the UI
 #    supports - see lib/precomputed-predictions.ts (why: avoids every page load waiting on a live
 #    model run).
@@ -67,16 +72,28 @@ jobs:
 
       - run: npm ci
 
+      # Shared by every script below (see scripts/raw-response-cache.ts) - the snapshot step goes
+      # first and does the actual poe.ninja fetching; the rest read its responses back from disk.
+      - name: Snapshot poe.ninja's price map
+        run: npx tsx scripts/precompute-price-snapshot.ts
+        env:
+          POE_NINJA_DISK_CACHE: .poe-ninja-cache
+
       - name: Compute today's predictions
         run: npx tsx --conditions=react-server scripts/precompute-predictions.ts
+        env:
+          POE_NINJA_DISK_CACHE: .poe-ninja-cache
 
       - name: Snapshot today's prices into the price-history CSVs
         run: npx tsx scripts/precompute-price-history.ts
+        env:
+          POE_NINJA_DISK_CACHE: .poe-ninja-cache
 
       - name: Publish to the data branch
         run: |
           set -e
           cp predictions.json /tmp/predictions.json
+          cp prices.json /tmp/prices.json
           rm -rf /tmp/history && cp -r history /tmp/history
           cp vercel.json /tmp/vercel.json
           git config user.name "github-actions[bot]"
@@ -96,6 +113,7 @@ jobs:
           # Both are .gitignore'd on every other branch (only ever meaningful here, freshly
           # generated) - force-add to override that on this one-off branch.
           cp /tmp/predictions.json predictions.json
+          cp /tmp/prices.json prices.json
           cp -r /tmp/history history
           # vercel.json ALSO has to be re-added here, not just carried over from master - Vercel
           # decides whether to deploy a push by reading git.deploymentEnabled from the vercel.json in
@@ -105,6 +123,6 @@ jobs:
           # exactly what happened before this line existed: a Preview deployment was attempted (and
           # failed, since this branch has no app to build) for every daily run.
           cp /tmp/vercel.json vercel.json
-          git add -f predictions.json history vercel.json
+          git add -f predictions.json prices.json history vercel.json
           git commit -m "Update precomputed predictions and price history"
           git push --force origin data-publish:data

@@ -35,6 +35,7 @@ import path from "node:path";
 import { getFlipSuggestions, CURVE_MIN_DURATION_DAYS, CURVE_MAX_DURATION_DAYS, type FlipSuggestion } from "../lib/flip-suggestions";
 import { currentLeagueDay } from "../lib/league-day";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "../lib/league-recency";
+import { installRawResponseCache } from "./raw-response-cache";
 
 const OUTPUT_PATH = path.join(__dirname, "..", "predictions.json");
 
@@ -53,6 +54,7 @@ function itemKey(s: FlipSuggestion): string {
 }
 
 async function main() {
+  installRawResponseCache(); // share poe.ninja responses with the other daily-job scripts - see raw-response-cache.ts
   const currentDay = currentLeagueDay(CURRENT_LEAGUE_START_DATE);
   const durations: number[] = [];
   for (let d = CURVE_MIN_DURATION_DAYS; d <= CURVE_MAX_DURATION_DAYS; d++) durations.push(d);
