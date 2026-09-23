@@ -11,6 +11,10 @@ name: Precompute predictions
 # "data" is configured (see vercel.json) to never trigger a Vercel deployment - this app's committed
 # database is ~72MB, and a deployment re-bundles the whole app regardless of how small the actual
 # change was.
+#
+# Runs once daily on a schedule, on-demand (workflow_dispatch), and automatically on a push to
+# master that touches the prediction algorithm itself (see the `push.paths` filter below) - so
+# merging an algorithm change doesn't sit stale in production until the next scheduled run.
 
 on:
   schedule:
@@ -23,6 +27,26 @@ on:
     # midnight instead shrinks that window to ~10 minutes.
     - cron: "10 0 * * *"
   workflow_dispatch: {} # manual trigger, e.g. right after fixing something
+  push:
+    # Without this, predictions.json only reflects an algorithm change once the NEXT scheduled run
+    # happens - up to almost a full day of visitors seeing stale suggestions computed with the old
+    # algorithm even though master already has the fix. Re-running this job the moment a change
+    # actually lands closes that gap. Scoped to exactly the files precompute-predictions.ts's own
+    # call chain depends on (scripts/precompute-predictions.ts -> lib/flip-suggestions.ts ->
+    # lib/growth-ratios.ts/lib/confidence.ts/lib/prediction-model.ts/lib/prediction-features.ts/
+    # lib/models/predictor.json, plus lib/predicted-suggestion.ts for the rationale text) - not
+    # every push to master, which would waste a run (and an extra, harmless but pointless
+    # today-row rewrite in the price-history CSVs) on changes with no effect on the output at all.
+    branches: [master]
+    paths:
+      - "scripts/precompute-predictions.ts"
+      - "lib/flip-suggestions.ts"
+      - "lib/growth-ratios.ts"
+      - "lib/confidence.ts"
+      - "lib/prediction-model.ts"
+      - "lib/prediction-features.ts"
+      - "lib/models/predictor.json"
+      - "lib/predicted-suggestion.ts"
 
 permissions:
   contents: write
