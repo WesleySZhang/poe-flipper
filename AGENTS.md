@@ -22,3 +22,13 @@ Every UI change also needs to actually work on mobile, not just look plausible i
 it with the `run` skill/Playwright at a phone-width viewport (or an emulated touch device for
 anything pointer/gesture-related), not only at desktop width. A change that works at 1280px and
 silently breaks or misclicks at 390px isn't done.
+
+## Keep on-page text short
+
+Labels, captions, empty-state messages, tooltips - anything a user reads on a card or in a table -
+should be as short as the meaning allows. State the fact, not the reasoning behind it: "No 7-day
+prediction - try a shorter duration," not a sentence explaining why the data doesn't reach that far.
+If you're tempted to write "because..." or a second clause justifying the first, cut it - that
+belongs in a code comment (for future you) or nowhere at all, not in the UI (for the user scanning
+a card at a glance). A tooltip/title attribute can carry a little more context if it's genuinely
+useful, since it's opt-in, but the always-visible text next to it should stay terse.

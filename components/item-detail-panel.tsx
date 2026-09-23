@@ -320,7 +320,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
               price" message, which was simply wrong in the second, common case - ItemDetail.
               currentChaosValue now lets Current still show even without a prediction. */}
           {!detail && (
-            <p className="text-sm text-muted-foreground">No live price for this item right now.</p>
+            <p className="text-sm text-muted-foreground">No live price right now.</p>
           )}
           {detail && (
             <Stat
@@ -335,10 +335,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             </>
           ) : (
             detail && (
-              <p className="text-sm text-muted-foreground">
-                No prediction for a {displayDurationDays}-day forecast - this item&apos;s past leagues don&apos;t
-                reach that far ahead. Try a shorter Days-ahead value.
-              </p>
+              <p className="text-sm text-muted-foreground">No {displayDurationDays}-day prediction - try a shorter duration.</p>
             )
           )}
           <Stat label="Category" value={detail?.filterCategory ? humanizeCategoryName(detail.filterCategory) : "—"} />
@@ -525,9 +522,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {detail
-                    ? `No prediction for a ${displayDurationDays}-day forecast - this item's past leagues don't reach that far ahead. Try a shorter Days-ahead value.`
-                    : "Not enough data to score this item right now."}
+                  {detail ? `No ${displayDurationDays}-day prediction - try a shorter duration.` : "Not enough data to score this item."}
                 </p>
               )}
             </CardContent>
