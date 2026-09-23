@@ -13,6 +13,7 @@ import { ConfidenceBadge } from "@/components/confidence-badge";
 import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
+import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -290,6 +291,19 @@ export function MirageSimulatorPanel() {
           <p className="text-sm text-muted-foreground">
             No historical matches for day {currentDay} to day {targetDay} - try an earlier day or shorter duration.
           </p>
+        )}
+        {!isPending && rows.length > 0 && (
+          <MobileSortControl
+            options={[
+              { key: "now", label: `Now (${priceUnitLabel(priceUnit)})` },
+              { key: "predicted", label: `Predicted (${priceUnitLabel(priceUnit)})` },
+              { key: "actualFuture", label: `Actual future (${priceUnitLabel(priceUnit)})` },
+              { key: "predictedX", label: "Predicted %" },
+              { key: "actualX", label: "Actual %" },
+            ]}
+            sort={sort}
+            onSort={handleSort}
+          />
         )}
         {!isPending && rows.length > 0 && (
           // -mx-4 cancels CardContent's own px-4, so these rows bleed out to the Card's edge

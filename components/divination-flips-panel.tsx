@@ -11,6 +11,7 @@ import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
+import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -181,6 +182,18 @@ export function DivinationFlipsPanel() {
         )}
         {!isPending && flips.length === 0 && (
           <p className="text-sm text-muted-foreground">No priceable divination card flips available right now.</p>
+        )}
+        {!isPending && flips.length > 0 && (
+          <MobileSortControl
+            options={[
+              { key: "cost", label: `Cost (${priceUnitLabel(priceUnit)})` },
+              { key: "reward", label: `Sell (${priceUnitLabel(priceUnit)})` },
+              { key: "profitPercent", label: "Profit %" },
+              { key: "profitAbs", label: `Profit (${priceUnitLabel(priceUnit)})` },
+            ]}
+            sort={sort}
+            onSort={handleSort}
+          />
         )}
         {!isPending && flips.length > 0 && (
           // -mx-4 cancels CardContent's own px-4, so these rows bleed out to the Card's edge -
