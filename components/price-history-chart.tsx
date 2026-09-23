@@ -400,6 +400,29 @@ export function PriceHistoryChart({
           .filter((p): p is PlottedPoint => p.value !== undefined && p.value > 0),
       }))
       .filter((s) => s.points.length > 0);
+    // The current league's own real-history line (lib/current-league-history.ts) only ever has a
+    // row for "today" once the daily scheduled ingest job has actually run - there's an inherent
+    // window every day, between the league day rolling over and that job completing, where it
+    // doesn't yet. Rather than leave a visual gap between the last ingested day and where the
+    // "Predicted" line picks up during that window, stitch on TODAY'S OWN already-fetched live price
+    // (currentValue - the exact same number the Predicted line's own first point uses below) as this
+    // series's last point whenever the ingested data doesn't already reach today. currentValue comes
+    // from a live, per-request price lookup with no daily-batch dependency at all, so this closes the
+    // gap unconditionally - it doesn't matter how late the ingest job runs, or whether some cached
+    // copy of it is stale, because nothing here depends on either.
+    if (currentValue !== undefined && currentValue > 0) {
+      const currentLeagueSeries = series.find((s) => s.league === CURRENT_LEAGUE);
+      if (currentLeagueSeries) {
+        const lastDay = currentLeagueSeries.points[currentLeagueSeries.points.length - 1]?.dayOffset;
+        if (lastDay === undefined || lastDay < currentDay) {
+          currentLeagueSeries.points.push({ dayOffset: currentDay, value: currentValue });
+        }
+      } else {
+        // No ingested history at all yet for the current league (e.g. day 1, before the first daily
+        // job has ever run) - still show today's single live point rather than no line at all.
+        series.push({ league: CURRENT_LEAGUE, color: leagueColor(CURRENT_LEAGUE), points: [{ dayOffset: currentDay, value: currentValue }] });
+      }
+    }
     // Drawn as just another series (rather than separate, parallel logic) so it automatically
     // participates in the Y-axis range, the auto-zoom window, the hover tooltip and the legend below.
     if (targetDay !== undefined && currentValue !== undefined && currentValue > 0) {

@@ -18,7 +18,7 @@ name: Check for a new league
 
 on:
   schedule:
-    - cron: "50 5 * * *" # once daily, shortly before precompute-predictions.yml's own 6am run
+    - cron: "5 0 * * *" # once daily, shortly before precompute-predictions.yml's own 00:10 UTC run
   workflow_dispatch: {} # manual trigger, e.g. to check right after a league you know just launched
 
 permissions:

@@ -30,7 +30,11 @@ const DEFAULT_REPO = "WesleySZhang/poe-flipper";
 const DATA_BRANCH = "data";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
 // Same reasoning as lib/precomputed-predictions.ts's own cache - these files only change once a day.
-const CACHE_TTL_MS = 20 * 60 * 1000;
+// Short (not e.g. 20 minutes) specifically so that once the daily ingest job (see
+// .github/workflows/precompute-predictions.yml) publishes a new day's row, an already-warm
+// serverless instance picks it up quickly rather than serving the previous day's cached fetch for
+// up to a further 20 minutes on top of however late the job itself ran.
+const CACHE_TTL_MS = 2 * 60 * 1000;
 
 function repoRawUrl(filePath: string): string {
   const repo = process.env.PREDICTIONS_REPO ?? DEFAULT_REPO;

@@ -32,10 +32,13 @@ const DEFAULT_REPO = "WesleySZhang/poe-flipper";
 const DATA_BRANCH = "data";
 const DATA_FILE_PATH = "predictions.json";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
-// The file itself only changes once a day, but this mirrors lib/poe-ninja.ts's cache window for
-// consistency - a shorter TTL here just means slightly more (free, public) GitHub requests, not a
-// correctness issue either way.
-const CACHE_TTL_MS = 20 * 60 * 1000;
+// The file itself only changes once a day, but kept short (not e.g. lib/poe-ninja.ts's 20-minute
+// window) so that once the daily job (.github/workflows/precompute-predictions.yml) publishes a new
+// day's file, an already-warm serverless instance picks it up quickly instead of continuing to serve
+// yesterday's cached (and so day-mismatched -> live-fallback-triggering, see fetchValidPrecomputed
+// below) copy for up to a further 20 minutes on top of however late the job itself ran. A shorter TTL
+// here just means slightly more (free, public) GitHub requests, not a correctness issue either way.
+const CACHE_TTL_MS = 2 * 60 * 1000;
 
 interface CacheEntry {
   // null = fetched but unusable (missing/malformed) - still cached, so a broken file doesn't get

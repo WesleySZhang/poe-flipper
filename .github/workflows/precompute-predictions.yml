@@ -14,7 +14,14 @@ name: Precompute predictions
 
 on:
   schedule:
-    - cron: "0 6 * * *" # once daily - the league day this computes against only changes once a day anyway
+    # lib/league-day.ts's currentLeagueDay() flips to a new day at exactly 00:00 UTC. Running this
+    # job at 6am UTC used to leave a 6-hour daily window (00:00-06:00 UTC) where the frontend already
+    # considered it the new league day but neither predictions.json nor today's price-history CSV row
+    # existed yet - a gap in the current-league real-history line, plus every precomputed-predictions
+    # lookup missing (lib/precomputed-predictions.ts's fetchValidPrecomputed requires an exact
+    # currentDay match) and falling back to a live model run per duration. Running shortly after
+    # midnight instead shrinks that window to ~10 minutes.
+    - cron: "10 0 * * *"
   workflow_dispatch: {} # manual trigger, e.g. right after fixing something
 
 permissions:
