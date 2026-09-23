@@ -901,8 +901,7 @@ export function PriceHistoryChart({
           priceDomain={[fullValueMin, fullValueMax]}
         />
       </div>
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs text-muted-foreground">Drag the window&apos;s edges to resize, or its middle to pan.</span>
+      <div className="flex items-center justify-end px-1">
         {isZoomed && (
           <button
             type="button"

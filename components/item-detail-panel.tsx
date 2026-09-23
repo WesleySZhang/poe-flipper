@@ -18,7 +18,6 @@ import type { LeagueSeries } from "@/lib/price-history";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { poeWikiUrl } from "@/lib/poe-ninja";
-import { describeConfidence } from "@/lib/confidence";
 import { liquidityTier } from "@/lib/liquidity";
 import {
   activePrice,
@@ -287,14 +286,15 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                 </span>
               </div>
               <p className="text-sm">{suggestion.rationale}</p>
-              <p className="text-sm text-muted-foreground">
-                {describeConfidence(
-                  priceUnit === "chaos" ? suggestion.confidence : suggestion.confidenceDivine,
-                  priceUnit === "chaos" ? suggestion.upFraction : suggestion.upFractionDivine,
-                  priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine,
-                  priceUnit === "chaos" ? suggestion.forecastSpread : undefined
-                )}
-              </p>
+              {/* Just the one non-redundant fact describeConfidence() would otherwise add - its
+                  confidence-score/league-count restatement and "reflects how consistently..."
+                  disclaimer are already covered by the badge/rationale above, so only the forecast-
+                  precision figure (not shown anywhere else on this page) is worth its own line here. */}
+              {priceUnit === "chaos" && suggestion.forecastSpread !== undefined && (
+                <p className="text-sm text-muted-foreground">
+                  Forecast precision: ~{suggestion.forecastSpread.toFixed(1)}x range - narrower means the model is more sure of this number.
+                </p>
+              )}
             </>
           ) : (
             <p className="text-sm text-muted-foreground">Not enough data to score this item right now.</p>
