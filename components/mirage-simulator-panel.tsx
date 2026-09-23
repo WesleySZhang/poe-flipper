@@ -12,6 +12,7 @@ import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
 import { ItemHistoryRow } from "@/components/item-history-row";
+import { ItemHistoryCard } from "@/components/item-history-card";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -291,11 +292,58 @@ export function MirageSimulatorPanel() {
           </p>
         )}
         {!isPending && rows.length > 0 && (
+          // -mx-4 cancels CardContent's own px-4, so these rows bleed out to the Card's edge
+          // instead of sitting doubly-inset (Card's padding + the card's own) - only Dashboard's
+          // outer p-2 remains as the gap to the actual screen edge on mobile. Same pattern as
+          // flip-suggestions-panel.tsx's own mobile card list.
+          <div className="-mx-4 flex flex-col gap-2 sm:hidden">
+            {pagedRows.map((r) => (
+              <ItemHistoryCard
+                key={`${r.category}-${r.name}`}
+                displayName={r.name}
+                category={r.category}
+                historyName={r.historyName}
+                variant={r.variant}
+                currentDay={currentDay}
+                targetDay={currentDay + durationDays}
+                currentValue={activePrice(r.actualNowChaos, r.actualNowDivine, priceUnit)}
+                predictedValue={activePrice(r.predictedChaosValue, r.predictedDivineValue, priceUnit)}
+                priceUnit={priceUnit}
+                fields={[
+                  {
+                    label: "Confidence",
+                    value: (
+                      <ConfidenceBadge
+                        score={activeConfidence(r.confidence, r.confidenceDivine, priceUnit)}
+                        upFraction={priceUnit === "chaos" ? r.upFraction : r.upFractionDivine}
+                        leagueCount={priceUnit === "chaos" ? r.leagueCount : r.leagueCountDivine}
+                        forecastSpread={priceUnit === "chaos" ? r.forecastSpread : undefined}
+                      />
+                    ),
+                    emphasized: true,
+                  },
+                  { label: "Category", value: humanizeCategoryName(r.filterCategory) },
+                  { label: `Now (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(r.actualNowChaos, r.actualNowDivine, priceUnit) },
+                  { label: `Predicted (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(r.predictedChaosValue, r.predictedDivineValue, priceUnit) },
+                  { label: `Actual future (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(r.actualFutureChaos, r.actualFutureDivine, priceUnit) },
+                ]}
+                // Only the two figures this whole tool exists to compare - predicted vs. what
+                // actually happened - go on the right (unwrapped, so keeping it to two keeps it
+                // from overflowing a narrow card); everything else wraps in `fields` on the left.
+                rightFields={[
+                  { label: "Predicted %", value: formatPercentChange(r.predictedRatio, r.predictedRatioDivine, priceUnit), emphasized: true },
+                  { label: "Actual %", value: formatPercentChange(r.actualRatio, r.actualRatioDivine, priceUnit), emphasized: true },
+                ]}
+              />
+            ))}
+          </div>
+        )}
+        {!isPending && rows.length > 0 && (
           // Keyed on rows.length, not pagedRows.length - the header (and the Confidence column's
           // tier filter it carries) must stay visible even when every row is currently filtered
           // out, or there'd be no way to re-enable a hidden tier once all three are off and the
           // table disappears out from under the controls that could undo it.
-          <Table>
+          <Table className="hidden sm:table">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[280px]">Item</TableHead>
