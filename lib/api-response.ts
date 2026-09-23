@@ -33,3 +33,59 @@ export function jsonResponse(data: unknown, request: Request, init?: ResponseIni
   headers.set("Content-Encoding", "gzip");
   return new Response(body, { ...init, headers });
 }
+
+interface SerializedCacheEntry {
+  expiresAt: number;
+  plainBody: string;
+  /** Undefined when the payload was too small to bother gzipping - see MIN_BYTES_TO_COMPRESS. */
+  gzipBody?: Buffer;
+}
+const serializedCache = new Map<string, SerializedCacheEntry>();
+
+/**
+ * Same as jsonResponse, but also caches the already-JSON.stringify'd (and, when worthwhile,
+ * already-gzipSync'd) bytes under `key` for `ttlMs` - not just the data `compute()` produces.
+ *
+ * Caching `compute()`'s own result (as lib/flip-suggestions.ts's getFlipSuggestions and
+ * lib/divination-flips.ts's getDivinationFlips already do internally) skips redoing the expensive
+ * DB/model work, but jsonResponse's own JSON.stringify + gzipSync still ran fresh on every single
+ * HTTP request regardless - and per that function's own doc, a couple of these endpoints return
+ * several MB of JSON, measured taking several hundred milliseconds to stringify+compress each time.
+ * That's a synchronous, main-thread-blocking cost paid on every repeat request even when the
+ * underlying data hasn't changed at all - and since Node is single-threaded, it stalls every OTHER
+ * concurrent request too, not just the one that triggered it. This was the remaining cause of
+ * "instant" repeat navigation (e.g. between two different per-item detail pages, which both hit
+ * these same big, mostly-unchanging endpoints) still feeling slow after the data-level cache alone.
+ */
+export async function cachedJsonResponse(
+  key: string,
+  ttlMs: number,
+  request: Request,
+  compute: () => Promise<unknown>
+): Promise<Response> {
+  const acceptsGzip = (request.headers.get("accept-encoding") ?? "").includes("gzip");
+  const now = Date.now();
+  let entry = serializedCache.get(key);
+  if (!entry || entry.expiresAt <= now) {
+    const data = await compute();
+    const plainBody = JSON.stringify(data);
+    entry = {
+      expiresAt: now + ttlMs,
+      plainBody,
+      gzipBody: plainBody.length >= MIN_BYTES_TO_COMPRESS ? gzipSync(Buffer.from(plainBody)) : undefined,
+    };
+    serializedCache.set(key, entry);
+  }
+  const { plainBody, gzipBody } = entry;
+  if (acceptsGzip && gzipBody) {
+    // Wrapped in a plain Uint8Array - passing the cached Buffer directly hits a bizarre TS
+    // BodyInit-overload resolution error (Buffer structurally satisfies BodyInit, and the identical
+    // pattern one function up passes a freshly-computed Buffer straight through with no issue) that
+    // only reproduces for the interface-stored, destructured Buffer here, not a fully inline one -
+    // a Uint8Array view sidesteps it outright rather than chasing the inference quirk further.
+    return new Response(new Uint8Array(gzipBody), {
+      headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" },
+    });
+  }
+  return new Response(plainBody, { headers: { "Content-Type": "application/json" } });
+}

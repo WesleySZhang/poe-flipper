@@ -67,9 +67,29 @@ async function fetchItemDetail(
   return res.json();
 }
 
+/** Tries the URL's own category first, then the other one - see lib/flip-suggestions.ts's own
+ *  comment on the poe.ninja category migration (Scarabs/Essences/Fossils/Oils/Omens/Resonators/
+ *  Tattoos/Delirium Orbs/Divination Cards) for the full story: a page reached via a Flip Suggestions
+ *  row link is category "item" for one of these (matching how it was historically ingested), but its
+ *  LIVE price - and so this page's momentum/Currency Exchange sections - only ever exists under
+ *  category "currency". Without this fallback, that route (.../item/item/The%20Sephirot, say) 404s
+ *  on /api/item-detail entirely and silently drops every section gated on `detail`. Cheap either
+ *  way - this only ever makes a second request on an actual 404, not on every load. */
+async function fetchItemDetailWithFallback(
+  category: "currency" | "item",
+  historyName: string,
+  variant: string | undefined
+): Promise<ItemDetail | undefined> {
+  const primary = await fetchItemDetail(category, historyName, variant);
+  if (primary) return primary;
+  return fetchItemDetail(category === "currency" ? "item" : "currency", historyName, variant);
+}
+
 /** Same whole-list-then-find-by-name approach as fetchItemDetail's siblings elsewhere in this app -
  *  the divination-flips list is small enough that fetching it whole and finding one row client-side
- *  needs no new per-item backend endpoint. */
+ *  needs no new per-item backend endpoint. Called unconditionally regardless of the page's own
+ *  category (see fetchItemDetailWithFallback's comment - a card can arrive here as category "item")
+ *  and cheap either way now that lib/divination-flips.ts caches/coalesces this request. */
 async function fetchDivinationFlip(name: string): Promise<DivinationFlip | undefined> {
   const res = await fetch("/api/divination-flips");
   if (!res.ok) return undefined;
@@ -145,12 +165,9 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
       .then((points) => setCurveState({ status: "loaded", points }))
       .catch(() => setCurveState({ status: "error" }));
 
-    fetchItemDetail(category, historyName, variant).then((d) => setDetail(d ?? null));
-    // Divination cards are always category "currency" - only worth checking there. Most currency
-    // items resolve to null quickly (a plain currency name is never in the divination-flips list).
-    if (category === "currency") {
-      fetchDivinationFlip(historyName).then((f) => setDivinationFlip(f ?? null));
-    }
+    fetchItemDetailWithFallback(category, historyName, variant).then((d) => setDetail(d ?? null));
+    // Unconditional regardless of `category` - see fetchDivinationFlip's own comment.
+    fetchDivinationFlip(historyName).then((f) => setDivinationFlip(f ?? null));
     // Deliberately no `variant`/`category` change support beyond mount - this page is always
     // rendered fresh per item (a new URL, hence a new component instance) by the Link that
     // navigates here (see components/item-history-row.tsx), never re-parented onto a different item.
@@ -300,7 +317,11 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             </>
           )}
           <Stat label="Category" value={detail?.filterCategory ? humanizeCategoryName(detail.filterCategory) : "—"} />
-          {category === "item" && <Stat label="Sellers listing this" value={detail?.sellerCount?.toString() ?? "—"} />}
+          {/* sellerCount is only ever set for an "item"-category lookup (see lib/item-detail.ts) -
+              gated on the field itself, not the URL's own `category`, since a name reached via a
+              category "item" URL (see fetchItemDetailWithFallback's comment) can still resolve its
+              live detail under "currency", which never sets sellerCount at all. */}
+          {detail?.sellerCount !== undefined && <Stat label="Sellers listing this" value={detail.sellerCount.toString()} />}
         </CardContent>
       </Card>
 
@@ -329,7 +350,11 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
         </Card>
 
         <div className="flex flex-col gap-4 lg:w-[30%] lg:min-w-0 lg:shrink-0">
-          {category === "currency" && detail?.faustus && (
+          {/* detail.faustus is only ever set for a "currency"-category lookup (lib/item-detail.ts) -
+              gated on the field itself, not the URL's own `category`, for the same reason as the
+              Sellers stat above: fetchItemDetailWithFallback can resolve "currency" detail even when
+              this page's URL says category "item". */}
+          {detail?.faustus && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Currency Exchange</CardTitle>
