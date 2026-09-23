@@ -40,7 +40,7 @@ export function FaustusPriceButton({ name, priceUnit }: { name: string; priceUni
 
   if (state.status === "loaded") {
     return (
-      <span className="text-sm tabular-nums" title="From GGG's Currency Exchange (Faustus), not poe.ninja">
+      <span className="text-sm tabular-nums" title="From GGG's Currency Exchange, not poe.ninja">
         {formatPriceValue(state.price.chaosValue, state.price.divineValue, priceUnit)}
       </span>
     );
@@ -52,7 +52,7 @@ export function FaustusPriceButton({ name, priceUnit }: { name: string; priceUni
       size="xs"
       disabled={state.status === "loading"}
       onClick={handleClick}
-      title="Fetch this currency's price from GGG's Currency Exchange (Faustus) instead of poe.ninja"
+      title="Fetch this currency's price from GGG's Currency Exchange instead of poe.ninja"
     >
       {state.status === "loading" && <Loader2 className="animate-spin" />}
       {state.status === "error" ? "Unavailable" : "Exchange Price"}

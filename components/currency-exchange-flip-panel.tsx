@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
+import { ItemHistoryRow } from "@/components/item-history-row";
+import { ItemHistoryCard } from "@/components/item-history-card";
+import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -202,33 +205,85 @@ export function CurrencyExchangeFlipPanel() {
           <p className="text-sm text-muted-foreground">No Currency Exchange spread data available right now.</p>
         )}
         {!isPending && spreads.length > 0 && (
+          <MobileSortControl
+            options={[
+              { key: "buy", label: `Buy (${priceUnitLabel(priceUnit)})` },
+              { key: "sell", label: `Sell (${priceUnitLabel(priceUnit)})` },
+              { key: "profitPercent", label: "Profit %" },
+              { key: "profitAbs", label: `Profit (${priceUnitLabel(priceUnit)})` },
+              { key: "profitPerGold", label: "Profit / 1k gold" },
+            ]}
+            sort={sort}
+            onSort={handleSort}
+          />
+        )}
+        {!isPending && spreads.length > 0 && (
+          // -mx-4 cancels CardContent's own px-4, so these rows bleed out to the Card's edge -
+          // same pattern as flip-suggestions-panel.tsx's own mobile card list.
+          <div className="-mx-4 flex flex-col gap-2 sm:hidden">
+            {paged.map((s) => (
+              <ItemHistoryCard
+                key={s.name}
+                displayName={s.name}
+                category="currency"
+                historyName={s.name}
+                currentDay={currentDay}
+                priceUnit={priceUnit}
+                expandable={false}
+                fields={[
+                  {
+                    label: "Liquidity",
+                    value: (
+                      <Badge
+                        variant={LIQUIDITY_VARIANT[s.liquidity]}
+                        title={`Volume this hour: ${s.volumeChaos.toLocaleString()}c (${s.volumeItem.toLocaleString()} traded)\nOffers available: ${s.itemStock.toLocaleString()} to buy, ${s.chaosStock.toLocaleString()}c to sell into`}
+                      >
+                        {LIQUIDITY_LABEL[s.liquidity]}
+                      </Badge>
+                    ),
+                    emphasized: true,
+                  },
+                  { label: `Profit (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, priceUnit) },
+                  {
+                    label: "Profit / 1k gold",
+                    value:
+                      s.profitPer1000Gold !== undefined
+                        ? `${s.goldCost?.approximate ? "~" : ""}${formatPriceValue(s.profitPer1000Gold, undefined, "chaos")}`
+                        : "—",
+                  },
+                ]}
+                rightFields={[
+                  { label: `Buy (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit) },
+                  { label: `Sell (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit) },
+                  { label: "Profit %", value: formatPercentChange(s.chaosRatio, s.divineRatio, priceUnit), emphasized: true },
+                ]}
+              />
+            ))}
+          </div>
+        )}
+        {!isPending && spreads.length > 0 && (
           // Keyed on spreads.length, not paged.length - the header (and the Liquidity column's tier
           // filter it carries) must stay visible even when every row is currently filtered out, same
           // reasoning as the flip-suggestions table's Confidence column.
-          <Table>
+          <Table className="hidden sm:table">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[240px]">Item</TableHead>
                 <SortableHeader label={`Buy (${priceUnitLabel(priceUnit)})`} sortKey="buy" sort={sort} onSort={handleSort} />
                 <SortableHeader label={`Sell (${priceUnitLabel(priceUnit)})`} sortKey="sell" sort={sort} onSort={handleSort} />
                 <SortableHeader label="Profit %" sortKey="profitPercent" sort={sort} onSort={handleSort} />
-                {/* Absolute profit/gold/profit-per-gold are dropped below `sm` - mobile keeps
-                    Buy/Sell/Profit %/Liquidity, the "should I even look at this" essentials, same
-                    reasoning as the other tables' mobile column set. Liquidity sits last so it stays
-                    the rightmost column at every width, not just on mobile. */}
                 <SortableHeader
                   label={`Profit (${priceUnitLabel(priceUnit)})`}
                   sortKey="profitAbs"
                   sort={sort}
                   onSort={handleSort}
-                  className="hidden sm:table-cell"
                 />
                 <SortableHeader
                   label="Profit / 1k gold"
                   sortKey="profitPerGold"
                   sort={sort}
                   onSort={handleSort}
-                  className="hidden max-w-[90px] sm:table-cell"
+                  className="max-w-[90px]"
                 />
                 <TableHead>
                   <div className="flex flex-col items-center gap-1">
@@ -240,19 +295,25 @@ export function CurrencyExchangeFlipPanel() {
             </TableHeader>
             <TableBody>
               {paged.map((s) => (
-                <TableRow key={s.name}>
-                  <TableCell className="max-w-[140px] truncate sm:max-w-[200px] lg:max-w-[240px]" title={s.name}>
-                    {s.name}
-                  </TableCell>
+                <ItemHistoryRow
+                  key={s.name}
+                  displayName={s.name}
+                  category="currency"
+                  historyName={s.name}
+                  currentDay={currentDay}
+                  priceUnit={priceUnit}
+                  colSpan={7}
+                  expandable={false}
+                >
                   <TableCell className="text-right">{formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit)}</TableCell>
                   <TableCell className="text-right">{formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit)}</TableCell>
                   <TableCell className="text-right font-medium">
                     {formatPercentChange(s.chaosRatio, s.divineRatio, priceUnit)}
                   </TableCell>
-                  <TableCell className="hidden text-right sm:table-cell">
+                  <TableCell className="text-right">
                     {formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, priceUnit)}
                   </TableCell>
-                  <TableCell className="hidden max-w-[90px] text-right sm:table-cell">
+                  <TableCell className="max-w-[90px] text-right">
                     {s.profitPer1000Gold !== undefined ? (
                       <span title={s.goldCost?.approximate ? "Estimated - gold cost for this item is a family estimate, not a confirmed value" : undefined}>
                         {s.goldCost?.approximate ? "~" : ""}
@@ -272,7 +333,7 @@ export function CurrencyExchangeFlipPanel() {
                       </Badge>
                     </div>
                   </TableCell>
-                </TableRow>
+                </ItemHistoryRow>
               ))}
             </TableBody>
           </Table>

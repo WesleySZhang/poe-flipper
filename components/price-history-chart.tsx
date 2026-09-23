@@ -359,6 +359,15 @@ export function PriceHistoryChart({
   // zoom" can return to this sensible default instead of the full, unzoomed history. undefined
   // only until the first real data shows up (mirrors hasAutoZoomed's own timing).
   const [defaultZoomDomain, setDefaultZoomDomain] = useState<[number, number] | undefined>();
+  // Tracks the targetDay the zoom window was last computed for, so the render-time check below can
+  // tell "the caller's Days-ahead slider moved" (recompute) apart from every other re-render
+  // (don't). State, not a ref - the recompute below uses React's "adjust state during rendering"
+  // pattern (same as hasAutoZoomed/defaultZoomDomain), not a useEffect: an effect fires one render
+  // AFTER the targetDay prop already changed, so the chart briefly paints one frame at the OLD zoom
+  // before snapping to the new one - visible as a stutter on every tick while dragging the slider,
+  // since each drag tick is its own targetDay change. Recomputing synchronously during the very same
+  // render that received the new targetDay skips that extra frame entirely.
+  const [lastZoomedTargetDay, setLastZoomedTargetDay] = useState<number | undefined>(targetDay);
   // Lazily read once, synchronously, on first render - matchMedia isn't available during SSR (this
   // "use client" component still renders once on the server for the initial HTML), hence the
   // typeof guard defaulting to desktop there; the client's own first render then immediately
@@ -374,6 +383,22 @@ export function PriceHistoryChart({
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, []);
+  // On touch, the tooltip deliberately stays up after lifting a finger (see
+  // handleChartPointerDown/onPointerLeave below - a touch pointer fires pointerleave right after
+  // pointerup, which used to erase the tooltip the instant it appeared). That means nothing was
+  // left to ever dismiss it again on a touch device - tapping outside the chart didn't fire any of
+  // this component's own handlers at all. This listens document-wide (only while a tooltip is
+  // actually showing) and clears it the moment a tap/click lands outside the chart's own SVG.
+  useEffect(() => {
+    if (hoverDay === undefined) return;
+    function handlePointerDownOutside(e: PointerEvent) {
+      if (svgRef.current && e.target instanceof Node && !svgRef.current.contains(e.target)) {
+        setHoverDay(undefined);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDownOutside);
+    return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
+  }, [hoverDay]);
   const margin = isMobile ? MOBILE_MARGIN : MARGIN;
   const plotWidth = isMobile ? MOBILE_PLOT_WIDTH : PLOT_WIDTH;
   const plotHeight = isMobile ? MOBILE_PLOT_HEIGHT : PLOT_HEIGHT;
@@ -451,33 +476,50 @@ export function PriceHistoryChart({
   const allValues = plotted.flatMap((s) => s.points.map((p) => p.value));
   const allDays = plotted.flatMap((s) => s.points.map((p) => p.dayOffset));
 
-  // Default zoom to a tight window around [currentDay, targetDay], once, the first time real data
-  // shows up - a guarded setState call during render (React's documented "adjust state during
-  // rendering" pattern: https://react.dev/learn/you-might-not-need-an-effect), not an effect, so it
-  // takes effect in the same render pass instead of causing an extra one. The hasAutoZoomed guard
-  // means a later user-driven zoom, including an explicit reset back to the full range, is never
-  // overridden by this again for this chart instance. Skipped entirely if the window wouldn't
-  // actually be smaller than the full data range anyway.
-  if (!hasAutoZoomed && plotted.length > 0) {
-    setHasAutoZoomed(true);
+  // Shared by the initial auto-zoom below and the "Days ahead" follow effect further down - a tight
+  // window around [currentDay, targetDay], padded proportionally to that span (with a small floor)
+  // rather than a fixed number of days, so Today sits near the left edge and Target near the right
+  // edge regardless of whether the prediction window is a few days or a few months.
+  function computeDefaultZoom(): { window: [number, number]; isNarrowerThanFull: boolean } {
     const fullMin = Math.min(0, ...allDays, currentDay, targetDay ?? currentDay);
     const fullMax = Math.max(...allDays, currentDay, targetDay ?? currentDay);
-    // Padding proportional to the currentDay->targetDay span (with a small floor) rather than a
-    // fixed number of days - keeps Today near the left edge and Target near the right edge
-    // regardless of whether the prediction window is a few days or a few months, instead of a fixed
-    // padding either overwhelming a short window or barely denting a long one.
     const coreMin = Math.min(currentDay, targetDay ?? currentDay);
     const coreMax = Math.max(currentDay, targetDay ?? currentDay);
     const rightPadding = Math.max(zoomMinPaddingDays, (coreMax - coreMin) * zoomPaddingFraction);
     const leftPadding = Math.max(zoomLeftMinPaddingDays, (coreMax - coreMin) * zoomLeftPaddingFraction);
     const desiredMin = Math.max(fullMin, coreMin - leftPadding);
     const desiredMax = Math.min(fullMax, coreMax + rightPadding);
+    return { window: [desiredMin, desiredMax], isNarrowerThanFull: desiredMin > fullMin || desiredMax < fullMax };
+  }
+
+  // Default zoom to a tight window around [currentDay, targetDay], once, the first time real data
+  // shows up - a guarded setState call during render (React's documented "adjust state during
+  // rendering" pattern: https://react.dev/learn/you-might-not-need-an-effect), not an effect, so it
+  // takes effect in the same render pass instead of causing an extra one. The hasAutoZoomed guard
+  // means this only runs once per chart instance; the effect below handles every later targetDay
+  // change (e.g. dragging a "Days ahead" slider) instead of re-running this block.
+  if (!hasAutoZoomed && plotted.length > 0) {
+    setHasAutoZoomed(true);
+    const { window, isNarrowerThanFull } = computeDefaultZoom();
     // Remembered regardless of whether it's actually narrower than the full range (a short
     // history where the two happen to coincide still has a well-defined "default" to reset to).
-    setDefaultZoomDomain([desiredMin, desiredMax]);
-    if (desiredMin > fullMin || desiredMax < fullMax) {
-      setZoomDomain([desiredMin, desiredMax]);
+    setDefaultZoomDomain(window);
+    if (isNarrowerThanFull) {
+      setZoomDomain(window);
     }
+  }
+
+  // Re-centers the zoom on targetDay whenever it moves (dragging the caller's "Days ahead" slider
+  // changes targetDay without remounting this chart) - otherwise a zoom window sized for the OLD
+  // target day stays put while the target-day marker itself moves, and can drift entirely out of
+  // the visible window. Always overrides the current zoom, including a zoom the user dragged by
+  // hand - per the intended UX, moving the slider means "follow the target day", not "keep whatever
+  // window I'd manually framed for a different day".
+  if (hasAutoZoomed && plotted.length > 0 && lastZoomedTargetDay !== targetDay) {
+    setLastZoomedTargetDay(targetDay);
+    const { window, isNarrowerThanFull } = computeDefaultZoom();
+    setDefaultZoomDomain(window);
+    setZoomDomain(isNarrowerThanFull ? window : undefined);
   }
 
   if (state.status === "loading") {
@@ -885,8 +927,7 @@ export function PriceHistoryChart({
           priceDomain={[fullValueMin, fullValueMax]}
         />
       </div>
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs text-muted-foreground">Drag the window&apos;s edges to resize, or its middle to pan.</span>
+      <div className="flex items-center justify-end px-1">
         {isZoomed && (
           <button
             type="button"

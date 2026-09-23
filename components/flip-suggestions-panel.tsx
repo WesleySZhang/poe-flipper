@@ -15,6 +15,7 @@ import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
+import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
@@ -80,7 +81,7 @@ export function FlipSuggestionsPanel() {
   // is that every duration 1-30 is already in this one payload, so switching durations (including
   // while dragging the slider) needs zero further network round-trips.
   const [precomputedData, setPrecomputedData] = useState<PrecomputedPredictions | null | undefined>(undefined);
-  const [durationDays, setDurationDays] = useState(3);
+  const [durationDays, setDurationDays] = useState(7);
   // Set only while the thumb is actively being dragged, so dragging updates the visible number
   // instantly without re-fetching on every pixel of movement - undefined the rest of the time, so the
   // slider's displayed value (sliderValue below) just tracks durationDays directly, including when
@@ -378,6 +379,17 @@ export function FlipSuggestionsPanel() {
         )}
         {!hasData && !isPending && (
           <p className="text-sm text-muted-foreground">No historical matches found for current live prices yet.</p>
+        )}
+        {hasData && (
+          <MobileSortControl
+            options={[
+              { key: "current", label: `Current (${priceUnitLabel(priceUnit)})` },
+              { key: "predicted", label: `Predicted (${priceUnitLabel(priceUnit)})` },
+              { key: "change", label: "Change" },
+            ]}
+            sort={sort}
+            onSort={handleSort}
+          />
         )}
         {hasData && (
           // -mx-4 cancels CardContent's own px-4, so these rows bleed out to the Card's edge

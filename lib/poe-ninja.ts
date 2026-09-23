@@ -361,6 +361,31 @@ export function itemPriceKey(name: string, variant?: string | null): string {
   return normalizedVariant ? `${name}::${normalizedVariant}` : name;
 }
 
+/** Inverse of itemPriceKey - e.g. for a per-item detail page URL segment (see app/item/[category]/[key]/page.tsx),
+ *  which needs to recover the original name/variant it encoded. Assumes "::" never occurs naturally
+ *  in a real item name, same assumption itemPriceKey's own construction already relies on. */
+export function parseItemPriceKey(key: string): { name: string; variant?: string } {
+  const separatorIndex = key.indexOf("::");
+  if (separatorIndex === -1) return { name: key };
+  return { name: key.slice(0, separatorIndex), variant: key.slice(separatorIndex + 2) };
+}
+
+/** Builds the [key] URL segment for the per-item detail page (app/item/[category]/[key]/page.tsx) -
+ *  spaces become "_" (same substitution poeWikiUrl already uses) BEFORE encoding, so a real space
+ *  reads as an underscore in the URL bar instead of "%20"; encodeURIComponent leaves "_" itself
+ *  untouched (it's in the unreserved set alongside letters/digits/-/./~), so it still correctly
+ *  percent-encodes any other special character (apostrophes, "::", ...) around it. */
+export function itemDetailUrlKey(name: string, variant?: string): string {
+  return encodeURIComponent(itemPriceKey(name, variant).replace(/ /g, "_"));
+}
+
+/** Inverse of itemDetailUrlKey - assumes no real item/currency name ever contains a literal
+ *  underscore (true of every name in this app today), the same assumption parseItemPriceKey's own
+ *  "::" separator relies on. */
+export function parseItemDetailUrlKey(key: string): { name: string; variant?: string } {
+  return parseItemPriceKey(decodeURIComponent(key).replace(/_/g, " "));
+}
+
 /**
  * Display name for an item + its variant (see effectiveVariant/growth-ratios.ts's equivalent SQL,
  * which fold link count into the variant the same way). "1-4 links" is omitted here - it's still
@@ -372,4 +397,18 @@ export function formatItemDisplayName(name: string, variant?: string | null): st
   if (!variant) return name;
   const shownParts = variant.split(", ").filter((part) => part !== "1-4 links");
   return shownParts.length > 0 ? `${name} (${shownParts.join(", ")})` : name;
+}
+
+/** poewiki.net (independently hosted MediaWiki, NOT Fandom - verified live: its own domain, own
+ *  Cloudflare, no fandom.com anywhere in the response) titles an item page after its plain
+ *  in-game name with spaces replaced by underscores - no lookup table needed, this is a pure,
+ *  instant, local string transform, not a live query. encodeURIComponent leaves an apostrophe
+ *  un-escaped (it's in its unreserved-character set), matching how these URLs actually look on the
+ *  wiki itself (e.g. "Doedre's_Malevolence") - verified live against a handful of real item names,
+ *  including one with an apostrophe. Not guaranteed for every single name (a rare disambiguation
+ *  page could differ), but right for the vast majority - a best-effort convenience link, not a
+ *  guaranteed-correct one. Takes the plain base name (historyName), never the variant-suffixed
+ *  display name - the wiki article is for the item itself, not one specific quality/link roll. */
+export function poeWikiUrl(name: string): string {
+  return `https://www.poewiki.net/wiki/${encodeURIComponent(name.replace(/ /g, "_"))}`;
 }

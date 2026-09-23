@@ -147,12 +147,50 @@ function buildSuggestion(
   };
 }
 
+// Short-lived cache, keyed on every input this function's result actually depends on - this is the
+// expensive live-fallback path (a full DB growth-ratio scan across every item plus the learned
+// model, run cross-sectionally) that app/api/flip-suggestions/route.ts only reaches when the daily
+// precomputed file is missing/stale, but the per-item detail page (components/item-detail-panel.tsx)
+// hits it directly for its "predicted curve" fetch AND its own live-suggestions fallback on every
+// mount, alongside sibling requests (divination-flips, item-detail) that also do their own heavy DB
+// work. Without this, several of those concurrent, uncached, DB-heavy calls landing at once could
+// serialize behind each other for tens of seconds - reported as "extreme lag navigating" even to
+// unrelated pages, since a slow synchronous DB query blocks the whole single-threaded dev server, not
+// just the one request that triggered it. TTL is short since this depends on live, moving prices.
+const CACHE_TTL_MS = 60 * 1000;
+interface CacheEntry {
+  promise: Promise<FlipSuggestion[]>;
+  expiresAt: number;
+}
+const cache = new Map<string, CacheEntry>();
+
 /**
  * Ranks items/currency by projected growth from the current league day over the given duration.
  * Returns every matching row (no top-N cap) - the UI paginates and category-filters client-side,
  * and capping here would silently hide whole categories whenever one category's ratios dominate.
  */
 export async function getFlipSuggestions(
+  league: string,
+  currentDay: number,
+  durationDays: number
+): Promise<FlipSuggestion[]> {
+  const key = `${league}:${currentDay}:${durationDays}`;
+  const cached = cache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+  // Cached as the in-flight PROMISE, not just its resolved value - concurrent callers within the
+  // same tick (exactly what the item-detail page's simultaneous fetches produce) share this one
+  // computation instead of each independently kicking off their own, which plain "cache the result
+  // after it resolves" would still allow (every concurrent caller would see a cache miss before the
+  // first one finishes). A rejected promise is removed immediately so a transient failure doesn't
+  // poison the cache for the rest of its TTL.
+  const promise = computeFlipSuggestions(league, currentDay, durationDays);
+  cache.set(key, { promise, expiresAt: Date.now() + CACHE_TTL_MS });
+  promise.catch(() => cache.delete(key));
+  return promise;
+}
+
+async function computeFlipSuggestions(
   league: string,
   currentDay: number,
   durationDays: number
@@ -235,42 +273,4 @@ export interface PredictionCurvePoint {
   durationDays: number;
   predictedChaosValue: number | null;
   predictedDivineValue: number | null;
-}
-
-/**
- * One item's predicted price at every duration from CURVE_MIN_DURATION_DAYS to
- * CURVE_MAX_DURATION_DAYS - the live fallback for lib/precomputed-predictions.ts's
- * getPrecomputedPredictionCurve, used when today's precomputed file is missing or stale. Drawn on
- * the price history chart as a detailed day-by-day forecast line instead of a single straight
- * segment (see components/price-history-chart.tsx's predictedCurve prop).
- *
- * Deliberately reruns the full getFlipSuggestions() batch once per duration rather than a cheaper
- * single-item path - there isn't one (the model's features are cross-sectional, scored against every
- * other live-priced item at once), and this only ever runs on an explicit row expand, not on every
- * page load, so the cost is bounded to "one click, when the precomputed file happens to be stale" -
- * see scripts/precompute-predictions.ts's own module doc for the same 30-calls-is-fine reasoning.
- */
-export async function getLiveFlipSuggestionCurve(
-  league: string,
-  currentDay: number,
-  category: "currency" | "item",
-  historyName: string,
-  variant: string | undefined
-): Promise<PredictionCurvePoint[]> {
-  const durations: number[] = [];
-  for (let d = CURVE_MIN_DURATION_DAYS; d <= CURVE_MAX_DURATION_DAYS; d++) durations.push(d);
-
-  return Promise.all(
-    durations.map(async (durationDays) => {
-      const suggestions = await getFlipSuggestions(league, currentDay, durationDays);
-      const match = suggestions.find(
-        (s) => s.category === category && s.historyName === historyName && (s.variant ?? "") === (variant ?? "")
-      );
-      return {
-        durationDays,
-        predictedChaosValue: match?.predictedChaosValue ?? null,
-        predictedDivineValue: match?.predictedDivineValue ?? null,
-      };
-    })
-  );
 }

@@ -31,14 +31,22 @@ schedule or a promise - just a running list to revisit. Roughly ordered by impor
 - `components/app-header.tsx`'s nav row now wraps onto multiple lines on a narrow screen instead of
   silently overflowing the whole page horizontally (it only had `flex-wrap` on the outer `<header>`,
   not the row of nav buttons itself).
+- **Done for Currency Exchange Flip and Divination Card Flips too**: both now use the same
+  `ItemHistoryCard` mobile-card treatment, built exactly as predicted below - their own
+  `fields`/`rightFields` arrays, no changes needed to the shared expand/fetch/chart machinery. Both
+  pass `expandable={false}` (a new prop on `ItemHistoryRow`/`ItemHistoryCard`), since they rank off
+  the current market snapshot rather than a historical trend and so have no chart to expand at all.
+- **Mobile sorting**: the desktop table's `SortableHeader` column-click-to-sort disappeared entirely
+  below `sm` along with the table itself, leaving no way to change sort order on mobile at all. A new
+  `components/mobile-sort-control.tsx` (a `<Select>` for the column + a direction-toggle button,
+  styled like `SortableHeader`'s own icon) sits above the card list on all four tables, driving each
+  panel's existing `handleSort`/`toggleSort` exactly like a desktop header click would.
 
-**Still open**: Currency Exchange Flip, Divination Card Flips, and the current league tester still
-render their tables via the plain `components/ui/table.tsx` `Table` (a bare `overflow-x-auto` div)
-with no mobile-card equivalent - `ItemHistoryCard` and the `useItemHistoryExpand` hook it shares
-with `ItemHistoryRow` (`components/item-history-row.tsx`) were written to be reusable, so extending
-this to the remaining panels should mostly be a matter of building each one's own
-`fields`/`rightFields` array the way the two done panels do, not re-solving the underlying
-expand/fetch, chart-legibility, or touch-interaction problems again.
+**Still open**: the current league tester still renders its table via the plain
+`components/ui/table.tsx` `Table` (a bare `overflow-x-auto` div) with no mobile-card equivalent -
+`ItemHistoryCard` and the `useItemHistoryExpand` hook it shares with `ItemHistoryRow`
+(`components/item-history-row.tsx`) were written to be reusable, so this should mostly be a matter
+of building its own `fields`/`rightFields` array the way every other panel now does.
 
 ## 2. Brand-new items (this league or a future one) aren't picked up automatically
 
@@ -75,39 +83,52 @@ someone notices and does the manual regeneration step. Known spots:
   than an item with several past leagues' history behind it, for as long as it takes for enough
   past-league data to accumulate.
 
-**Possible directions, not decided on yet:**
-- A single `npm run check-new-items` (or similar) that cross-references a fresh RePoE pull against
-  what's already baked into each of the generated files above, and reports what's missing in one
-  pass instead of needing to remember to re-run several separate generators after every league
-  launch.
-- Extending `scripts/check-current-league.ts` (or its automated sibling,
-  `scripts/sync-current-league.ts` / `.github/workflows/check-current-league-swap.yml`) to also flag
-  "poe.ninja is returning names that don't exist in FAUSTUS_NAME_TO_ID/DIVINATION_CARDS" as part of
-  the same league-swap check, since a league swap is exactly when this problem is most likely to
-  have just gotten worse.
+**NOT in this category** - `components/item-detail-panel.tsx`'s poewiki link (`poeWikiUrl()`) is a
+pure runtime string transform (name -> `https://www.poewiki.net/wiki/Name_With_Underscores`), not a
+stored mapping generated at a point in time - it needs no regeneration ever, a brand-new item's link
+"just works" the moment the item exists, same as any other plain formatting helper in this app. Worth
+noting explicitly here so a future pass over this list doesn't mistake it for another generator to
+wire into the check below.
 
-## 3. A dedicated per-item detail page
+**Recommended direction - a dedicated GitHub Action**: extend the existing "detect + open a PR,
+never push straight to master" pattern `.github/workflows/check-current-league-swap.yml` /
+`scripts/sync-current-league.ts` already established for the league-swap problem (see **Known
+limitations** in the README) to this one too, rather than a fully separate mechanism:
+1. A new `scripts/check-new-items.ts` pulls a fresh RePoE `base_items.json` (same source
+   `scripts/generate-faustus-mapping.ts`/`generate-divination-cards.ts` already trust) and
+   cross-references its names against `FAUSTUS_NAME_TO_ID` and `lib/divination-cards.ts`'s
+   `DIVINATION_CARDS`, reporting any RePoE name that isn't in either generated file yet (scoped to
+   items RePoE marks as actually tradeable/a real divination card - not every internal/legacy
+   entry). Also worth a rougher pass against `CURRENCY_OVERVIEW_TYPES`/`ITEM_OVERVIEW_TYPES`
+   (`lib/poe-ninja.ts`) - a wholly new poe.ninja category bucket, not just a new item, would show up
+   as a name RePoE has that resolves to a "type" this app doesn't recognize at all.
+2. A new (or extended) daily/weekly-scheduled workflow runs it and, on any finding, opens a PR that
+   has already re-run `scripts/generate-faustus-mapping.ts`/`generate-divination-cards.ts` (so the
+   PR contains the actual fix, not just a report) - same "automatic detection, human merge" split
+   `check-current-league-swap.yml` already uses, for the same reason: these feed live economy data,
+   so a bad RePoE pull or an unexpected schema change should get a human's eyes before it ships.
+3. `lib/faustus-gold.ts`'s hand-transcribed gold costs and `lib/category-reliability.ts`'s
+   display-order lists stay a plain, callable-out-by-name item in that same PR body (a gold cost or
+   a display tier isn't mechanically derivable from RePoE the way an id/stack-size/reward is) rather
+   than something the Action tries to fill in itself.
 
-Every item currently only gets a small inline expand (`components/item-history-row.tsx`) inside
-whichever table it's already ranked in. Add a real page (e.g. `app/item/[name]/page.tsx`, keyed on
-name + variant/links the same way `lib/poe-ninja.ts`'s `itemPriceKey()` already disambiguates
-them) that a link from each table row navigates to, with:
+## 3. ~~A dedicated per-item detail page~~ - Done
 
-- Its own **Days ahead** input + slider, same pattern as `flip-suggestions-panel.tsx`'s (reuse
-  `lib/predicted-suggestion.ts`'s client-side reconstruction where possible, so dragging it doesn't
-  need a network round trip per value, same as the main table already achieves).
-- The full `components/price-history-chart.tsx`, same as today's inline expand.
-- EVERY metric available for that item, not just what the summary table row currently shows:
-  poe.ninja side - `chaosValue`/`divineValue`, `sellerCount`, the raw 7-point sparkline/momentum
-  inputs (`lib/prediction-features.ts`), category and (for currency) which overview type it came
-  from; Faustus side (`lib/faustus.ts`) - `buyChaosValue`/`sellChaosValue`, `spreadPercent`,
-  `volumeChaos`/`volumeItem`, `itemStock`/`chaosStock`, `goldCost`
-  (`lib/faustus-gold.ts`), and the liquidity tier those feed (`lib/liquidity.ts`); the confidence
-  score's own inputs (`lib/confidence.ts`), not just its final tier/badge, since the page has room
-  for it where a table row doesn't.
-- Needs a URL-safe encoding for a name+variant that can contain spaces, apostrophes, and (for a
-  divination card reward or a linked item) a comma - same disambiguation `itemPriceKey()` already
-  does internally, just needs to survive a round trip through a URL.
+`app/item/[category]/[key]/page.tsx` + `components/item-detail-panel.tsx`, `key` being
+`encodeURIComponent(itemPriceKey(historyName, variant))` (`lib/poe-ninja.ts`'s new inverse
+`parseItemPriceKey`, since Next.js 16 does NOT auto-decode a dynamic segment - verified live, the
+route explicitly `decodeURIComponent`s it). Has its own "Days ahead" slider reusing
+`lib/predicted-suggestion.ts`'s client-side reconstruction (zero network round-trips within the
+precomputed 1-30 range, same as the main table, confirmed with Playwright), the same
+`components/price-history-chart.tsx` given a full page column instead of a table cell, and every
+metric the item has: current/predicted price, confidence + `describeConfidence()`'s full text
+(not just the badge), momentum (1/3/6-day %, volatility, acceleration - `lib/prediction-features.ts`'s
+own `momentumFromPath`/`sparkToLogPath` applied to the raw sparkline, via new `lib/item-detail.ts` +
+`app/api/item-detail/route.ts`), and the full Faustus spread/volume/stock/gold cost/liquidity for
+Faustus-tradeable currency. Linked from every table row: the item's **name** in both
+`ItemHistoryRow` and `ItemHistoryCard` is now a `next/link` (`stopPropagation`'d so it doesn't also
+fire the row's own click-to-expand) - a deliberate second, visually distinct action from the row's
+existing inline-preview click, appearing on every page that already uses these shared components.
 
 ## 4. Daily price-history job has no way to recover a missed day
 
@@ -136,18 +157,37 @@ just needs to run automatically as part of the daily job instead of by hand.
    reconstruction, not a direct reading). A gap OLDER than the sparkline can reach is unrecoverable
    - the job should just log that plainly rather than silently leaving the hole unexplained.
 
-## 5. Expanding a row's chart can be slow to load
+## 5. ~~Expanding a row's chart can be slow to load~~ - Root cause fixed
 
-`lib/current-league-history.ts`'s cold-cache path fetches EVERY month's currency + items CSV for
-the whole league from the `data` branch (2-minute TTL, shortened from 20 to pick up freshly
-published daily snapshots faster - see the README's **Daily precomputed data** section) the first
-time any chart needs the current league's history after a cache expiry, and
-`lib/precomputed-predictions.ts`'s equivalent file is a similar-shaped cold-start cost. Combined with `app/api/flip-suggestion-curve`'s live fallback path
-(a full `getFlipSuggestions` re-run per duration, 1-30, when the precomputed curve isn't usable),
-the FIRST row expansion after a cache expiry can end up waiting on several separate slow paths at
-once - worth profiling for real (which of these actually dominates in practice) rather than
-guessing, then deciding whether it's a caching-window tweak, a prefetch-on-page-load, or something
-more structural.
+Traced to two concrete bugs, both fixed, not just a caching-window tweak:
+
+1. `lib/flip-suggestions.ts`'s `getFlipSuggestions` and `lib/divination-flips.ts`'s
+   `getDivinationFlips` had no caching or in-flight-request coalescing at all - every call re-ran a
+   full cross-sectional DB growth-ratio scan plus the learned model from scratch, and concurrent
+   callers (e.g. the per-item detail page's several simultaneous fetches) each independently redid
+   the same work. Added the short-TTL cache + promise-coalescing pattern already used in
+   `lib/faustus.ts`/`lib/precomputed-predictions.ts`. Also added `cachedJsonResponse`
+   (`lib/api-response.ts`) to cache the SERIALIZED (stringified + gzipped) response bytes for the
+   heaviest/most-repeated routes, since `JSON.stringify`+gzip of a multi-MB payload was itself a
+   real, synchronous, main-thread-blocking cost paid on every request regardless of data-level
+   caching - see item 7 below for the (still open, different) CDN-level version of this idea.
+2. The actual severe one: `app/api/flip-suggestion-curve`'s live fallback (`getLiveFlipSuggestionCurve`)
+   reran that same full-catalog computation once per duration (30 durations = 30x a normal request's
+   cost) whenever an item wasn't in today's precomputed file - which turned out to be common (a
+   divination card's category migration mismatch, or just a name that simply isn't a live-priced
+   candidate that day - see item 2's "not every currency/item has a live price right now" case),
+   not the rare "file is briefly stale" edge case it was designed for. This could stall the WHOLE
+   app (not just the one request) for tens of seconds to over a minute, reported live as "fans
+   spinning up, can't navigate anywhere until it finishes." Removed the live fallback outright -
+   an item missing from the precomputed file just means no detailed curve; `PriceHistoryChart`
+   already draws its plain two-point line (today's price to the one selected duration's own
+   prediction) when `predictedCurve` is empty, so this is a graceful "less detail," not a broken
+   chart. Deleted the now-unused `getLiveFlipSuggestionCurve`.
+
+Verified with a fresh server restart + 318 unique item detail pages fetched cold across three
+different tables, plus a repeated-visit test on four previously-problematic items crossing the
+cache TTL boundary multiple times over ~2.3 minutes - stayed under 700ms throughout, no
+degradation over time.
 
 ## 6. Automate retraining the model when a new league starts
 
@@ -163,13 +203,16 @@ the MECHANICAL half of this (kicking off `ml:export-features`/`fit_production.py
 league, rather than a fully scheduled/unattended run) is worth exploring separately from the
 "should this league count at all" judgment call, which should probably stay manual either way.
 
-## 7. Cache the precomputed-predictions API response
+## 7. Cache the precomputed-predictions API response at the CDN, not just in-memory
 
-`app/api/flip-suggestions/precomputed/route.ts` sets no `Cache-Control` header at all, and
-`lib/api-response.ts`'s `jsonResponse` gzip-compresses the payload fresh on every single request,
-invoking the Vercel Function from scratch each time - even though the underlying file
+Item 5 added an in-process cache (`cachedJsonResponse`, `lib/api-response.ts`) that skips redoing
+the stringify/gzip work within one warm server instance, which fixed the immediate stalling bug -
+but `app/api/flip-suggestions/precomputed/route.ts` still sets no `Cache-Control` header at all, so
+every visitor still invokes the Vercel Function at least once (a cold instance, or Vercel routing to
+a different instance than the one holding the in-memory cache), even though the underlying file
 (`predictions.json`) only actually changes once a day, whenever `scripts/precompute-predictions.ts`
-runs. Confirmed against Vercel's own current docs, not assumed:
+runs. This is the still-open, complementary CDN-level version of the same idea. Confirmed against
+Vercel's own current docs, not assumed:
 
 - Adding `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<window>` (a short TTL,
   matching this app's other in-memory caches' 2 minutes, would be a reasonable start) lets Vercel's
@@ -216,3 +259,25 @@ Not decided yet whether to do this at all, or at 60 vs 90. If it does happen, wo
 whether shipping the whole file once still makes sense at that size, or whether it's time to only
 ship what's actually needed (e.g. paginating/lazy-loading durations beyond a smaller always-fetched
 reactive range) instead of scaling the current all-at-once design linearly.
+
+## 9. Currency Exchange divine-mode prices are a chaos->divine conversion, not the exchange's own divine quote
+
+`lib/faustus.ts`'s `getFaustusSpreads()` always derives `buyDivineValue`/`sellDivineValue` by
+dividing the chosen chaos-denominated buy/sell (`best.buy`/`best.sell`) by that hour's separately-
+computed Divine/Chaos rate (`divineChaosRate`, itself just `rateFromPair(m, DIVINE_ID, CHAOS_ID)`)
+- see the `buyDivineValue: divineChaosRate ? best.buy / divineChaosRate : undefined` line near the
+end of that function. For an item whose exchange market is picked via its direct pair against Chaos
+Orb (`rateFromPair(m, id, CHAOS_ID)` - the vast majority, "515 of 657" per this file's own module
+doc), this silently discards any direct divine-denominated market GGG's exchange might also have
+open for that same item, in favor of a computed conversion through Divine Orb's own rate. The two
+can legitimately disagree (each pair has its own independent spread/liquidity/rounding), so Divine
+mode on the Currency Exchange Flip page (and this item detail page's own Currency Exchange card) is
+showing a derived number, not what a trader would actually see quoting/filling directly in divines.
+
+Fix direction: when a direct `id` vs `DIVINE_ID` pair exists for the same hour, compute its own
+buy/sell range directly (same `rateFromPair`-style low/high math already used for the `id` vs
+`CHAOS_ID` case) and use THAT for `buyDivineValue`/`sellDivineValue`, falling back to the current
+chaos-conversion approach only when no direct divine pair exists at all for that item that hour -
+mirroring the "prefer direct data, convert only as a last resort" pattern the Divine-pair FALLBACK
+branch (`id` has no chaos pair at all) already uses for the chaos side, just applied to the more
+common case in reverse.

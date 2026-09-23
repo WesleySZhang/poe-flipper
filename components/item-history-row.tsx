@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { activePrice, type PriceUnit } from "@/lib/price-unit";
+import { itemDetailUrlKey, poeWikiUrl } from "@/lib/poe-ninja";
 import type { LeagueSeries } from "@/lib/price-history";
 import type { PredictionCurvePoint } from "@/lib/flip-suggestions";
 
@@ -128,6 +131,11 @@ interface ItemHistoryRowProps {
   colSpan: number;
   /** Every other <TableCell> in the summary row (Category, Current, Predicted, ...), unchanged. */
   children: React.ReactNode;
+  /** Default true. Set false for a page whose ranking isn't trend-based at all (Currency Exchange
+   *  Flip, Divination Card Flips - both price off the current market snapshot, not history), so the
+   *  row is just a static summary: no click-to-expand chart, no chevron, no cursor-pointer/hover
+   *  affordance. The name link and poewiki link are unaffected either way. */
+  expandable?: boolean;
 }
 
 /**
@@ -150,6 +158,7 @@ export function ItemHistoryRow({
   priceUnit,
   colSpan,
   children,
+  expandable = true,
 }: ItemHistoryRowProps) {
   const { expanded, hasExpandedOnce, state, predictedCurve, toggle } = useItemHistoryExpand({
     category,
@@ -166,6 +175,60 @@ export function ItemHistoryRow({
     }
   }
 
+  const nameCell = (
+    <TableCell>
+      <div className="flex max-w-[140px] items-center gap-1 sm:max-w-[200px] lg:max-w-[280px]">
+        {/* A real link to the full per-item detail page (app/item/[category]/[key]/page.tsx) -
+            deliberately distinct from the row's own click-to-expand behavior below: clicking
+            the name navigates away, clicking anywhere else on the row still just expands the
+            inline chart. stopPropagation keeps the row's own onClick from ALSO firing on a
+            name click. No flex-1/min-w-0 here - the link sizes to its own text (up to the
+            truncation cap), not the full cell width, so clicking the empty space next to a
+            short name falls through to the row's own click-to-expand instead of navigating. */}
+        <Link
+          href={`/item/${category}/${itemDetailUrlKey(historyName, variant)}`}
+          onClick={(e) => e.stopPropagation()}
+          className="min-w-0 truncate text-primary hover:overflow-x-auto hover:text-clip hover:underline focus:overflow-x-auto focus:text-clip"
+          title={displayName}
+        >
+          {displayName}
+        </Link>
+        {/* poewiki.net (not Fandom - see poeWikiUrl's own comment) cross-reference, opened in a
+            new tab so it never navigates away from the table; stopPropagation for the same
+            reason as the name link above. */}
+        <a
+          href={poeWikiUrl(historyName)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title="View on poewiki"
+          className="shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <ExternalLink className="size-3" />
+        </a>
+        {/* Purely decorative - NOT wrapped in its own click handler, so tapping it (or the
+            empty space around it) falls through to the row's own click-to-expand like any
+            other non-text part of the cell. Flips to point up while expanded. Omitted entirely
+            when expandable is false - nothing to indicate. */}
+        {expandable && (
+          <ChevronDown
+            className="size-3.5 shrink-0 text-muted-foreground transition-transform"
+            style={{ transform: expanded ? "rotate(180deg)" : undefined }}
+          />
+        )}
+      </div>
+    </TableCell>
+  );
+
+  if (!expandable) {
+    return (
+      <TableRow>
+        {nameCell}
+        {children}
+      </TableRow>
+    );
+  }
+
   return (
     <>
       {/* The whole row toggles the chart - tabIndex/onKeyDown make it keyboard-reachable
@@ -178,15 +241,7 @@ export function ItemHistoryRow({
         onKeyDown={handleKeyDown}
         className={cn("cursor-pointer", expanded && "bg-muted/50")}
       >
-        <TableCell>
-          <div
-            tabIndex={0}
-            className="max-w-[140px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
-            title={displayName}
-          >
-            {displayName}
-          </div>
-        </TableCell>
+        {nameCell}
         {children}
       </TableRow>
       {/* Always mounted (not gated on hasExpandedOnce) - a CSS transition needs the browser to have

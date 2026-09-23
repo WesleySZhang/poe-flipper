@@ -1,6 +1,11 @@
 import "server-only";
 import type { FlipSuggestion, PredictionCurvePoint } from "./flip-suggestions";
-import { reconstructAllFlipSuggestions, isPrecomputedPredictions, type PrecomputedPredictions } from "./predicted-suggestion";
+import {
+  reconstructAllFlipSuggestions,
+  isPrecomputedPredictions,
+  type PrecomputedItem,
+  type PrecomputedPredictions,
+} from "./predicted-suggestion";
 
 /**
  * Reads today's flip suggestions from a small file a scheduled GitHub Actions job publishes once a
@@ -116,13 +121,22 @@ export async function getPrecomputedPredictionsFile(
 }
 
 /**
- * One item's predicted price at EVERY precomputed duration, straight from the cached file - the fast
- * path for the price history chart's detailed day-by-day forecast line (see
- * components/price-history-chart.tsx's predictedCurve prop and
- * lib/flip-suggestions.ts's getLiveFlipSuggestionCurve for the live fallback this backs off to).
- * Undefined on the same terms as getPrecomputedFlipSuggestions above (stale file, no file, league/day
- * mismatch) or if this specific item isn't in the file at all (e.g. it wasn't priceable at any
- * horizon today - see scripts/precompute-predictions.ts for how that can happen).
+ * One item's predicted price at EVERY precomputed duration, straight from the cached file - the
+ * price history chart's detailed day-by-day forecast line (see components/price-history-chart.tsx's
+ * predictedCurve prop). Undefined on the same terms as getPrecomputedFlipSuggestions above (stale
+ * file, no file, league/day mismatch) or if this specific item isn't in the file at all (e.g. it
+ * wasn't priceable at any horizon today - see scripts/precompute-predictions.ts). There is
+ * deliberately NO live fallback for this one (see app/api/flip-suggestion-curve/route.ts's own
+ * comment) - undefined here just means the chart draws a plain straight line instead of a detailed
+ * curve, not "recompute the whole catalog live," which used to cause multi-minute, CPU-pegging
+ * stalls for the (common, not rare) case of an item simply missing from today's file.
+ *
+ * The item lookup tries the caller's own `category` first, then falls back to matching on
+ * historyName/variant alone - lib/flip-suggestions.ts's own comment on the poe.ninja category
+ * migration (Scarabs/Essences/Fossils/Oils/Omens/Resonators/Tattoos/Delirium Orbs/Divination Cards)
+ * explains why: this file stores each item under whichever category it was ingested as ("item" for
+ * every one of those types), but a divination card's own detail page/table row (Divination Card
+ * Flips, Currency Exchange Flip) always requests category "currency" to match its live price.
  */
 export async function getPrecomputedPredictionCurve(
   league: string,
@@ -133,9 +147,8 @@ export async function getPrecomputedPredictionCurve(
 ): Promise<PredictionCurvePoint[] | undefined> {
   const data = await fetchValidPrecomputed(league, currentDay);
   if (!data) return undefined;
-  const item = data.items.find(
-    (it) => it.category === category && it.historyName === historyName && (it.variant ?? "") === (variant ?? "")
-  );
+  const matches = (it: PrecomputedItem) => it.historyName === historyName && (it.variant ?? "") === (variant ?? "");
+  const item = data.items.find((it) => it.category === category && matches(it)) ?? data.items.find(matches);
   if (!item) return undefined;
 
   return data.durations.map((durationDays, i) => {
