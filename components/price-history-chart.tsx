@@ -374,6 +374,22 @@ export function PriceHistoryChart({
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
   }, []);
+  // On touch, the tooltip deliberately stays up after lifting a finger (see
+  // handleChartPointerDown/onPointerLeave below - a touch pointer fires pointerleave right after
+  // pointerup, which used to erase the tooltip the instant it appeared). That means nothing was
+  // left to ever dismiss it again on a touch device - tapping outside the chart didn't fire any of
+  // this component's own handlers at all. This listens document-wide (only while a tooltip is
+  // actually showing) and clears it the moment a tap/click lands outside the chart's own SVG.
+  useEffect(() => {
+    if (hoverDay === undefined) return;
+    function handlePointerDownOutside(e: PointerEvent) {
+      if (svgRef.current && e.target instanceof Node && !svgRef.current.contains(e.target)) {
+        setHoverDay(undefined);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDownOutside);
+    return () => document.removeEventListener("pointerdown", handlePointerDownOutside);
+  }, [hoverDay]);
   const margin = isMobile ? MOBILE_MARGIN : MARGIN;
   const plotWidth = isMobile ? MOBILE_PLOT_WIDTH : PLOT_WIDTH;
   const plotHeight = isMobile ? MOBILE_PLOT_HEIGHT : PLOT_HEIGHT;
