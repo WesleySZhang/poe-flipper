@@ -27,8 +27,8 @@ const MARGIN = { top: 12, right: 16, bottom: 34, left: 38 };
 // lot more than on a wide desktop table cell, so the same viewBox-unit font size that reads fine on
 // desktop shrinks to illegible real pixels on mobile. Bigger axis text needs a bigger margin to fit
 // without crowding/clipping, hence both are bumped together here.
-const MOBILE_AXIS_FONT_SIZE = 11;
-const MOBILE_MARGIN = { top: 14, right: 14, bottom: 46, left: 50 };
+const MOBILE_AXIS_FONT_SIZE = 15;
+const MOBILE_MARGIN = { top: 16, right: 16, bottom: 60, left: 66 };
 const PLOT_WIDTH = VIEW_WIDTH - MARGIN.left - MARGIN.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - MARGIN.top - MARGIN.bottom;
 const MOBILE_PLOT_WIDTH = VIEW_WIDTH - MOBILE_MARGIN.left - MOBILE_MARGIN.right;
@@ -584,12 +584,28 @@ export function PriceHistoryChart({
   function handleChartPointerDown(e: React.PointerEvent<SVGRectElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
     const day = dayAtClientX(e.clientX);
+    // Touch has no separate "hover" state the way a mouse does - EVERY tap starts as a pointerdown,
+    // so routing it into the same drag-to-zoom start as a mouse click meant a tap could never show
+    // the tooltip at all (see handleChartPointerMove below), and any natural finger wobble during a
+    // tap - just a few real pixels, comfortably past MIN_CHART_DRAG_VIEW_WIDTH at this chart's scale
+    // - re-zoomed the chart instead. Touch instead just shows the tooltip immediately; RangeBrush
+    // below the chart is this chart's dedicated zoom control on a touch device.
+    if (e.pointerType === "touch") {
+      setHoverDay(Math.round(day));
+      return;
+    }
     setChartDragStartDay(day);
     setChartDragCurrentDay(day);
   }
 
   function handleChartPointerMove(e: React.PointerEvent<SVGRectElement>) {
     const day = dayAtClientX(e.clientX);
+    if (e.pointerType === "touch") {
+      // Scrub the tooltip along with the finger instead of dragging a zoom selection - see
+      // handleChartPointerDown's own comment.
+      setHoverDay(Math.round(day));
+      return;
+    }
     if (chartDragStartDay !== undefined) {
       setChartDragCurrentDay(day);
     } else {
@@ -811,7 +827,12 @@ export function PriceHistoryChart({
             onPointerDown={handleChartPointerDown}
             onPointerMove={handleChartPointerMove}
             onPointerUp={commitChartDrag}
-            onPointerLeave={() => {
+            onPointerLeave={(e) => {
+              // A touch pointer fires pointerleave right after pointerup (there's no cursor left to
+              // "leave" once the finger lifts) - clearing the tooltip here would erase it the instant
+              // it appeared, before there's any chance to actually read it. Leave it showing until
+              // the next tap moves it (handleChartPointerDown) instead.
+              if (e.pointerType === "touch") return;
               setHoverDay(undefined);
               if (isChartDragging) commitChartDrag();
             }}
