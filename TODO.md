@@ -5,24 +5,29 @@ schedule or a promise - just a running list to revisit. Roughly ordered by impor
 
 ## 1. Better mobile support - no horizontal scrolling for the important stuff
 
-Every table (`components/ui/table.tsx`'s `Table`) wraps in a plain `overflow-x-auto` div, so a
-narrow screen's answer to "too many columns" today is "scroll sideways" rather than reflowing -
-there's already SOME responsive hiding (`flip-suggestions-panel.tsx`'s Category/Exchange Price
-columns and `divination-flips-panel.tsx`'s Stack/Min-Max columns are `hidden ... sm:table-cell`),
-but it's partial, and whatever's hidden is still only reachable by scrolling the table itself, not
-genuinely reflowed into the screen. The expanded chart has the same problem from a different
-angle: `components/price-history-chart.tsx` draws into a fixed `600x240` SVG `viewBox` with a
-small fixed `AXIS_FONT_SIZE` (7) - it scales down to fit a phone-width column fine visually
-(SVG + `aspect-ratio` already handles that part), but the axis labels, legend text, and hover
-tooltip were never checked against an actual small screen for legibility/tap-target size, only
-against desktop widths.
+**Done for the Flip Suggestions page and the chart itself:**
+- Below the `sm` breakpoint, `flip-suggestions-panel.tsx` renders a stacked list of cards
+  (`components/item-history-card.tsx`) instead of the table - every column's value (Current,
+  Predicted, Change, Confidence, Category, Exchange) is still shown, just laid out vertically per
+  item instead of as table columns, so nothing needs horizontal scrolling to read. Tapping a card
+  expands the same chart a table row would.
+- `components/price-history-chart.tsx` now detects a narrow viewport (`matchMedia`) and switches to
+  a bigger axis font size, bigger margins to fit it, and a tighter default zoom window around
+  today/target - verified with Playwright at 390px width that both the card list and the expanded
+  chart (including the Today/Target markers) fit with zero horizontal scrolling. This chart
+  component is shared by every page, so the legibility fix applies everywhere, not just Flip
+  Suggestions.
+- `components/app-header.tsx`'s nav row now wraps onto multiple lines on a narrow screen instead of
+  silently overflowing the whole page horizontally (it only had `flex-wrap` on the outer `<header>`,
+  not the row of nav buttons itself).
 
-Goal per the request: every important number (the table's key columns, the chart's key markers)
-visible on one screen on a phone, without a horizontal scroll being the only way to see it. Needs
-an actual pass with a real narrow viewport (or the `run` skill's Playwright pattern at a phone
-width), not just assuming the existing `hidden sm:table-cell` breakpoints already cover it - they
-were added for a "which columns are worth showing" tradeoff at various desktop widths, not audited
-specifically for a phone.
+**Still open**: Currency Exchange Flip, Divination Card Flips, the Mirage simulator, and the
+current league tester all still render their tables via the plain `components/ui/table.tsx`
+`Table` (a bare `overflow-x-auto` div) with no mobile-card equivalent - `ItemHistoryCard` and the
+`useItemHistoryExpand` hook it shares with `ItemHistoryRow` (`components/item-history-row.tsx`)
+were written to be reusable, so extending this to the other panels should mostly be a matter of
+building each panel's own `fields`/`rightFields` array the way `flip-suggestions-panel.tsx` does,
+not re-solving the underlying expand/fetch or chart-legibility problems again.
 
 ## 2. Brand-new items (this league or a future one) aren't picked up automatically
 
@@ -123,9 +128,10 @@ just needs to run automatically as part of the daily job instead of by hand.
 ## 5. Expanding a row's chart can be slow to load
 
 `lib/current-league-history.ts`'s cold-cache path fetches EVERY month's currency + items CSV for
-the whole league from the `data` branch (20-minute TTL) the first time any chart needs the current
-league's history after a cache expiry, and `lib/precomputed-predictions.ts`'s equivalent file is a
-similar-shaped cold-start cost. Combined with `app/api/flip-suggestion-curve`'s live fallback path
+the whole league from the `data` branch (2-minute TTL, shortened from 20 to pick up freshly
+published daily snapshots faster - see the README's **Daily precomputed data** section) the first
+time any chart needs the current league's history after a cache expiry, and
+`lib/precomputed-predictions.ts`'s equivalent file is a similar-shaped cold-start cost. Combined with `app/api/flip-suggestion-curve`'s live fallback path
 (a full `getFlipSuggestions` re-run per duration, 1-30, when the precomputed curve isn't usable),
 the FIRST row expansion after a cache expiry can end up waiting on several separate slow paths at
 once - worth profiling for real (which of these actually dominates in practice) rather than
@@ -154,9 +160,9 @@ invoking the Vercel Function from scratch each time - even though the underlying
 (`predictions.json`) only actually changes once a day, whenever `scripts/precompute-predictions.ts`
 runs. Confirmed against Vercel's own current docs, not assumed:
 
-- Adding `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<window>` (a 20-minute TTL,
-  matching this app's other in-memory caches, would be a reasonable start) lets Vercel's Edge
-  Network serve repeat requests directly from the CDN - the Function isn't invoked at all on a
+- Adding `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<window>` (a short TTL,
+  matching this app's other in-memory caches' 2 minutes, would be a reasonable start) lets Vercel's
+  Edge Network serve repeat requests directly from the CDN - the Function isn't invoked at all on a
   cache hit. Available on every plan including Hobby, not a paid-tier feature.
 - No need to add a `Vary: Accept-Encoding` header by hand - Vercel already includes
   `Accept`/`Accept-Encoding` in its own cache key automatically.

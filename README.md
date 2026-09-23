@@ -47,15 +47,28 @@
   daily precomputed snapshots below rather than the past-league database, which only ever
   holds finished leagues (`lib/current-league-history.ts`) - drawn in the same color as,
   and connecting directly into, the dashed forecast line, so the two read as one continuous
-  "actually happened, then predicted" story instead of two unrelated series. On the Flip
+  "actually happened, then predicted" story instead of two unrelated series. That line
+  always reaches all the way to today even if the daily snapshot for today hasn't landed
+  yet (see **Daily precomputed data** below) - it stitches on today's own already-fetched
+  live price as its last point in that case, so there's never a visible gap between the
+  real history and the forecast regardless of the snapshot job's timing. On the Flip
   Suggestions page this also draws the model's own day-by-day forecast for every
   "Days ahead" value from 1-30, not just whichever one is currently selected, extending
   with one final straight segment past day 30 if the selected duration goes further -
   fetched lazily on row expand (`app/api/flip-suggestion-curve`), from today's precomputed
-  file when possible or a live per-duration rerun otherwise.
+  file when possible or a live per-duration rerun otherwise. The chart's own axis text,
+  margins and default zoom level adapt for a narrow/mobile screen (same fixed SVG
+  `viewBox`, just bigger text and a tighter default window around today/target so it stays
+  legible without pinch-zooming).
 - **Category filters**: tables can be filtered by category - an item's BaseType, or
   "Currency" for every currency row - built from whatever categories are actually
   present in the current results.
+- **Mobile layout**: on a narrow screen, the Flip Suggestions table becomes a stacked list
+  of cards instead (`components/item-history-card.tsx`) - every column's value is still
+  visible, just laid out vertically instead of sideways, so nothing needs horizontal
+  scrolling to read. Tapping a card expands the same price history chart as a table row
+  would. The other pages' tables (Currency Exchange Flip, Divination Card Flips, Mirage
+  simulator, current league tester) don't have this treatment yet - see `TODO.md`.
 - **Currency Exchange Flip** (`/currency_exchange_flip`): a separate, non-predictive
   page showing live buy/sell spreads on GGG's in-game Currency Exchange ("Faustus"),
   for same-day flipping rather than long-range prediction. Includes a liquidity signal
@@ -97,12 +110,14 @@
   per top-level page plus a "Testing" dropdown grouping the Mirage simulator and current
   league tester (opens on hover or click). The current page's own button is highlighted;
   none of the pages carry a description under their title, so the header's height (and so
-  the nav row's position) stays identical everywhere.
+  the nav row's position) stays identical everywhere. The nav row wraps onto multiple
+  lines on a narrow screen rather than overflowing the page horizontally.
 - **Data store**: [DuckDB](https://duckdb.org) (embedded, columnar, great for analytical
   queries over large CSV history) - no external database server required.
 - **Daily precomputed data** (`scripts/precompute-predictions.ts`,
   `scripts/precompute-price-history.ts`): a scheduled GitHub Actions job
-  (`.github/workflows/precompute-predictions.yml`) runs once a day and publishes to this
+  (`.github/workflows/precompute-predictions.yml`, cron `10 0 * * *` - shortly after UTC
+  midnight, taking about 2 minutes end to end) runs once a day and publishes to this
   repo's `data` branch, which is configured (`vercel.json`) to never trigger a Vercel
   deployment. It does two things: (1) runs the learned model once for every "Days ahead"
   value, so a page load reads a ready-made result (`lib/precomputed-predictions.ts`)
@@ -116,7 +131,14 @@
   server so both sides stay in sync) - so its "Days ahead" slider, bounded to the
   precomputed 1-30 day range, updates the table live while being dragged with zero further
   network requests; a separate exact-entry number input allows any value beyond that too,
-  at the cost of a live compute for that one request.
+  at the cost of a live compute for that one request. The app's own notion of "what day of
+  the league is it" (`lib/league-day.ts`'s `currentLeagueDay`) deliberately lags 20 minutes
+  behind the real UTC day rollover, so nothing asks for "today"'s data before this job has
+  had time to actually publish it - see that file's own comment for the reasoning and the
+  timing this is tuned against. Both the precomputed-predictions and current-league-history
+  in-memory fetch caches (`lib/precomputed-predictions.ts`, `lib/current-league-history.ts`)
+  use a short (2-minute) TTL for the same reason: picking up a freshly-published day
+  quickly rather than serving an already-warm instance's stale fetch for longer.
 
 ## Setup
 
