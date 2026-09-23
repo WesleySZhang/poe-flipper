@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
@@ -187,11 +187,13 @@ export function ItemHistoryRow({
                 deliberately distinct from the row's own click-to-expand behavior below: clicking
                 the name navigates away, clicking anywhere else on the row still just expands the
                 inline chart. stopPropagation keeps the row's own onClick from ALSO firing on a
-                name click. */}
+                name click. No flex-1/min-w-0 here - the link sizes to its own text (up to the
+                truncation cap), not the full cell width, so clicking the empty space next to a
+                short name falls through to the row's own click-to-expand instead of navigating. */}
             <Link
               href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
               onClick={(e) => e.stopPropagation()}
-              className="min-w-0 flex-1 truncate text-primary hover:overflow-x-auto hover:text-clip hover:underline focus:overflow-x-auto focus:text-clip"
+              className="min-w-0 truncate text-primary hover:overflow-x-auto hover:text-clip hover:underline focus:overflow-x-auto focus:text-clip"
               title={displayName}
             >
               {displayName}
@@ -209,6 +211,13 @@ export function ItemHistoryRow({
             >
               <ExternalLink className="size-3" />
             </a>
+            {/* Purely decorative - NOT wrapped in its own click handler, so tapping it (or the
+                empty space around it) falls through to the row's own click-to-expand like any
+                other non-text part of the cell. Flips to point up while expanded. */}
+            <ChevronDown
+              className="size-3.5 shrink-0 text-muted-foreground transition-transform"
+              style={{ transform: expanded ? "rotate(180deg)" : undefined }}
+            />
           </div>
         </TableCell>
         {children}

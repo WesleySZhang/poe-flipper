@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { PriceHistoryChart } from "@/components/price-history-chart";
 import { useItemHistoryExpand } from "@/components/item-history-row";
@@ -85,11 +85,14 @@ export function ItemHistoryCard({
       >
         <div className="flex items-center gap-1">
           {/* A real link to the full per-item detail page - see ItemHistoryRow's identical comment
-              for why this is separate from the card's own click-to-expand (stopPropagation below). */}
+              for why this is separate from the card's own click-to-expand (stopPropagation below).
+              No flex-1 - the link sizes to its own text, not the full row width, so tapping the
+              empty space next to a short name falls through to the card's own click-to-expand
+              instead of navigating. */}
           <Link
             href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
             onClick={(e) => e.stopPropagation()}
-            className="min-w-0 flex-1 truncate text-sm font-medium text-primary hover:underline"
+            className="min-w-0 truncate text-sm font-medium text-primary hover:underline"
             title={displayName}
           >
             {displayName}
@@ -106,6 +109,12 @@ export function ItemHistoryCard({
           >
             <ExternalLink className="size-3.5" />
           </a>
+          {/* Purely decorative - not its own click target, so tapping it (or the empty space
+              around it) falls through to the card's own click-to-expand. Flips while expanded. */}
+          <ChevronDown
+            className="size-4 shrink-0 text-muted-foreground transition-transform"
+            style={{ transform: expanded ? "rotate(180deg)" : undefined }}
+          />
         </div>
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1.5">
