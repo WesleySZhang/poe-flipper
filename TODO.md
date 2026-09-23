@@ -75,16 +75,34 @@ someone notices and does the manual regeneration step. Known spots:
   than an item with several past leagues' history behind it, for as long as it takes for enough
   past-league data to accumulate.
 
-**Possible directions, not decided on yet:**
-- A single `npm run check-new-items` (or similar) that cross-references a fresh RePoE pull against
-  what's already baked into each of the generated files above, and reports what's missing in one
-  pass instead of needing to remember to re-run several separate generators after every league
-  launch.
-- Extending `scripts/check-current-league.ts` (or its automated sibling,
-  `scripts/sync-current-league.ts` / `.github/workflows/check-current-league-swap.yml`) to also flag
-  "poe.ninja is returning names that don't exist in FAUSTUS_NAME_TO_ID/DIVINATION_CARDS" as part of
-  the same league-swap check, since a league swap is exactly when this problem is most likely to
-  have just gotten worse.
+**NOT in this category** - `components/item-detail-panel.tsx`'s poewiki link (`poeWikiUrl()`) is a
+pure runtime string transform (name -> `https://www.poewiki.net/wiki/Name_With_Underscores`), not a
+stored mapping generated at a point in time - it needs no regeneration ever, a brand-new item's link
+"just works" the moment the item exists, same as any other plain formatting helper in this app. Worth
+noting explicitly here so a future pass over this list doesn't mistake it for another generator to
+wire into the check below.
+
+**Recommended direction - a dedicated GitHub Action**: extend the existing "detect + open a PR,
+never push straight to master" pattern `.github/workflows/check-current-league-swap.yml` /
+`scripts/sync-current-league.ts` already established for the league-swap problem (see **Known
+limitations** in the README) to this one too, rather than a fully separate mechanism:
+1. A new `scripts/check-new-items.ts` pulls a fresh RePoE `base_items.json` (same source
+   `scripts/generate-faustus-mapping.ts`/`generate-divination-cards.ts` already trust) and
+   cross-references its names against `FAUSTUS_NAME_TO_ID` and `lib/divination-cards.ts`'s
+   `DIVINATION_CARDS`, reporting any RePoE name that isn't in either generated file yet (scoped to
+   items RePoE marks as actually tradeable/a real divination card - not every internal/legacy
+   entry). Also worth a rougher pass against `CURRENCY_OVERVIEW_TYPES`/`ITEM_OVERVIEW_TYPES`
+   (`lib/poe-ninja.ts`) - a wholly new poe.ninja category bucket, not just a new item, would show up
+   as a name RePoE has that resolves to a "type" this app doesn't recognize at all.
+2. A new (or extended) daily/weekly-scheduled workflow runs it and, on any finding, opens a PR that
+   has already re-run `scripts/generate-faustus-mapping.ts`/`generate-divination-cards.ts` (so the
+   PR contains the actual fix, not just a report) - same "automatic detection, human merge" split
+   `check-current-league-swap.yml` already uses, for the same reason: these feed live economy data,
+   so a bad RePoE pull or an unexpected schema change should get a human's eyes before it ships.
+3. `lib/faustus-gold.ts`'s hand-transcribed gold costs and `lib/category-reliability.ts`'s
+   display-order lists stay a plain, callable-out-by-name item in that same PR body (a gold cost or
+   a display tier isn't mechanically derivable from RePoE the way an id/stack-size/reward is) rather
+   than something the Action tries to fill in itself.
 
 ## 3. ~~A dedicated per-item detail page~~ - Done
 
