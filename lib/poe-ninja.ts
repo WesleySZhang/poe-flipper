@@ -370,6 +370,22 @@ export function parseItemPriceKey(key: string): { name: string; variant?: string
   return { name: key.slice(0, separatorIndex), variant: key.slice(separatorIndex + 2) };
 }
 
+/** Builds the [key] URL segment for the per-item detail page (app/item/[category]/[key]/page.tsx) -
+ *  spaces become "_" (same substitution poeWikiUrl already uses) BEFORE encoding, so a real space
+ *  reads as an underscore in the URL bar instead of "%20"; encodeURIComponent leaves "_" itself
+ *  untouched (it's in the unreserved set alongside letters/digits/-/./~), so it still correctly
+ *  percent-encodes any other special character (apostrophes, "::", ...) around it. */
+export function itemDetailUrlKey(name: string, variant?: string): string {
+  return encodeURIComponent(itemPriceKey(name, variant).replace(/ /g, "_"));
+}
+
+/** Inverse of itemDetailUrlKey - assumes no real item/currency name ever contains a literal
+ *  underscore (true of every name in this app today), the same assumption parseItemPriceKey's own
+ *  "::" separator relies on. */
+export function parseItemDetailUrlKey(key: string): { name: string; variant?: string } {
+  return parseItemPriceKey(decodeURIComponent(key).replace(/_/g, " "));
+}
+
 /**
  * Display name for an item + its variant (see effectiveVariant/growth-ratios.ts's equivalent SQL,
  * which fold link count into the variant the same way). "1-4 links" is omitted here - it's still

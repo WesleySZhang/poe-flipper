@@ -5,7 +5,7 @@ import { ChevronDown, ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { PriceHistoryChart } from "@/components/price-history-chart";
 import { useItemHistoryExpand } from "@/components/item-history-row";
-import { itemPriceKey, poeWikiUrl } from "@/lib/poe-ninja";
+import { itemDetailUrlKey, poeWikiUrl } from "@/lib/poe-ninja";
 import type { PriceUnit } from "@/lib/price-unit";
 
 export interface ItemHistoryCardField {
@@ -99,7 +99,7 @@ export function ItemHistoryCard({
               empty space next to a short name falls through to the card's own click-to-expand
               instead of navigating. */}
           <Link
-            href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
+            href={`/item/${category}/${itemDetailUrlKey(historyName, variant)}`}
             onClick={(e) => e.stopPropagation()}
             className="min-w-0 truncate text-sm font-medium text-primary hover:underline"
             title={displayName}

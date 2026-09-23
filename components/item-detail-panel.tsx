@@ -11,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
+import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
 import type { FlipSuggestion, PredictionCurvePoint } from "@/lib/flip-suggestions";
 import type { ItemDetail } from "@/lib/item-detail";
@@ -298,7 +299,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
               <Stat label="Change" value={formatPercentChange(suggestion.avgGrowthRatio, suggestion.avgGrowthRatioDivine, priceUnit)} />
             </>
           )}
-          <Stat label="Category" value={detail?.filterCategory ?? "—"} />
+          <Stat label="Category" value={detail?.filterCategory ? humanizeCategoryName(detail.filterCategory) : "—"} />
           {category === "item" && <Stat label="Sellers listing this" value={detail?.sellerCount?.toString() ?? "—"} />}
         </CardContent>
       </Card>

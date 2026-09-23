@@ -7,7 +7,7 @@ import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { activePrice, type PriceUnit } from "@/lib/price-unit";
-import { itemPriceKey, poeWikiUrl } from "@/lib/poe-ninja";
+import { itemDetailUrlKey, poeWikiUrl } from "@/lib/poe-ninja";
 import type { LeagueSeries } from "@/lib/price-history";
 import type { PredictionCurvePoint } from "@/lib/flip-suggestions";
 
@@ -186,7 +186,7 @@ export function ItemHistoryRow({
             truncation cap), not the full cell width, so clicking the empty space next to a
             short name falls through to the row's own click-to-expand instead of navigating. */}
         <Link
-          href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
+          href={`/item/${category}/${itemDetailUrlKey(historyName, variant)}`}
           onClick={(e) => e.stopPropagation()}
           className="min-w-0 truncate text-primary hover:overflow-x-auto hover:text-clip hover:underline focus:overflow-x-auto focus:text-clip"
           title={displayName}

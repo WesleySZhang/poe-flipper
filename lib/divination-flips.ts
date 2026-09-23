@@ -73,6 +73,21 @@ function weakerTier(a: LiquidityTier, b: LiquidityTier): LiquidityTier {
   return TIER_RANK[a] <= TIER_RANK[b] ? a : b;
 }
 
+// Short-lived cache + in-flight-promise coalescing, same pattern and reasoning as
+// lib/flip-suggestions.ts's own getFlipSuggestions cache: this is called both by
+// app/api/divination-flips/route.ts (the Divination Card Flips table) AND by
+// components/item-detail-panel.tsx (checking whether the current item is a priceable card), so a
+// page that fires both around the same time - or several people/tabs hitting either at once -
+// would otherwise each independently redo the full currency/item-price fetch and per-card matching
+// pass. TTL matches getFlipSuggestions's - live prices move, but not fast enough to need a fresher
+// cache than a minute for this kind of point-in-time page load.
+const CACHE_TTL_MS = 60 * 1000;
+interface CacheEntry {
+  promise: Promise<DivinationFlip[]>;
+  expiresAt: number;
+}
+const cache = new Map<string, CacheEntry>();
+
 /**
  * Finds every divination card currently priced (both the card itself and its reward), ranked by
  * profit percent. Skips a card entirely - rather than fabricating a number - whenever poe.ninja
@@ -81,6 +96,16 @@ function weakerTier(a: LiquidityTier, b: LiquidityTier): LiquidityTier {
  * placeholder like "Axe" or "League-Specific Item" simply never matches a real item name here).
  */
 export async function getDivinationFlips(league: string): Promise<DivinationFlip[]> {
+  const cached = cache.get(league);
+  if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+  const promise = computeDivinationFlips(league);
+  cache.set(league, { promise, expiresAt: Date.now() + CACHE_TTL_MS });
+  promise.catch(() => cache.delete(league));
+  return promise;
+}
+
+async function computeDivinationFlips(league: string): Promise<DivinationFlip[]> {
   const [currencyPrices, itemPrices, faustusSpreads] = await Promise.all([
     getAllCurrentCurrencyPrices(league),
     getAllCurrentItemPrices(league),
