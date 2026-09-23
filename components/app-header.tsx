@@ -49,13 +49,24 @@ export function AppHeader({ title }: { title: string }) {
   const isTestingRoute = TESTING_ROUTES.includes(pathname);
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4">
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      {/* flex-wrap (not a single unbreakable row) - on a narrow phone, five nav destinations plus the
-          theme toggle are wider than the screen; without this the row silently overflowed the page
-          horizontally instead of visibly wrapping, so "seeing the whole header" meant scrolling the
-          entire page sideways (and dragging every other section along with it) rather than just
-          reading a second line of buttons here. */}
+    <header className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+      {/* sm:contents - at sm+ this wrapper disappears from layout entirely, so h1 and the
+          (by-then-hidden) mobile toggle below become direct children of the header's own flex row,
+          restoring the exact single-row "title -- nav -- toggle" desktop layout. Below sm, it's a
+          real flex row of its own: title and the toggle pinned to the top-right corner, right next
+          to it - a fixed, predictable spot instead of wherever the toggle happens to land after the
+          nav row (which wraps independently, see below) breaks onto a second or third line. */}
+      <div className="flex items-center justify-between gap-4 sm:contents">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <div className="sm:hidden">
+          <ThemeToggle />
+        </div>
+      </div>
+      {/* flex-wrap (not a single unbreakable row) - on a narrow phone, four nav destinations are
+          wider than the screen; without this the row silently overflowed the page horizontally
+          instead of visibly wrapping, so "seeing the whole header" meant scrolling the entire page
+          sideways (and dragging every other section along with it) rather than just reading a
+          second line of buttons here. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-4">
         <NavButton href="/" active={pathname === "/"}>
           Flip Suggestions
@@ -89,7 +100,13 @@ export function AppHeader({ title }: { title: string }) {
             <DropdownMenuItem render={<Link href="/current-league-tester">League tester</Link>} />
           </DropdownMenuContent>
         </DropdownMenu>
-        <ThemeToggle />
+        {/* Hidden below sm - the mobile-only instance above (pinned next to the title) takes over
+            there instead. Both are just <ThemeToggle> - it reads/writes the same shared theme
+            context either way, so having two mounted instances (only one ever visible at a time) is
+            safe. */}
+        <div className="hidden sm:block">
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );
