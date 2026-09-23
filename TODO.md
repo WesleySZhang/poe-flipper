@@ -86,28 +86,23 @@ someone notices and does the manual regeneration step. Known spots:
   the same league-swap check, since a league swap is exactly when this problem is most likely to
   have just gotten worse.
 
-## 3. A dedicated per-item detail page
+## 3. ~~A dedicated per-item detail page~~ - Done
 
-Every item currently only gets a small inline expand (`components/item-history-row.tsx`) inside
-whichever table it's already ranked in. Add a real page (e.g. `app/item/[name]/page.tsx`, keyed on
-name + variant/links the same way `lib/poe-ninja.ts`'s `itemPriceKey()` already disambiguates
-them) that a link from each table row navigates to, with:
-
-- Its own **Days ahead** input + slider, same pattern as `flip-suggestions-panel.tsx`'s (reuse
-  `lib/predicted-suggestion.ts`'s client-side reconstruction where possible, so dragging it doesn't
-  need a network round trip per value, same as the main table already achieves).
-- The full `components/price-history-chart.tsx`, same as today's inline expand.
-- EVERY metric available for that item, not just what the summary table row currently shows:
-  poe.ninja side - `chaosValue`/`divineValue`, `sellerCount`, the raw 7-point sparkline/momentum
-  inputs (`lib/prediction-features.ts`), category and (for currency) which overview type it came
-  from; Faustus side (`lib/faustus.ts`) - `buyChaosValue`/`sellChaosValue`, `spreadPercent`,
-  `volumeChaos`/`volumeItem`, `itemStock`/`chaosStock`, `goldCost`
-  (`lib/faustus-gold.ts`), and the liquidity tier those feed (`lib/liquidity.ts`); the confidence
-  score's own inputs (`lib/confidence.ts`), not just its final tier/badge, since the page has room
-  for it where a table row doesn't.
-- Needs a URL-safe encoding for a name+variant that can contain spaces, apostrophes, and (for a
-  divination card reward or a linked item) a comma - same disambiguation `itemPriceKey()` already
-  does internally, just needs to survive a round trip through a URL.
+`app/item/[category]/[key]/page.tsx` + `components/item-detail-panel.tsx`, `key` being
+`encodeURIComponent(itemPriceKey(historyName, variant))` (`lib/poe-ninja.ts`'s new inverse
+`parseItemPriceKey`, since Next.js 16 does NOT auto-decode a dynamic segment - verified live, the
+route explicitly `decodeURIComponent`s it). Has its own "Days ahead" slider reusing
+`lib/predicted-suggestion.ts`'s client-side reconstruction (zero network round-trips within the
+precomputed 1-30 range, same as the main table, confirmed with Playwright), the same
+`components/price-history-chart.tsx` given a full page column instead of a table cell, and every
+metric the item has: current/predicted price, confidence + `describeConfidence()`'s full text
+(not just the badge), momentum (1/3/6-day %, volatility, acceleration - `lib/prediction-features.ts`'s
+own `momentumFromPath`/`sparkToLogPath` applied to the raw sparkline, via new `lib/item-detail.ts` +
+`app/api/item-detail/route.ts`), and the full Faustus spread/volume/stock/gold cost/liquidity for
+Faustus-tradeable currency. Linked from every table row: the item's **name** in both
+`ItemHistoryRow` and `ItemHistoryCard` is now a `next/link` (`stopPropagation`'d so it doesn't also
+fire the row's own click-to-expand) - a deliberate second, visually distinct action from the row's
+existing inline-preview click, appearing on every page that already uses these shared components.
 
 ## 4. Daily price-history job has no way to recover a missed day
 
