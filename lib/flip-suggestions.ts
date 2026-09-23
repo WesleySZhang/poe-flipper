@@ -301,9 +301,13 @@ export async function getLiveFlipSuggestionCurve(
   return Promise.all(
     durations.map(async (durationDays) => {
       const suggestions = await getFlipSuggestions(league, currentDay, durationDays);
-      const match = suggestions.find(
-        (s) => s.category === category && s.historyName === historyName && (s.variant ?? "") === (variant ?? "")
-      );
+      // Exact category match first, then historyName/variant alone - same fallback and reasoning as
+      // lib/precomputed-predictions.ts's getPrecomputedPredictionCurve (a migrated type - Scarabs,
+      // Divination Cards, ... - is filed under category "item" here but requested as "currency").
+      const match =
+        suggestions.find(
+          (s) => s.category === category && s.historyName === historyName && (s.variant ?? "") === (variant ?? "")
+        ) ?? suggestions.find((s) => s.historyName === historyName && (s.variant ?? "") === (variant ?? ""));
       return {
         durationDays,
         predictedChaosValue: match?.predictedChaosValue ?? null,

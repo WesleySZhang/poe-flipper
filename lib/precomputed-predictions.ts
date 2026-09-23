@@ -1,6 +1,11 @@
 import "server-only";
 import type { FlipSuggestion, PredictionCurvePoint } from "./flip-suggestions";
-import { reconstructAllFlipSuggestions, isPrecomputedPredictions, type PrecomputedPredictions } from "./predicted-suggestion";
+import {
+  reconstructAllFlipSuggestions,
+  isPrecomputedPredictions,
+  type PrecomputedItem,
+  type PrecomputedPredictions,
+} from "./predicted-suggestion";
 
 /**
  * Reads today's flip suggestions from a small file a scheduled GitHub Actions job publishes once a
@@ -123,6 +128,19 @@ export async function getPrecomputedPredictionsFile(
  * Undefined on the same terms as getPrecomputedFlipSuggestions above (stale file, no file, league/day
  * mismatch) or if this specific item isn't in the file at all (e.g. it wasn't priceable at any
  * horizon today - see scripts/precompute-predictions.ts for how that can happen).
+ *
+ * The item lookup tries the caller's own `category` first, then falls back to matching on
+ * historyName/variant alone - lib/flip-suggestions.ts's own comment on the poe.ninja category
+ * migration (Scarabs/Essences/Fossils/Oils/Omens/Resonators/Tattoos/Delirium Orbs/Divination Cards)
+ * explains why: this file stores each item under whichever category it was ingested as ("item" for
+ * every one of those types), but a divination card's own detail page/table row (Divination Card
+ * Flips, Currency Exchange Flip) always requests category "currency" to match its live price. Before
+ * this fallback, that exact-match `.find()` NEVER matched for any of those items, so this always
+ * returned undefined here - not just a missed fast path, but the actual severe bug: the caller
+ * (app/api/flip-suggestion-curve/route.ts) then fell all the way to getLiveFlipSuggestionCurve,
+ * which reruns the full cross-sectional prediction for the ENTIRE catalog once per duration (30
+ * durations, so 30x the normal per-request cost) - EVERY single time ANY divination card's detail
+ * page loaded, which is exactly the "whole app frozen, fans spinning" symptom reported live.
  */
 export async function getPrecomputedPredictionCurve(
   league: string,
@@ -133,9 +151,8 @@ export async function getPrecomputedPredictionCurve(
 ): Promise<PredictionCurvePoint[] | undefined> {
   const data = await fetchValidPrecomputed(league, currentDay);
   if (!data) return undefined;
-  const item = data.items.find(
-    (it) => it.category === category && it.historyName === historyName && (it.variant ?? "") === (variant ?? "")
-  );
+  const matches = (it: PrecomputedItem) => it.historyName === historyName && (it.variant ?? "") === (variant ?? "");
+  const item = data.items.find((it) => it.category === category && matches(it)) ?? data.items.find(matches);
   if (!item) return undefined;
 
   return data.durations.map((durationDays, i) => {
