@@ -55,8 +55,13 @@
   Suggestions page this also draws the model's own day-by-day forecast for every
   "Days ahead" value from 1-30, not just whichever one is currently selected, extending
   with one final straight segment past day 30 if the selected duration goes further -
-  fetched lazily on row expand (`app/api/flip-suggestion-curve`), from today's precomputed
-  file when possible or a live per-duration rerun otherwise. The chart's own axis text,
+  fetched lazily on row expand (`app/api/flip-suggestion-curve`), straight from today's
+  precomputed file. Deliberately no live fallback for an item missing from that file (an
+  earlier version reran the full cross-sectional model once per duration - 30 full
+  recomputes - which turned out to be a common, not rare, case and could stall the whole
+  app for tens of seconds under load): a missing/stale file or an item absent from it just
+  means no detailed curve, and the chart already draws its plain two-point line (today's
+  price to the one selected duration's own prediction) in that case. The chart's own axis text,
   margins and default zoom level adapt for a narrow/mobile screen (same fixed SVG
   `viewBox`, just bigger text and a tighter default window around today/target so it stays
   legible without pinch-zooming). On a touch device, tapping the chart always shows/moves
@@ -67,27 +72,41 @@
   every item's name in a table (`ItemHistoryRow`/`ItemHistoryCard`) links here - a
   deliberate second action separate from the row's own click-to-expand, so clicking the
   name navigates while clicking elsewhere on the row still just opens the inline preview.
-  Has its own "Days ahead" slider (reusing the same client-side precomputed reconstruction
-  the main table uses, so it's just as instant) and the same price history chart given a
-  full page column instead of a table cell, plus every metric the app has for that item:
-  the confidence tier's full narrative (not just the badge), 1/3/6-day price momentum
+  URL segments use `_` for spaces (`itemDetailUrlKey`/`parseItemDetailUrlKey` in
+  `lib/poe-ninja.ts`) rather than a raw `%20`. Has its own "Days ahead" slider (reusing the
+  same client-side precomputed reconstruction the main table uses, so it's just as
+  instant); on desktop the price history chart takes the left 70% of the page below the
+  slider and Overview, with every other card (Historical performance, Recent momentum,
+  Currency Exchange, Divination Card Flip) stacked in the remaining 30% on the right,
+  falling back to a single full-width column on mobile. Shows 1/3/6-day price momentum
   derived from the same sparkline inputs the learned model itself sees
-  (`lib/prediction-features.ts`, via `lib/item-detail.ts`), and - for Faustus-tradeable
-  currency - the full buy/sell spread, volume, stock, gold cost and liquidity tier. Also
-  links out to the item's poewiki.net page (`lib/poe-ninja.ts`'s `poeWikiUrl` - a plain
-  name-to-URL string transform, not a fetched/generated mapping, so it needs no upkeep as
-  new items appear each league; poewiki.net is independently hosted, not Fandom -
+  (`lib/prediction-features.ts`, via `lib/item-detail.ts`); for Faustus-tradeable
+  currency, the full buy/sell spread/profit/volume/stock/gold cost/liquidity tier; and for
+  a divination card, its own stack-flip economics (cost, reward, profit, confidence),
+  reusing `lib/divination-flips.ts`. Today's live price (`ItemDetail.currentChaosValue`)
+  is shown independently of whether a prediction exists for the selected duration - an
+  item whose past leagues are too short to support a longer forecast still has a real
+  price worth showing, it just has no prediction at that specific "Days ahead" value.
+  Also links out to the item's poewiki.net page (`lib/poe-ninja.ts`'s `poeWikiUrl` - a
+  plain name-to-URL string transform, not a fetched/generated mapping, so it needs no
+  upkeep as new items appear each league; poewiki.net is independently hosted, not Fandom -
   confirmed live). The same poewiki link also appears as a small icon next to the name in
   every table row, for a quick cross-check without leaving the table.
 - **Category filters**: tables can be filtered by category - an item's BaseType, or
   "Currency" for every currency row - built from whatever categories are actually
   present in the current results.
-- **Mobile layout**: on a narrow screen, the Flip Suggestions and Mirage simulator tables
-  both become a stacked list of cards instead (`components/item-history-card.tsx`) - every
-  column's value is still visible, just laid out vertically instead of sideways, so nothing
-  needs horizontal scrolling to read. Tapping a card expands the same price history chart
-  as a table row would. The other pages' tables (Currency Exchange Flip, Divination Card
-  Flips, current league tester) don't have this treatment yet - see `TODO.md`.
+- **Mobile layout**: on a narrow screen, every table except the current league tester
+  (Flip Suggestions, Mirage simulator, Currency Exchange Flip, Divination Card Flips)
+  becomes a stacked list of cards instead (`components/item-history-card.tsx`) - every
+  column's value is still visible, just laid out vertically instead of sideways, so
+  nothing needs horizontal scrolling to read. Tapping a card expands the same price
+  history chart a table row would, except on Currency Exchange Flip/Divination Card Flips,
+  which rank off the current market snapshot rather than a historical trend and so have no
+  chart to expand (`expandable={false}` on `ItemHistoryRow`/`ItemHistoryCard`). Sorting by
+  a column also works on mobile - the desktop table header's click-to-sort disappears with
+  the table itself, so a `MobileSortControl` (column picker + direction toggle) sits above
+  the card list instead, driving the same sort state a header click would. The current
+  league tester doesn't have this treatment yet - see `TODO.md`.
 - **Currency Exchange Flip** (`/currency_exchange_flip`): a separate, non-predictive
   page showing live buy/sell spreads on GGG's in-game Currency Exchange ("Faustus"),
   for same-day flipping rather than long-range prediction. Includes a liquidity signal
@@ -367,6 +386,13 @@ schedule or a promise - just a running list).
 - `components/item-history-row.tsx` / `item-history-card.tsx` - the shared desktop-table-
   row/mobile-card components every table's items render through (click-to-expand chart,
   the detail-page link, the poewiki link).
+- `components/mobile-sort-control.tsx` - the column-picker + direction-toggle control that
+  stands in for a desktop `SortableHeader` click once the table itself is replaced by the
+  mobile card list.
+- `lib/api-response.ts` - JSON response helpers shared by every `app/api/*/route.ts`;
+  `cachedJsonResponse` also caches the serialized (and gzipped) response bytes, not just
+  the underlying data, for the handful of routes whose payload is large enough that
+  `JSON.stringify`/gzip alone is a meaningful, repeat-request cost.
 - `components/item-detail-panel.tsx` - the per-item detail page's actual content.
 - `components/*.tsx` - the rest of the dashboard UI (category/confidence/liquidity
   filters, price history chart), the Currency Exchange Flip panel, the Divination Card
