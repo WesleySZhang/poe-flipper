@@ -63,6 +63,22 @@
   the hover tooltip instead of ever starting a drag-to-zoom - touch has no separate "hover"
   the way a mouse does, so without this a tap could be indistinguishable from the start of
   a zoom drag; the range brush below the chart is the deliberate way to zoom on touch.
+- **Per-item detail page** (`/item/[category]/[key]`, `components/item-detail-panel.tsx`):
+  every item's name in a table (`ItemHistoryRow`/`ItemHistoryCard`) links here - a
+  deliberate second action separate from the row's own click-to-expand, so clicking the
+  name navigates while clicking elsewhere on the row still just opens the inline preview.
+  Has its own "Days ahead" slider (reusing the same client-side precomputed reconstruction
+  the main table uses, so it's just as instant) and the same price history chart given a
+  full page column instead of a table cell, plus every metric the app has for that item:
+  the confidence tier's full narrative (not just the badge), 1/3/6-day price momentum
+  derived from the same sparkline inputs the learned model itself sees
+  (`lib/prediction-features.ts`, via `lib/item-detail.ts`), and - for Faustus-tradeable
+  currency - the full buy/sell spread, volume, stock, gold cost and liquidity tier. Also
+  links out to the item's poewiki.net page (`lib/poe-ninja.ts`'s `poeWikiUrl` - a plain
+  name-to-URL string transform, not a fetched/generated mapping, so it needs no upkeep as
+  new items appear each league; poewiki.net is independently hosted, not Fandom -
+  confirmed live). The same poewiki link also appears as a small icon next to the name in
+  every table row, for a quick cross-check without leaving the table.
 - **Category filters**: tables can be filtered by category - an item's BaseType, or
   "Currency" for every currency row - built from whatever categories are actually
   present in the current results.
@@ -337,14 +353,21 @@ schedule or a promise - just a running list).
 - `lib/divination-cards.ts` - generated card metadata (stack size, reward); see
   `scripts/generate-divination-cards.ts` above.
 - `lib/divination-flips.ts` - live scoring for the Divination Card Flips page.
+- `lib/item-detail.ts` - one item's live "extras" a table row doesn't show (seller count,
+  raw sparkline/momentum, Faustus spread) - see **Per-item detail page** above.
 - `lib/site-auth.ts` / `proxy.ts` - the shared-password login gate.
 - `app/api/*/route.ts` - read-only data endpoints used by the UI (deliberately Route
   Handlers, not Server Actions - see the comment in `mirage-simulation/route.ts`).
 - `app/currency_exchange_flip`, `app/divination-cards`, `app/mirage-simulator`,
   `app/current-league-tester` - the app's secondary pages; the dashboard (flip
-  suggestions) lives at `/`.
+  suggestions) lives at `/`. `app/item/[category]/[key]` is the per-item detail page -
+  see its own section above for the URL scheme.
 - `components/app-header.tsx` - the shared nav header every page renders; see
   **Navigation** above.
-- `components/*.tsx` - dashboard UI (flip suggestions, category/confidence/liquidity
+- `components/item-history-row.tsx` / `item-history-card.tsx` - the shared desktop-table-
+  row/mobile-card components every table's items render through (click-to-expand chart,
+  the detail-page link, the poewiki link).
+- `components/item-detail-panel.tsx` - the per-item detail page's actual content.
+- `components/*.tsx` - the rest of the dashboard UI (category/confidence/liquidity
   filters, price history chart), the Currency Exchange Flip panel, the Divination Card
   Flips panel, and the Mirage simulator panel.
