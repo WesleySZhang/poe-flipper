@@ -361,6 +361,15 @@ export function itemPriceKey(name: string, variant?: string | null): string {
   return normalizedVariant ? `${name}::${normalizedVariant}` : name;
 }
 
+/** Inverse of itemPriceKey - e.g. for a per-item detail page URL segment (see app/item/[category]/[key]/page.tsx),
+ *  which needs to recover the original name/variant it encoded. Assumes "::" never occurs naturally
+ *  in a real item name, same assumption itemPriceKey's own construction already relies on. */
+export function parseItemPriceKey(key: string): { name: string; variant?: string } {
+  const separatorIndex = key.indexOf("::");
+  if (separatorIndex === -1) return { name: key };
+  return { name: key.slice(0, separatorIndex), variant: key.slice(separatorIndex + 2) };
+}
+
 /**
  * Display name for an item + its variant (see effectiveVariant/growth-ratios.ts's equivalent SQL,
  * which fold link count into the variant the same way). "1-4 links" is omitted here - it's still

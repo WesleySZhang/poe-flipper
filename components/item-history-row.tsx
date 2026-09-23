@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { activePrice, type PriceUnit } from "@/lib/price-unit";
+import { itemPriceKey } from "@/lib/poe-ninja";
 import type { LeagueSeries } from "@/lib/price-history";
 import type { PredictionCurvePoint } from "@/lib/flip-suggestions";
 
@@ -179,13 +181,18 @@ export function ItemHistoryRow({
         className={cn("cursor-pointer", expanded && "bg-muted/50")}
       >
         <TableCell>
-          <div
-            tabIndex={0}
-            className="max-w-[140px] truncate hover:overflow-x-auto hover:text-clip focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
+          {/* A real link to the full per-item detail page (app/item/[category]/[key]/page.tsx) -
+              deliberately distinct from the row's own click-to-expand behavior below: clicking the
+              name navigates away, clicking anywhere else on the row still just expands the inline
+              chart. stopPropagation keeps the row's own onClick from ALSO firing on a name click. */}
+          <Link
+            href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
+            onClick={(e) => e.stopPropagation()}
+            className="block max-w-[140px] truncate text-primary hover:overflow-x-auto hover:text-clip hover:underline focus:overflow-x-auto focus:text-clip sm:max-w-[200px] lg:max-w-[280px]"
             title={displayName}
           >
             {displayName}
-          </div>
+          </Link>
         </TableCell>
         {children}
       </TableRow>

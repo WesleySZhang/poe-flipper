@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { cn } from "cn";
 import { PriceHistoryChart } from "@/components/price-history-chart";
 import { useItemHistoryExpand } from "@/components/item-history-row";
+import { itemPriceKey } from "@/lib/poe-ninja";
 import type { PriceUnit } from "@/lib/price-unit";
 
 export interface ItemHistoryCardField {
@@ -80,9 +82,16 @@ export function ItemHistoryCard({
         onKeyDown={handleKeyDown}
         className={cn("flex cursor-pointer flex-col gap-1.5 p-2 active:bg-muted/50", expanded && "bg-muted/50")}
       >
-        <div className="truncate text-sm font-medium" title={displayName}>
+        {/* A real link to the full per-item detail page - see ItemHistoryRow's identical comment
+            for why this is separate from the card's own click-to-expand (stopPropagation below). */}
+        <Link
+          href={`/item/${category}/${encodeURIComponent(itemPriceKey(historyName, variant))}`}
+          onClick={(e) => e.stopPropagation()}
+          className="block truncate text-sm font-medium text-primary hover:underline"
+          title={displayName}
+        >
           {displayName}
-        </div>
+        </Link>
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-x-3 gap-y-1.5">
             {fields.map((f, i) => (
