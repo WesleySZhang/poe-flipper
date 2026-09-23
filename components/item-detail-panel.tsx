@@ -292,187 +292,197 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          {/* A dedicated page has a full column's width to give the chart, not a table cell's - the
-              same fixed 2.5:1 aspect ratio (components/price-history-chart.tsx) just renders bigger
-              and more legible as a result, with no changes to the chart component itself. */}
-          <PriceHistoryChart
-            state={historyState}
-            currentDay={currentDay}
-            targetDay={currentDay + displayDurationDays}
-            currentValue={currentValue}
-            predictedValue={predictedValue}
-            predictedCurve={predictedCurve}
-            priceUnit={priceUnit}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Historical performance</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {suggestion ? (
-            <>
-              <div className="flex flex-wrap items-center gap-4">
-                <ConfidenceBadge
-                  score={priceUnit === "chaos" ? suggestion.confidence : suggestion.confidenceDivine}
-                  upFraction={priceUnit === "chaos" ? suggestion.upFraction : suggestion.upFractionDivine}
-                  leagueCount={priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine}
-                  forecastSpread={priceUnit === "chaos" ? suggestion.forecastSpread : undefined}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {(priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine)} past league
-                  {(priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine) === 1 ? "" : "s"} of data
-                </span>
-              </div>
-              <p className="text-sm">{suggestion.rationale}</p>
-              {/* Just the one non-redundant fact describeConfidence() would otherwise add - its
-                  confidence-score/league-count restatement and "reflects how consistently..."
-                  disclaimer are already covered by the badge/rationale above, so only the forecast-
-                  precision figure (not shown anywhere else on this page) is worth its own line here. */}
-              {priceUnit === "chaos" && suggestion.forecastSpread !== undefined && (
-                <p className="text-sm text-muted-foreground">
-                  Forecast precision: ~{suggestion.forecastSpread.toFixed(1)}x range - narrower means the model is more sure of this number.
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Not enough data to score this item right now.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {detail?.momentum && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent momentum</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-x-8 gap-y-3">
-            <Stat label="1-day" value={formatMomentum(detail.momentum.mom1)} />
-            <Stat label="3-day" value={formatMomentum(detail.momentum.mom3)} />
-            <Stat label="6-day" value={formatMomentum(detail.momentum.mom6)} />
-            <Stat
-              label="Volatility (6-day)"
-              value={Number.isFinite(detail.momentum.vol6) ? `${(detail.momentum.vol6 * 100).toFixed(1)}%` : "—"}
+      {/* Desktop: chart takes the left 70%, every other "additional info" card stacks in the
+          remaining 30% on the right, so the chart and its detail cards are visible side by side
+          without scrolling past one to see the other. Below `lg`, there's no room for a 30%-wide
+          info column to stay legible, so it falls back to the normal full-width stack (chart, then
+          every card in the same order) - same breakpoint the rest of this app uses for its own
+          desktop-only layouts (e.g. ItemHistoryRow's table vs. ItemHistoryCard's mobile stack). */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <Card className="lg:w-[70%] lg:min-w-0 lg:shrink-0">
+          <CardContent>
+            {/* A dedicated page has a full column's width to give the chart, not a table cell's - the
+                same fixed 2.5:1 aspect ratio (components/price-history-chart.tsx) just renders bigger
+                and more legible as a result, with no changes to the chart component itself. */}
+            <PriceHistoryChart
+              state={historyState}
+              currentDay={currentDay}
+              targetDay={currentDay + displayDurationDays}
+              currentValue={currentValue}
+              predictedValue={predictedValue}
+              predictedCurve={predictedCurve}
+              priceUnit={priceUnit}
             />
-            <Stat label="Acceleration" value={formatMomentum(detail.momentum.accel)} />
           </CardContent>
         </Card>
-      )}
 
-      {category === "currency" && detail?.faustus && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
-            <CardTitle>Currency Exchange (Faustus)</CardTitle>
-            <FaustusPriceButton name={historyName} priceUnit={priceUnit} />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-xs text-muted-foreground">
-              GGG&apos;s own exchange data - purely historical (the last fully-closed hour, roughly 2 hours
-              stale), not two live standing orders.
-            </p>
-            <div className="flex flex-wrap gap-x-8 gap-y-3">
-              <Stat label={`Buy (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, priceUnit)} />
-              <Stat label={`Sell (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, priceUnit)} />
-              {/* Same Profit %/Profit (abs)/Profit per 1k gold this card is ranked by on the
-                  Currency Exchange Flip table (components/currency-exchange-flip-panel.tsx) - "today's
-                  Currency Exchange flip" for this one item, not a separate metric invented for this page. */}
-              <Stat label="Profit %" value={formatPercentChange(faustusChaosRatio ?? 1, faustusDivineRatio, priceUnit)} />
-              <Stat
-                label={`Profit (${priceUnitLabel(priceUnit)})`}
-                value={formatPriceValue(detail.faustus.spreadChaosValue, detail.faustus.sellDivineValue !== undefined && detail.faustus.buyDivineValue !== undefined ? detail.faustus.sellDivineValue - detail.faustus.buyDivineValue : undefined, priceUnit)}
-              />
-              {profitPer1000Gold !== undefined && (
-                <Stat
-                  label="Profit / 1k gold"
-                  value={`${detail.faustus.goldCost?.approximate ? "~" : ""}${formatPriceValue(profitPer1000Gold, undefined, "chaos")}`}
-                />
+        <div className="flex flex-col gap-4 lg:w-[30%] lg:min-w-0 lg:shrink-0">
+          <Card>
+            <CardHeader>
+              <CardTitle>Historical performance</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {suggestion ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <ConfidenceBadge
+                      score={priceUnit === "chaos" ? suggestion.confidence : suggestion.confidenceDivine}
+                      upFraction={priceUnit === "chaos" ? suggestion.upFraction : suggestion.upFractionDivine}
+                      leagueCount={priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine}
+                      forecastSpread={priceUnit === "chaos" ? suggestion.forecastSpread : undefined}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {(priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine)} past league
+                      {(priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine) === 1 ? "" : "s"} of data
+                    </span>
+                  </div>
+                  <p className="text-sm">{suggestion.rationale}</p>
+                  {/* Just the one non-redundant fact describeConfidence() would otherwise add - its
+                      confidence-score/league-count restatement and "reflects how consistently..."
+                      disclaimer are already covered by the badge/rationale above, so only the forecast-
+                      precision figure (not shown anywhere else on this page) is worth its own line here. */}
+                  {priceUnit === "chaos" && suggestion.forecastSpread !== undefined && (
+                    <p className="text-sm text-muted-foreground">
+                      Forecast precision: ~{suggestion.forecastSpread.toFixed(1)}x range - narrower means the model is more sure of this number.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Not enough data to score this item right now.</p>
               )}
-              <Stat label="Volume (chaos)" value={detail.faustus.volumeChaos.toLocaleString()} />
-              <Stat label="Item volume" value={detail.faustus.volumeItem.toLocaleString()} />
-              <Stat label="Item stock" value={detail.faustus.itemStock.toLocaleString()} />
-              <Stat label="Chaos stock" value={detail.faustus.chaosStock.toLocaleString()} />
-              {detail.faustus.goldCost && (
+            </CardContent>
+          </Card>
+
+          {detail?.momentum && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent momentum</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-x-8 gap-y-3">
+                <Stat label="1-day" value={formatMomentum(detail.momentum.mom1)} />
+                <Stat label="3-day" value={formatMomentum(detail.momentum.mom3)} />
+                <Stat label="6-day" value={formatMomentum(detail.momentum.mom6)} />
                 <Stat
-                  label="Gold cost"
-                  value={`${detail.faustus.goldCost.approximate ? "~" : ""}${detail.faustus.goldCost.perItem.toLocaleString()}`}
+                  label="Volatility (6-day)"
+                  value={Number.isFinite(detail.momentum.vol6) ? `${(detail.momentum.vol6 * 100).toFixed(1)}%` : "—"}
                 />
-              )}
-              {liquidity && (
-                <div className="flex flex-col">
-                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Liquidity</span>
-                  <Badge variant={LIQUIDITY_VARIANT[liquidity]} className="w-fit">
-                    {LIQUIDITY_LABEL[liquidity]}
-                  </Badge>
+                <Stat label="Acceleration" value={formatMomentum(detail.momentum.accel)} />
+              </CardContent>
+            </Card>
+          )}
+
+          {category === "currency" && detail?.faustus && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <CardTitle>Currency Exchange (Faustus)</CardTitle>
+                <FaustusPriceButton name={historyName} priceUnit={priceUnit} />
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <p className="text-xs text-muted-foreground">
+                  GGG&apos;s own exchange data - purely historical (the last fully-closed hour, roughly 2 hours
+                  stale), not two live standing orders.
+                </p>
+                <div className="flex flex-wrap gap-x-8 gap-y-3">
+                  <Stat label={`Buy (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, priceUnit)} />
+                  <Stat label={`Sell (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, priceUnit)} />
+                  {/* Same Profit %/Profit (abs)/Profit per 1k gold this card is ranked by on the
+                      Currency Exchange Flip table (components/currency-exchange-flip-panel.tsx) - "today's
+                      Currency Exchange flip" for this one item, not a separate metric invented for this page. */}
+                  <Stat label="Profit %" value={formatPercentChange(faustusChaosRatio ?? 1, faustusDivineRatio, priceUnit)} />
+                  <Stat
+                    label={`Profit (${priceUnitLabel(priceUnit)})`}
+                    value={formatPriceValue(detail.faustus.spreadChaosValue, detail.faustus.sellDivineValue !== undefined && detail.faustus.buyDivineValue !== undefined ? detail.faustus.sellDivineValue - detail.faustus.buyDivineValue : undefined, priceUnit)}
+                  />
+                  {profitPer1000Gold !== undefined && (
+                    <Stat
+                      label="Profit / 1k gold"
+                      value={`${detail.faustus.goldCost?.approximate ? "~" : ""}${formatPriceValue(profitPer1000Gold, undefined, "chaos")}`}
+                    />
+                  )}
+                  <Stat label="Volume (chaos)" value={detail.faustus.volumeChaos.toLocaleString()} />
+                  <Stat label="Item volume" value={detail.faustus.volumeItem.toLocaleString()} />
+                  <Stat label="Item stock" value={detail.faustus.itemStock.toLocaleString()} />
+                  <Stat label="Chaos stock" value={detail.faustus.chaosStock.toLocaleString()} />
+                  {detail.faustus.goldCost && (
+                    <Stat
+                      label="Gold cost"
+                      value={`${detail.faustus.goldCost.approximate ? "~" : ""}${detail.faustus.goldCost.perItem.toLocaleString()}`}
+                    />
+                  )}
+                  {liquidity && (
+                    <div className="flex flex-col">
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Liquidity</span>
+                      <Badge variant={LIQUIDITY_VARIANT[liquidity]} className="w-fit">
+                        {LIQUIDITY_LABEL[liquidity]}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </CardContent>
+            </Card>
+          )}
 
-      {divinationFlip && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-4">
-            <CardTitle>Divination Card Flip</CardTitle>
-            {divinationFlip.faustusTradeable && <FaustusPriceButton name={historyName} priceUnit={priceUnit} />}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-xs text-muted-foreground">
-              Buying a full stack of {divinationFlip.stackSize} and turning it in for{" "}
-              {divinationFlip.rewardQuantity > 1 ? `${divinationFlip.rewardQuantity}x ` : ""}
-              {divinationFlip.rewardName} at today&apos;s prices - see the Divination Card Flips page for
-              every card ranked this way.
-            </p>
-            <div className="flex flex-wrap gap-x-8 gap-y-3">
-              <Stat label="Stack size" value={`x${divinationFlip.stackSize}`} />
-              <Stat
-                label={`Cost (${priceUnitLabel(priceUnit)})`}
-                value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
-              />
-              <Stat
-                label="Reward"
-                value={
-                  divinationFlip.rewardQuantity > 1
-                    ? `${divinationFlip.rewardQuantity}x ${divinationFlip.rewardName}`
-                    : divinationFlip.rewardName
-                }
-              />
-              <Stat
-                label={`Sell (${priceUnitLabel(priceUnit)})`}
-                value={formatPriceValue(divinationFlip.rewardChaosValue, divinationFlip.rewardDivineValue, priceUnit)}
-              />
-              {divinationFlip.buyMinChaosValue !== undefined && divinationFlip.buyMaxChaosValue !== undefined && (
-                <Stat
-                  label={`Min/Max (${priceUnitLabel(priceUnit)})`}
-                  value={`${formatPriceValue(divinationFlip.buyMinChaosValue, divinationFlip.buyMinDivineValue, priceUnit)} – ${formatPriceValue(divinationFlip.buyMaxChaosValue, divinationFlip.buyMaxDivineValue, priceUnit)}`}
-                />
-              )}
-              <Stat
-                label="Profit %"
-                value={formatPercentChange(divinationFlip.profitPercent / 100 + 1, divinationProfitRatioDivine, priceUnit)}
-              />
-              <Stat
-                label={`Profit (${priceUnitLabel(priceUnit)})`}
-                value={formatPriceValue(divinationFlip.profitChaosValue, divinationFlip.profitDivineValue, priceUnit)}
-              />
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Confidence</span>
-                <Badge
-                  variant={LIQUIDITY_VARIANT[divinationFlip.confidence]}
-                  className="w-fit"
-                  title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
-                >
-                  {LIQUIDITY_LABEL[divinationFlip.confidence]}
-                </Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          {divinationFlip && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <CardTitle>Divination Card Flip</CardTitle>
+                {divinationFlip.faustusTradeable && <FaustusPriceButton name={historyName} priceUnit={priceUnit} />}
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Buying a full stack of {divinationFlip.stackSize} and turning it in for{" "}
+                  {divinationFlip.rewardQuantity > 1 ? `${divinationFlip.rewardQuantity}x ` : ""}
+                  {divinationFlip.rewardName} at today&apos;s prices - see the Divination Card Flips page for
+                  every card ranked this way.
+                </p>
+                <div className="flex flex-wrap gap-x-8 gap-y-3">
+                  <Stat label="Stack size" value={`x${divinationFlip.stackSize}`} />
+                  <Stat
+                    label={`Cost (${priceUnitLabel(priceUnit)})`}
+                    value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
+                  />
+                  <Stat
+                    label="Reward"
+                    value={
+                      divinationFlip.rewardQuantity > 1
+                        ? `${divinationFlip.rewardQuantity}x ${divinationFlip.rewardName}`
+                        : divinationFlip.rewardName
+                    }
+                  />
+                  <Stat
+                    label={`Sell (${priceUnitLabel(priceUnit)})`}
+                    value={formatPriceValue(divinationFlip.rewardChaosValue, divinationFlip.rewardDivineValue, priceUnit)}
+                  />
+                  {divinationFlip.buyMinChaosValue !== undefined && divinationFlip.buyMaxChaosValue !== undefined && (
+                    <Stat
+                      label={`Min/Max (${priceUnitLabel(priceUnit)})`}
+                      value={`${formatPriceValue(divinationFlip.buyMinChaosValue, divinationFlip.buyMinDivineValue, priceUnit)} – ${formatPriceValue(divinationFlip.buyMaxChaosValue, divinationFlip.buyMaxDivineValue, priceUnit)}`}
+                    />
+                  )}
+                  <Stat
+                    label="Profit %"
+                    value={formatPercentChange(divinationFlip.profitPercent / 100 + 1, divinationProfitRatioDivine, priceUnit)}
+                  />
+                  <Stat
+                    label={`Profit (${priceUnitLabel(priceUnit)})`}
+                    value={formatPriceValue(divinationFlip.profitChaosValue, divinationFlip.profitDivineValue, priceUnit)}
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Confidence</span>
+                    <Badge
+                      variant={LIQUIDITY_VARIANT[divinationFlip.confidence]}
+                      className="w-fit"
+                      title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
+                    >
+                      {LIQUIDITY_LABEL[divinationFlip.confidence]}
+                    </Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
