@@ -39,6 +39,8 @@ export interface PrecomputedItem {
   br: (number | null)[];
   brd: (number | null)[];
   fs: (number | null)[];
+  /** Per horizon: 0/absent = real model row, 1 = interpolated, 2 = extended - see lib/horizon-fill.ts. */
+  e?: (0 | 1 | 2)[];
 }
 
 export interface PrecomputedPredictions {
@@ -117,6 +119,7 @@ export function reconstructFlipSuggestion(item: PrecomputedItem, i: number, dura
     baselineGrowthRatioDivine: item.brd[i] ?? undefined,
     predictor: item.predictor,
     forecastSpread: item.fs[i] ?? undefined,
+    estimate: item.e?.[i] === 1 ? "interpolated" : item.e?.[i] === 2 ? "extended" : undefined,
   };
 }
 

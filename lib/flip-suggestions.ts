@@ -85,6 +85,8 @@ export interface FlipSuggestion {
    *  item has gained historically; this says how much the model itself trusts today's specific number.
    *  Undefined outside xgb mode, in divine-only rows, or when the model file has no quantile heads. */
   forecastSpread?: number;
+  /** Set on a precomputed row the model didn't produce itself - see lib/horizon-fill.ts. Its confidence is already lowered. */
+  estimate?: "interpolated" | "extended";
 }
 
 /** A live-priced item ready to be scored, before the (cross-sectional) predictor runs over the whole set. */

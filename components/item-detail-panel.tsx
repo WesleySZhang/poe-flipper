@@ -494,6 +494,11 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                     leagueCount={priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine}
                     forecastSpread={priceUnit === "chaos" ? suggestion.forecastSpread : undefined}
                   />
+                  {suggestion.estimate && (
+                    <p className="text-xs text-muted-foreground">
+                      {suggestion.estimate === "interpolated" ? "Estimated from nearby days" : "Held from the last full day"}
+                    </p>
+                  )}
                   {/* The same facts buildFlipRationale() (lib/predicted-suggestion.ts) used to word as
                       one long sentence, as scannable stats instead - a narrow sidebar card reads a
                       wall of prose worse than a table does, and every number here (model prediction,

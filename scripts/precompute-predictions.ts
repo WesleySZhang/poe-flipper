@@ -34,6 +34,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getFlipSuggestions, CURVE_MIN_DURATION_DAYS, CURVE_MAX_DURATION_DAYS, type FlipSuggestion } from "../lib/flip-suggestions";
 import { currentLeagueDay } from "../lib/league-day";
+import { fillHorizonGaps } from "../lib/horizon-fill";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "../lib/league-recency";
 import { installRawResponseCache } from "./raw-response-cache";
 
@@ -150,12 +151,27 @@ async function main() {
     process.stdout.write(`  day ${currentDay} +${durationDays}d: ${suggestions.length} rows (${byKey.size} distinct items so far)\r`);
   }
 
+  // Every item with any prediction gets one at every horizon: gaps (a past league with a hole in its
+  // data drops the item below the model's minimum league count for that stretch) are filled with
+  // lower-confidence estimates - see lib/horizon-fill.ts. `e` marks which horizons are estimates.
+  let filledItems = 0;
+  let filledCells = 0;
+  const items = Array.from(byKey.values()).map((acc) => {
+    const estimate = fillHorizonGaps(acc, durations);
+    const cells = estimate.filter((x) => x !== 0).length;
+    if (cells === 0) return acc;
+    filledItems++;
+    filledCells += cells;
+    return { ...acc, e: estimate };
+  });
+  console.log(`Filled ${filledCells} horizon gaps across ${filledItems} items`);
+
   const payload = {
     league: CURRENT_LEAGUE,
     currentDay,
     generatedAt: new Date().toISOString(),
     durations,
-    items: Array.from(byKey.values()),
+    items,
   };
   fs.writeFileSync(OUTPUT_PATH, JSON.stringify(payload));
   console.log(`\nWrote ${OUTPUT_PATH} (${(fs.statSync(OUTPUT_PATH).size / 1024 / 1024).toFixed(1)} MB, ${byKey.size} items x ${durations.length} horizons)`);
