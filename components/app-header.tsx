@@ -6,6 +6,7 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "cn";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { GlobalSearch } from "@/components/global-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 interface NavButtonProps {
@@ -58,8 +59,12 @@ export function AppHeader({ title }: { title: string }) {
           nav row (which wraps independently, see below) breaks onto a second or third line. */}
       <div className="flex items-center justify-between gap-4 sm:contents">
         <h1 className="text-2xl font-semibold">{title}</h1>
-        <div className="sm:hidden">
-          <ThemeToggle />
+        {/* Phone: search icon sits in the top-right corner next to the theme toggle. */}
+        <div className="flex items-center gap-2 sm:contents">
+          <GlobalSearch variant="mobile" />
+          <div className="sm:hidden">
+            <ThemeToggle />
+          </div>
         </div>
       </div>
       {/* flex-wrap (not a single unbreakable row) - on a narrow phone, four nav destinations are
@@ -104,6 +109,7 @@ export function AppHeader({ title }: { title: string }) {
             there instead. Both are just <ThemeToggle> - it reads/writes the same shared theme
             context either way, so having two mounted instances (only one ever visible at a time) is
             safe. */}
+        <GlobalSearch variant="desktop" />
         <div className="hidden sm:block">
           <ThemeToggle />
         </div>

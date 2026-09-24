@@ -150,6 +150,11 @@
   none of the pages carry a description under their title, so the header's height (and so
   the nav row's position) stays identical everywhere. The nav row wraps onto multiple
   lines on a narrow screen rather than overflowing the page horizontally.
+- **Global search** (`components/global-search.tsx`, `lib/item-search.ts`): a header box that
+  suggests matching currency/items as you type (arrow keys + Enter, or click) and opens that
+  item's detail page. It searches everything poe.ninja currently prices (from the daily price
+  snapshot), so it also finds items with no forecast. On a phone it collapses to an icon that
+  opens a full-width overlay.
 - **Data store**: [DuckDB](https://duckdb.org) (embedded, columnar, great for analytical
   queries over large CSV history) - no external database server required.
 - **Daily precomputed data** (`scripts/precompute-predictions.ts`,

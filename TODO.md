@@ -282,7 +282,12 @@ mirroring the "prefer direct data, convert only as a last resort" pattern the Di
 branch (`id` has no chaos pair at all) already uses for the chaos side, just applied to the more
 common case in reverse.
 
-## 10. Global item search, with live suggestions, linking straight to the item's detail page
+## 10. ~~Global item search, with live suggestions, linking straight to the item's detail page~~ - Done
+
+Built: `components/global-search.tsx` (header box, icon + overlay on mobile), `GET /api/item-search`
+and `lib/item-search.ts` (name search over the daily price snapshot, live fallback). Resolves each
+suggestion to the category that has a live price ("currency" wins a tie). The notes below are the
+original plan.
 
 Every table today only has `components/search-input.tsx` - a per-table, client-side text filter
 over whatever rows that ONE table already fetched, with no destination beyond narrowing the visible
