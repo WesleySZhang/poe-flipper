@@ -1,0 +1,5 @@
+{
+  "name": "poe-knowledge",
+  "description": "Path of Exile domain knowledge (economy, data sources, leagues, items) as on-demand skills, kept separate from this app's own workflow skills.",
+  "version": "0.1.0"
+}

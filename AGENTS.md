@@ -32,3 +32,18 @@ If you're tempted to write "because..." or a second clause justifying the first,
 belongs in a code comment (for future you) or nowhere at all, not in the UI (for the user scanning
 a card at a glance). A tooltip/title attribute can carry a little more context if it's genuinely
 useful, since it's opt-in, but the always-visible text next to it should stay terse.
+
+## Keep skills and READMEs current
+
+After finishing a task, check whether it changes anything a skill or README describes, and update
+them in the same change:
+
+- **README.md** - any new feature, page, component, script, env var or workflow step, or a change
+  to how one works. Keep it as short as the meaning allows.
+- **Skills** - if the task is something that will plausibly come up again (a workflow, a
+  checklist, a debugging routine, a data-source quirk), add or update a skill instead of leaving
+  it only in the chat. App workflow skills go in `.claude/skills/<name>/SKILL.md`. Generic Path
+  of Exile knowledge goes in `poe-knowledge/skills/<name>/SKILL.md` (see `poe-knowledge/README.md`
+  for the conventions and confidence tags; those are linked into `~/.claude/skills/`, so a new
+  one needs a junction there too). Give each skill a description that says *when* to use it.
+- Fix a skill that turns out to be wrong or stale when you notice it, rather than working around it.
