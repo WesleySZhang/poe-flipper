@@ -170,7 +170,11 @@ async function loadItemHistory(): Promise<ItemCache> {
   if (itemCache && itemCache.expiresAt > Date.now()) return itemCache.data;
 
   const texts = await Promise.all(monthsSinceLeagueStart().map((m) => fetchMonth("items", m)));
-  const byKey = new Map<string, Map<number, number>>();
+  // Several rows can share one (name, variant, day) - e.g. a base type has a separate poe.ninja line
+  // per item level/influence that all collapse to the same key here. They're averaged, exactly as
+  // scripts/ingest-history.ts does for past leagues; keeping just the last row seen drew a line
+  // that disagreed with both that and today's live price.
+  const sums = new Map<string, Map<number, { sum: number; n: number }>>();
   const leagueStart = new Date(CURRENT_LEAGUE_START_DATE);
 
   for (const text of texts) {
@@ -187,10 +191,17 @@ async function loadItemHistory(): Promise<ItemCache> {
       if (!Number.isFinite(chaosValue)) continue;
 
       const key = itemPriceKey(name, variant);
-      const points = byKey.get(key) ?? new Map<number, number>();
-      points.set(dayOffset, chaosValue);
-      byKey.set(key, points);
+      const days = sums.get(key) ?? new Map<number, { sum: number; n: number }>();
+      const acc = days.get(dayOffset) ?? { sum: 0, n: 0 };
+      acc.sum += chaosValue;
+      acc.n += 1;
+      days.set(dayOffset, acc);
+      sums.set(key, days);
     }
+  }
+  const byKey = new Map<string, Map<number, number>>();
+  for (const [key, days] of sums) {
+    byKey.set(key, new Map(Array.from(days, ([day, { sum, n }]) => [day, sum / n])));
   }
 
   const data = { byKey };
