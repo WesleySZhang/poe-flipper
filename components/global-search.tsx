@@ -108,7 +108,7 @@ export function GlobalSearch({ variant }: { variant: "desktop" | "mobile" }) {
             ? mobileOpen
               ? "fixed inset-x-4 top-4 z-50 flex items-center gap-2 rounded-lg bg-background sm:hidden"
               : "hidden"
-            : "relative hidden w-48 sm:block lg:w-56"
+            : "relative hidden w-full sm:block"
         )}
       >
         <div className="relative w-full">
