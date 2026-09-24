@@ -15,7 +15,7 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ cat
   const { name, variant } = parseItemDetailUrlKey(key);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-2 sm:p-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 p-2 sm:p-6">
       <AppHeader title={formatItemDisplayName(name, variant)} />
       <ItemDetailPanel category={category} historyName={name} variant={variant} />
     </div>

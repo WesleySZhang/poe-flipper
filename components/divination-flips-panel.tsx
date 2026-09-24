@@ -193,6 +193,8 @@ export function DivinationFlipsPanel() {
             ]}
             sort={sort}
             onSort={handleSort}
+            filterLabel="Confidence"
+            filter={<LiquidityTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} large />}
           />
         )}
         {!isPending && flips.length > 0 && (

@@ -21,10 +21,13 @@ export function LiquidityTierFilter({
   hidden,
   onToggle,
   className,
+  large,
 }: {
   hidden: Set<LiquidityTier>;
   onToggle: (tier: LiquidityTier) => void;
   className?: string;
+  /** Bigger circles for a touch target (the mobile filter row) - the table header keeps the compact size. */
+  large?: boolean;
 }) {
   return (
     <div className={cn("flex items-center gap-1.5", className)}>
@@ -53,7 +56,7 @@ export function LiquidityTierFilter({
             className="shrink-0 cursor-pointer select-none justify-center p-0 text-xs"
             // Inline, not Tailwind classes, for the actual circle geometry - see
             // confidence-tier-filter.tsx's identical comment on why.
-            style={{ width: "1.5rem", height: "1.5rem", borderRadius: "9999px" }}
+            style={{ width: large ? "2rem" : "1.5rem", height: large ? "2rem" : "1.5rem", borderRadius: "9999px" }}
           >
             {TIER_LETTER[tier]}
           </Badge>

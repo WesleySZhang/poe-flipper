@@ -206,16 +206,6 @@ export function ItemHistoryRow({
         >
           <ExternalLink className="size-3" />
         </a>
-        {/* Purely decorative - NOT wrapped in its own click handler, so tapping it (or the
-            empty space around it) falls through to the row's own click-to-expand like any
-            other non-text part of the cell. Flips to point up while expanded. Omitted entirely
-            when expandable is false - nothing to indicate. */}
-        {expandable && (
-          <ChevronDown
-            className="size-3.5 shrink-0 text-muted-foreground transition-transform"
-            style={{ transform: expanded ? "rotate(180deg)" : undefined }}
-          />
-        )}
       </div>
     </TableCell>
   );
@@ -243,6 +233,15 @@ export function ItemHistoryRow({
       >
         {nameCell}
         {children}
+        {/* Trailing cell (callers add a matching empty header cell) so the chevron sits at the
+            row's far right. Purely decorative - not its own click target, so it falls through
+            to the row's click-to-expand. Flips to point up while expanded. */}
+        <TableCell className="w-6 pl-0 pr-2 text-right">
+          <ChevronDown
+            className="ml-auto size-3.5 text-muted-foreground transition-transform"
+            style={{ transform: expanded ? "rotate(180deg)" : undefined }}
+          />
+        </TableCell>
       </TableRow>
       {/* Always mounted (not gated on hasExpandedOnce) - a CSS transition needs the browser to have
           already painted the "before" state (grid-template-rows: 0fr) at least one frame before the
@@ -258,7 +257,7 @@ export function ItemHistoryRow({
             height there instead). The grid-template-rows 0fr<->1fr trick animates a height that's
             otherwise "auto" (the chart's real height varies by content) without JS measuring it -
             a plain max-height transition would need a guessed-too-large fixed end value instead. */}
-        <TableCell colSpan={colSpan} className="p-0">
+        <TableCell colSpan={colSpan + 1} className="p-0">
           <div
             className="grid"
             style={{ gridTemplateRows: expanded ? "1fr" : "0fr", transition: "grid-template-rows 250ms ease" }}

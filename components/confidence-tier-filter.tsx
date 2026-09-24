@@ -20,10 +20,13 @@ export function ConfidenceTierFilter({
   hidden,
   onToggle,
   className,
+  large,
 }: {
   hidden: Set<ConfidenceTier>;
   onToggle: (tier: ConfidenceTier) => void;
   className?: string;
+  /** Bigger circles for a touch target (the mobile filter row) - the table header keeps the compact size. */
+  large?: boolean;
 }) {
   return (
     <div className={cn("flex items-center gap-1.5", className)}>
@@ -54,7 +57,7 @@ export function ConfidenceTierFilter({
             // w-fit/rounded-4xl kept winning out over size-*/rounded-full despite those correctly
             // overriding it in the merged class *string*, so this guarantees the shape rather than
             // depending on class merge/specificity ordering.
-            style={{ width: "1.5rem", height: "1.5rem", borderRadius: "9999px" }}
+            style={{ width: large ? "2rem" : "1.5rem", height: large ? "2rem" : "1.5rem", borderRadius: "9999px" }}
           >
             {TIER_LETTER[tier]}
           </Badge>

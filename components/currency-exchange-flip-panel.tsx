@@ -215,6 +215,8 @@ export function CurrencyExchangeFlipPanel() {
             ]}
             sort={sort}
             onSort={handleSort}
+            filterLabel="Liquidity"
+            filter={<LiquidityTierFilter hidden={hiddenLiquidityTiers} onToggle={toggleLiquidityTier} large />}
           />
         )}
         {!isPending && spreads.length > 0 && (

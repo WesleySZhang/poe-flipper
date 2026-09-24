@@ -303,6 +303,8 @@ export function MirageSimulatorPanel() {
             ]}
             sort={sort}
             onSort={handleSort}
+            filterLabel="Confidence"
+            filter={<ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} large />}
           />
         )}
         {!isPending && rows.length > 0 && (
@@ -393,6 +395,7 @@ export function MirageSimulatorPanel() {
                     <ConfidenceTierFilter hidden={hiddenConfidenceTiers} onToggle={toggleConfidenceTier} />
                   </div>
                 </TableHead>
+                <TableHead className="w-6 px-0" />
               </TableRow>
             </TableHeader>
             <TableBody>

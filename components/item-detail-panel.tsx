@@ -254,7 +254,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
         href={poeWikiUrl(historyName)}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
+        className="-mb-2 inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
       >
         View on poewiki
         <ExternalLink className="size-3.5" />
@@ -308,68 +308,69 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
         </CardHeader>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Overview</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-x-8 gap-y-3">
-          {/* !detail (still loading/genuinely no live price anywhere) vs. detail-but-no-suggestion
-              (a real live price exists, there's just no prediction AT THIS DURATION - e.g. an item
-              whose past leagues are too short to project this far ahead, see
-              lib/flip-suggestions.ts's growth-ratio matching) used to both show the same "no live
-              price" message, which was simply wrong in the second, common case - ItemDetail.
-              currentChaosValue now lets Current still show even without a prediction. */}
-          {!detail && (
-            <p className="text-sm text-muted-foreground">No live price right now.</p>
-          )}
-          {detail && (
-            <Stat
-              label={`Current (${priceUnitLabel(priceUnit)})`}
-              value={formatPriceValue(detail.currentChaosValue, detail.currentDivineValue, priceUnit)}
-            />
-          )}
-          {suggestion ? (
-            <>
-              <Stat label={`Predicted (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(suggestion.predictedChaosValue, suggestion.predictedDivineValue, priceUnit)} />
-              <Stat label="Change" value={formatPercentChange(suggestion.avgGrowthRatio, suggestion.avgGrowthRatioDivine, priceUnit)} />
-            </>
-          ) : (
-            detail && (
-              <p className="text-sm text-muted-foreground">No {displayDurationDays}-day prediction - try a shorter duration.</p>
-            )
-          )}
-          <Stat label="Category" value={detail?.filterCategory ? humanizeCategoryName(detail.filterCategory) : "—"} />
-          {/* sellerCount is only ever set for an "item"-category lookup (see lib/item-detail.ts) -
-              gated on the field itself, not the URL's own `category`, since a name reached via a
-              category "item" URL (see fetchItemDetailWithFallback's comment) can still resolve its
-              live detail under "currency", which never sets sellerCount at all. */}
-          {detail?.sellerCount !== undefined && <Stat label="Sellers listing this" value={detail.sellerCount.toString()} />}
-        </CardContent>
-      </Card>
-
-      {/* Desktop: chart takes the left 70%, every other "additional info" card stacks in the
-          remaining 30% on the right, so the chart and its detail cards are visible side by side
+      {/* Desktop: overview + chart take the left 70%, every other "additional info" card stacks in the
+          remaining 30% on the right (spanning the overview's height too), so the chart and its detail cards are visible side by side
           without scrolling past one to see the other. Below `lg`, there's no room for a 30%-wide
           info column to stay legible, so it falls back to the normal full-width stack (chart, then
           every card in the same order) - same breakpoint the rest of this app uses for its own
           desktop-only layouts (e.g. ItemHistoryRow's table vs. ItemHistoryCard's mobile stack). */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <Card className="lg:w-[70%] lg:min-w-0 lg:shrink-0">
-          <CardContent>
-            {/* A dedicated page has a full column's width to give the chart, not a table cell's - the
-                same fixed 2.5:1 aspect ratio (components/price-history-chart.tsx) just renders bigger
-                and more legible as a result, with no changes to the chart component itself. */}
-            <PriceHistoryChart
-              state={historyState}
-              currentDay={currentDay}
-              targetDay={currentDay + displayDurationDays}
-              currentValue={currentValue}
-              predictedValue={predictedValue}
-              predictedCurve={predictedCurve}
-              priceUnit={priceUnit}
-            />
+        <div className="flex flex-col gap-4 lg:w-[70%] lg:min-w-0 lg:shrink-0">
+        <Card>
+          <CardHeader>
+            <CardTitle>Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-x-8 gap-y-3">
+            {/* !detail (still loading/genuinely no live price anywhere) vs. detail-but-no-suggestion
+                (a real live price exists, there's just no prediction AT THIS DURATION - e.g. an item
+                whose past leagues are too short to project this far ahead, see
+                lib/flip-suggestions.ts's growth-ratio matching) used to both show the same "no live
+                price" message, which was simply wrong in the second, common case - ItemDetail.
+                currentChaosValue now lets Current still show even without a prediction. */}
+            {!detail && (
+              <p className="text-sm text-muted-foreground">No live price right now.</p>
+            )}
+            {detail && (
+              <Stat
+                label={`Current (${priceUnitLabel(priceUnit)})`}
+                value={formatPriceValue(detail.currentChaosValue, detail.currentDivineValue, priceUnit)}
+              />
+            )}
+            {suggestion ? (
+              <>
+                <Stat label={`Predicted (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(suggestion.predictedChaosValue, suggestion.predictedDivineValue, priceUnit)} />
+                <Stat label="Change" value={formatPercentChange(suggestion.avgGrowthRatio, suggestion.avgGrowthRatioDivine, priceUnit)} />
+              </>
+            ) : (
+              detail && (
+                <p className="text-sm text-muted-foreground">No {displayDurationDays}-day prediction - try a shorter duration.</p>
+              )
+            )}
+            <Stat label="Category" value={detail?.filterCategory ? humanizeCategoryName(detail.filterCategory) : "—"} />
+            {/* sellerCount is only ever set for an "item"-category lookup (see lib/item-detail.ts) -
+                gated on the field itself, not the URL's own `category`, since a name reached via a
+                category "item" URL (see fetchItemDetailWithFallback's comment) can still resolve its
+                live detail under "currency", which never sets sellerCount at all. */}
+            {detail?.sellerCount !== undefined && <Stat label="Sellers listing this" value={detail.sellerCount.toString()} />}
           </CardContent>
         </Card>
+          <Card>
+            <CardContent>
+              {/* A dedicated page has a full column's width to give the chart, not a table cell's - the
+                  same fixed 2.5:1 aspect ratio (components/price-history-chart.tsx) just renders bigger
+                  and more legible as a result, with no changes to the chart component itself. */}
+              <PriceHistoryChart
+                state={historyState}
+                currentDay={currentDay}
+                targetDay={currentDay + displayDurationDays}
+                currentValue={currentValue}
+                predictedValue={predictedValue}
+                predictedCurve={predictedCurve}
+                priceUnit={priceUnit}
+              />
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="flex flex-col gap-4 lg:w-[30%] lg:min-w-0 lg:shrink-0">
           {/* detail.faustus is only ever set for a "currency"-category lookup (lib/item-detail.ts) -
@@ -501,22 +502,30 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   <div className="flex flex-wrap gap-x-8 gap-y-3">
                     <Stat
                       label={`Model prediction (${displayDurationDays}d)`}
+                      hint="Price change the model forecasts over this window."
                       value={formatPercentChange(suggestion.avgGrowthRatio, suggestion.avgGrowthRatioDivine, priceUnit)}
                     />
                     <Stat
                       label="Past-leagues avg"
+                      hint="Average change over the same window in past leagues."
                       value={formatPercentChange(suggestion.baselineGrowthRatio, suggestion.baselineGrowthRatioDivine, priceUnit)}
                     />
                     <Stat
                       label="Leagues used"
+                      hint="Past leagues with enough data to compare."
                       value={`${priceUnit === "chaos" ? suggestion.leagueCount : suggestion.leagueCountDivine}`}
                     />
                     <Stat
                       label="Leagues up"
+                      hint="Share of those leagues where the price rose."
                       value={`${Math.round((priceUnit === "chaos" ? suggestion.upFraction : (suggestion.upFractionDivine ?? suggestion.upFraction)) * 100)}%`}
                     />
                     {priceUnit === "chaos" && suggestion.forecastSpread !== undefined && (
-                      <Stat label="Forecast precision" value={`~${suggestion.forecastSpread.toFixed(1)}x`} />
+                      <Stat
+                        label="Forecast precision"
+                        value={`~${suggestion.forecastSpread.toFixed(1)}x`}
+                        hint="Width of the forecast range. Lower is tighter."
+                      />
                     )}
                   </div>
                 </>
@@ -534,14 +543,19 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                 <CardTitle>Recent momentum</CardTitle>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-x-8 gap-y-3">
-                <Stat label="1-day" value={formatMomentum(detail.momentum.mom1)} />
-                <Stat label="3-day" value={formatMomentum(detail.momentum.mom3)} />
-                <Stat label="6-day" value={formatMomentum(detail.momentum.mom6)} />
+                <Stat label="1-day" value={formatMomentum(detail.momentum.mom1)} hint="Price change over the last day." />
+                <Stat label="3-day" value={formatMomentum(detail.momentum.mom3)} hint="Price change over the last 3 days." />
+                <Stat label="6-day" value={formatMomentum(detail.momentum.mom6)} hint="Price change over the last 6 days." />
                 <Stat
                   label="Volatility (6-day)"
+                  hint="How much the price swung day to day."
                   value={Number.isFinite(detail.momentum.vol6) ? `${(detail.momentum.vol6 * 100).toFixed(1)}%` : "—"}
                 />
-                <Stat label="Acceleration" value={formatMomentum(detail.momentum.accel)} />
+                <Stat
+                  label="Acceleration"
+                  value={formatMomentum(detail.momentum.accel)}
+                  hint="Whether the trend is speeding up (+) or slowing (-)."
+                />
               </CardContent>
             </Card>
           )}
@@ -551,9 +565,9 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="flex flex-col">
+    <div className={hint ? "flex cursor-help flex-col" : "flex flex-col"} title={hint}>
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
       <span className="text-sm font-semibold">{value}</span>
     </div>

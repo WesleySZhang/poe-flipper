@@ -123,7 +123,7 @@ export function ItemHistoryCard({
               Omitted entirely when expandable is false - nothing to indicate. */}
           {expandable && (
             <ChevronDown
-              className="size-4 shrink-0 text-muted-foreground transition-transform"
+              className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform"
               style={{ transform: expanded ? "rotate(180deg)" : undefined }}
             />
           )}
