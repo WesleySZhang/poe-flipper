@@ -250,15 +250,18 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
 
   return (
     <div className="flex flex-col gap-4">
-      <a
-        href={poeWikiUrl(historyName)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="-mb-2 inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground hover:underline"
-      >
-        View on poewiki
-        <ExternalLink className="size-3.5" />
-      </a>
+      <div className="-mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+        <a href={poeWikiUrl(historyName)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-foreground hover:underline">
+          View on poewiki
+          <ExternalLink className="size-3.5" />
+        </a>
+        {detail?.ninjaUrl && (
+          <a href={detail.ninjaUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-foreground hover:underline">
+            View on poe.ninja
+            <ExternalLink className="size-3.5" />
+          </a>
+        )}
+      </div>
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-1.5">

@@ -33,6 +33,7 @@ interface SnapshotItem {
   c: number;
   t: string;
   n?: number; // sellerCount
+  d?: string; // detailsId - see lib/ninja-link.ts
   s?: Array<number | null>;
 }
 
@@ -142,7 +143,7 @@ export async function getItemPricesPreferSnapshot(league: string): Promise<Map<s
   if (!snapshot) return getAllCurrentItemPrices(league);
   let map = itemMaps.get(snapshot);
   if (!map) {
-    map = new Map(Object.entries(snapshot.items).map(([key, p]) => [key, { chaosValue: p.c, type: p.t, sellerCount: p.n, spark: p.s }]));
+    map = new Map(Object.entries(snapshot.items).map(([key, p]) => [key, { chaosValue: p.c, type: p.t, sellerCount: p.n, detailsId: p.d, spark: p.s }]));
     itemMaps.set(snapshot, map);
   }
   return map;
@@ -167,6 +168,7 @@ export function buildPriceSnapshot(
       c: p.chaosValue,
       t: p.type,
       ...(p.sellerCount !== undefined ? { n: p.sellerCount } : {}),
+      ...(p.detailsId ? { d: p.detailsId } : {}),
       ...(p.spark ? { s: p.spark } : {}),
     };
   }

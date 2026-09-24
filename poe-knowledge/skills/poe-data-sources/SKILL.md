@@ -20,6 +20,11 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 
 - poe.ninja's sparkline points are the % change vs a fixed base 6-7 days earlier, oldest first, `null`
   on a day with no price. `[verified]` (`lib/poe-ninja.ts`)
+- poe.ninja item pages: `https://poe.ninja/poe1/economy/<league-lowercase>/<category-slug>/<detailsId>`
+  (e.g. `.../allflame/divination-cards/the-nurse`). Category slugs are read off poe.ninja's nav; a stash
+  item's `detailsId` comes on its API line (it folds in variant + base type), a currency-style one is the
+  slugified name with apostrophes dropped. `?search=` on a category page did not filter. `[verified]`
+  (`lib/ninja-link.ts`)
 - The current league has no ingested daily history until it ends; the app collects its own daily
   snapshots into CSVs on the `data` branch to fill that gap. `[verified]`
 

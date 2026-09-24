@@ -4,6 +4,7 @@ import { getCurrencyPricesPreferSnapshot, getItemPricesPreferSnapshot } from "./
 import { getFaustusSpreads, isFaustusTradeable, type FaustusSpread } from "./faustus";
 import { liquidityTier, type LiquidityTier } from "./liquidity";
 import { momentumFromPath, sparkToLogPath } from "./prediction-features";
+import { ninjaItemUrl } from "./ninja-link";
 
 /** Log-space momentum stats straight from lib/prediction-features.ts's own model-input math (see
  *  that file's momentumFromPath) - the same numbers the learned model itself sees, not a separate
@@ -32,6 +33,8 @@ export interface ItemDetail {
   variant?: string;
   /** poe.ninja's own category bucket (SkillGem, Scarab, Currency, ...) - see ItemPrice.type/CurrencyPrice.type. */
   filterCategory: string;
+  /** This item's page on poe.ninja - undefined when there's no known page for its type. */
+  ninjaUrl?: string;
   /** Today's live price, independent of any prediction - see this interface's own doc. Shown in the
    *  Overview even when there's no FlipSuggestion for the chosen duration (see components/
    *  item-detail-panel.tsx), which is a real, expected state for an item whose past leagues are too
@@ -74,6 +77,7 @@ export async function getItemDetail(
       category,
       historyName,
       filterCategory: price.type,
+      ninjaUrl: ninjaItemUrl(league, price.type, historyName),
       currentChaosValue: price.chaosValue,
       currentDivineValue: divineRate ? price.chaosValue / divineRate : undefined,
       spark: price.spark,
@@ -98,6 +102,7 @@ export async function getItemDetail(
     historyName,
     variant,
     filterCategory: price.type,
+    ninjaUrl: ninjaItemUrl(league, price.type, historyName, price.detailsId),
     currentChaosValue: price.chaosValue,
     currentDivineValue: divineRate ? price.chaosValue / divineRate : undefined,
     sellerCount: price.sellerCount,

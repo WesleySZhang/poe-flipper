@@ -103,6 +103,9 @@
   upkeep as new items appear each league; poewiki.net is independently hosted, not Fandom -
   confirmed live). The same poewiki link also appears as a small icon next to the name in
   every table row, for a quick cross-check without leaving the table.
+  The detail page also has a "View on poe.ninja" link to the item's own poe.ninja page
+  (`lib/ninja-link.ts`: a fixed category-slug map plus poe.ninja's `detailsId`, which the daily
+  price snapshot stores per item; no link is shown for a type poe.ninja has no page for).
 - **Category filters**: tables can be filtered by category - an item's BaseType, or
   "Currency" for every currency row - built from whatever categories are actually
   present in the current results.

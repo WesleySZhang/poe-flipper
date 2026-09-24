@@ -111,6 +111,8 @@ export interface ItemOverviewLine {
   /** Distinct sellers currently listing this exact name+variant - see ItemPrice.sellerCount. */
   count?: number;
   sparkLine?: SparkLine;
+  /** poe.ninja's own id for this line, used in its item page URLs - see lib/ninja-link.ts. */
+  detailsId?: string;
 }
 
 interface CacheEntry<T> {
@@ -312,6 +314,8 @@ export async function getAllCurrentCurrencyPrices(
 
 export interface ItemPrice {
   chaosValue: number;
+  /** See ItemOverviewLine.detailsId. */
+  detailsId?: string;
   /** Which category bucket this counts as for the category filter - usually one of
    *  ITEM_OVERVIEW_TYPES verbatim (SkillGem, UniqueWeapon, Scarab, ...), but see
    *  correctedItemType() for the one deliberate override. */
@@ -383,6 +387,7 @@ export async function getAllCurrentItemPrices(
           chaosValue: line.chaosValue,
           type: correctedItemType(type, line.baseType),
           sellerCount: line.count,
+          detailsId: line.detailsId,
           spark: sparkPointsFrom(line.sparkLine),
         });
       }
