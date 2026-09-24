@@ -114,6 +114,9 @@ jobs:
           # generated) - force-add to override that on this one-off branch.
           cp /tmp/predictions.json predictions.json
           cp /tmp/prices.json prices.json
+          # git rm -rf . leaves the gitignored history/ dir behind, so a plain cp -r would nest the
+          # copy as history/history/ (doubling the branch) instead of replacing it.
+          rm -rf history
           cp -r /tmp/history history
           # vercel.json ALSO has to be re-added here, not just carried over from master - Vercel
           # decides whether to deploy a push by reading git.deploymentEnabled from the vercel.json in

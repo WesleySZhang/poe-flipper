@@ -29,6 +29,17 @@
   61.7% -> 72.8% (`npm run ml:backtest`). Training, validation and every experiment are
   documented in [`ml/README.md`](ml/README.md); the Python there is offline tooling and
   is not part of the deployed app.
+- **Full 30-day coverage**: the model needs at least 3 past leagues with a price near both
+  today and the target day, so one league with a hole in its data used to drop a whole
+  stretch of horizons for an item. The daily job now fills those gaps
+  (`lib/horizon-fill.ts`): between two real horizons it interpolates, before the first it
+  interpolates from "no change at 0 days", and past the last it holds the last ratio. Filled
+  values are flagged (`estimate` on a suggestion; the detail page says "Estimated from
+  nearby days" / "Held from the last full day") and their confidence is cut to 75% (held:
+  50%), so nearly all land in the Low tier. Real model rows are never changed. Against the
+  model's own output on items with full coverage, a hidden 10-horizon stretch was
+  reproduced with a median error of about 2% (90th percentile 7%); this compares the fill
+  to the model, not to realized prices. The live fallback path doesn't fill.
 - **Confidence scoring**: each suggestion also gets a confidence tier (High/Medium/Low)
   based on how reliably that item has actually gained in past leagues, not just how big
   the predicted gain is - see `lib/confidence.ts`. A separate "forecast precision" note in
@@ -105,8 +116,10 @@
   chart to expand (`expandable={false}` on `ItemHistoryRow`/`ItemHistoryCard`). Sorting by
   a column also works on mobile - the desktop table header's click-to-sort disappears with
   the table itself, so a `MobileSortControl` (column picker + direction toggle) sits above
-  the card list instead, driving the same sort state a header click would. The current
-  league tester doesn't have this treatment yet - see `TODO.md`.
+  the card list instead, driving the same sort state a header click would. The same row
+  also carries the Confidence/Liquidity tier filter (H/M/L badges), which lives in the
+  table header on desktop. The current league tester doesn't have this treatment yet -
+  see `TODO.md`.
 - **Currency Exchange Flip** (`/currency_exchange_flip`): a separate, non-predictive
   page showing live buy/sell spreads on GGG's in-game Currency Exchange ("Faustus"),
   for same-day flipping rather than long-range prediction. Includes a liquidity signal
@@ -144,12 +157,12 @@
 - **Current league tester** (`/current-league-tester`): look up a single item/currency
   by name and apply its historical growth ratio to a price you type in. It uses the
   historical ratio only, not the learned forecast (it has no live price to work from).
-- **Navigation** (`components/app-header.tsx`): every page shares one header - a button
-  per top-level page plus a "Testing" dropdown grouping the Mirage simulator and current
-  league tester (opens on hover or click). The current page's own button is highlighted;
-  none of the pages carry a description under their title, so the header's height (and so
-  the nav row's position) stays identical everywhere. The nav row wraps onto multiple
-  lines on a narrow screen rather than overflowing the page horizontally.
+- **Navigation** (`components/app-header.tsx`): every page shares one standard top bar (shadcn
+  `NavigationMenu` + `Sheet`) - app name, a link per top-level page plus a "Testing" menu
+  grouping the Mirage simulator and current league tester (opens on hover or click), the
+  theme toggle, and the search box. The current page's link is highlighted. The page's own
+  title sits below the bar, so the bar's size and position are identical on every page.
+  Below `xl` the links move into a side sheet opened by a menu button at the left.
 - **Global search** (`components/global-search.tsx`, `lib/item-search.ts`): a header box that
   suggests matching currency/items as you type (arrow keys + Enter, or click) and opens that
   item's detail page. It searches everything poe.ninja currently prices (from the daily price
@@ -407,9 +420,11 @@ schedule or a promise - just a running list).
 - `components/item-history-row.tsx` / `item-history-card.tsx` - the shared desktop-table-
   row/mobile-card components every table's items render through (click-to-expand chart,
   the detail-page link, the poewiki link).
-- `components/mobile-sort-control.tsx` - the column-picker + direction-toggle control that
-  stands in for a desktop `SortableHeader` click once the table itself is replaced by the
-  mobile card list.
+- `components/mobile-sort-control.tsx` - the column-picker + direction-toggle control (plus the
+  tier filter row) that stands in for a desktop `SortableHeader` click once the table itself
+  is replaced by the mobile card list.
+- `lib/horizon-fill.ts` - fills missing "Days ahead" horizons in the precomputed file with
+  lower-confidence estimates; see **Full 30-day coverage** above.
 - `lib/api-response.ts` - JSON response helpers shared by every `app/api/*/route.ts`;
   `cachedJsonResponse` also caches the serialized (and gzipped) response bytes, not just
   the underlying data, for the handful of routes whose payload is large enough that
