@@ -108,7 +108,7 @@ export function GlobalSearch({ variant }: { variant: "desktop" | "mobile" }) {
             ? mobileOpen
               ? "fixed inset-x-4 top-4 z-50 flex items-center gap-2 rounded-lg bg-background sm:hidden"
               : "hidden"
-            : "relative hidden w-full sm:block"
+            : "relative hidden w-56 sm:block lg:w-72"
         )}
       >
         <div className="relative w-full">
@@ -141,7 +141,7 @@ export function GlobalSearch({ variant }: { variant: "desktop" | "mobile" }) {
               // mousedown (not click) is where focus would leave the input and close this list before
               // the click lands, so it's cancelled here and the click handler below does the work.
               onMouseDown={(e) => e.preventDefault()}
-              className="absolute top-full right-0 left-0 z-50 mt-1 max-h-80 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
+              className="absolute top-full right-0 left-0 z-50 mt-1 max-h-80 sm:right-auto sm:w-[38rem] sm:max-w-[calc(100vw-3rem)] overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
             >
               {visible.map((r, i) => (
                 <li
@@ -156,7 +156,7 @@ export function GlobalSearch({ variant }: { variant: "desktop" | "mobile" }) {
                     i === active && "bg-muted"
                   )}
                 >
-                  <span className="min-w-0 truncate">{r.displayName}</span>
+                  <span className="min-w-0 break-words">{r.displayName}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{humanizeCategoryName(r.type)}</span>
                 </li>
               ))}
