@@ -12,10 +12,9 @@ ordered by importance.
 | 3 | [A missed day of price history is lost for good](#3-a-missed-day-of-price-history-is-lost-for-good) | Open |
 | 4 | [Cache the predictions file at the CDN](#4-cache-the-predictions-file-at-the-cdn) | Open |
 | 5 | [Predict further than 30 days ahead?](#5-predict-further-than-30-days-ahead) | Undecided |
-| 6 | [Currency Exchange divine prices are converted, not quoted](#6-currency-exchange-divine-prices-are-converted-not-quoted) | Open |
-| 7 | [Live price vs history for items with several poe.ninja lines](#7-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
-| 8 | [Holes in past-league history](#8-holes-in-past-league-history) | Open |
-| 9 | [Small follow-ups](#9-small-follow-ups) | Open |
+| 6 | [Live price vs history for items with several poe.ninja lines](#6-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
+| 7 | [Holes in past-league history](#7-holes-in-past-league-history) | Open |
+| 8 | [Small follow-ups](#8-small-follow-ups) | Open |
 | – | [Done](#done) | – |
 
 ---
@@ -84,16 +83,7 @@ The job time is free. The cost is that every visitor downloads the whole file: 6
 CDN's 10 MB limit, 90 is over it, and a bigger file hurts on mobile. If this goes ahead, ship only
 the days actually needed instead of the whole file.
 
-## 6. Currency Exchange divine prices are converted, not quoted
-
-`getFaustusSpreads()` (`lib/faustus.ts`) always gets divine prices by dividing the chaos price by
-that hour's Divine Orb rate. When the exchange has a direct divine market for the item, that quote
-can differ, so Divine mode shows a derived number rather than what a trader would see.
-
-**Fix:** use the item-vs-Divine pair's own buy/sell range when it exists that hour; convert only
-when it doesn't.
-
-## 7. Live price vs history for items with several poe.ninja lines
+## 6. Live price vs history for items with several poe.ninja lines
 
 Base types (e.g. Dragonscale Doublet) have one poe.ninja line per item level or influence, all under
 one name. The live price takes the **first** line (1.8c); past-league and current-league history
@@ -103,7 +93,7 @@ prices, and the model predicts from a price that doesn't match what it was train
 **Option:** average the lines for the live price too. That would change the starting price, and so
 the forecast and ranking, for every affected item (mostly base types). Needs a decision.
 
-## 8. Holes in past-league history
+## 7. Holes in past-league history
 
 Some items have gaps in a past league's data. The Last One Standing has no Keepers prices on days
 78–93, and its Mirage history stops at day 34. The daily job now fills the resulting missing
@@ -116,7 +106,7 @@ forecast days (see Done), but:
 
 **Option:** interpolate short gaps (say up to 20 days) within a league at ingest time.
 
-## 9. Small follow-ups
+## 8. Small follow-ups
 
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
@@ -151,5 +141,8 @@ forecast days (see Done), but:
   model" (`.github/workflows/retrain-model.yml`): it downloads the history, rebuilds the DB,
   retrains, checks parity and the Mirage backtest, and opens a PR comparing validation scores with
   the previous model.
+- **Currency Exchange Divine prices are quoted where it matters.** When an item's Divine market
+  traded more value than its Chaos market that hour (about 100 items, e.g. Stacked Deck), Divine
+  mode shows that market's own range instead of the chaos price converted.
 - **Current-league history** for migrated types (cards, scarabs, ...) now shows on the chart, and
   same-day duplicate rows are averaged like past leagues.

@@ -47,7 +47,9 @@ live calculation). Each row shows the current price, predicted price, change and
 
 Buy/sell spreads from GGG's own exchange data, with trade volume, a liquidity tier and the gold
 cost per trade. GGG's API is historical (about 2 hours old) and has no gold-cost field, so gold
-costs are transcribed from community sources (`lib/faustus-gold.ts`).
+costs are transcribed from community sources (`lib/faustus-gold.ts`). In Divine mode, an item
+whose Divine market traded more than its Chaos market that hour shows its own Divine quote; the
+rest are converted at the hour's Divine rate.
 
 ### Divination Card Flips
 

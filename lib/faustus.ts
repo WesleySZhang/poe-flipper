@@ -841,10 +841,46 @@ function rateFromPair(market: ExchangeMarket, id: string, chaosSideId: string): 
   return (chaosLow / idLow + chaosHigh / idHigh) / 2;
 }
 
+/**
+ * The item's own buy/sell range against Divine Orb this hour, in divines per unit, from whichever
+ * item-vs-Divine pair traded the most Divine. `volumeChaos` is that Divine volume converted to chaos,
+ * so it can be compared with the Chaos pair's volume. Undefined when there's no such pair or it
+ * didn't trade: an untraded pair's ratios are stale listings, not a price.
+ *
+ * Divine orders use whole-number ratios, so for cheap items the quote is coarse (e.g. 1 div : 5-10
+ * units). Callers only use it when the Divine market is the item's bigger one (checked 2026-09-26:
+ * 92 of 241 items with both pairs; Stacked Deck, Valdo's Puzzle Box, Maven's Invitation, ...), where
+ * it sat ~10% above the Chaos price converted at the hour's Divine rate.
+ */
+function directDivineQuote(
+  markets: ExchangeMarket[],
+  id: string,
+  divineChaosRate: number
+): { buy: number; sell: number; volumeChaos: number } | undefined {
+  let best: { buy: number; sell: number; volumeChaos: number } | undefined;
+  for (const m of markets) {
+    if (!m.market_pair.includes(id) || !m.market_pair.includes(DIVINE_ID)) continue;
+    const idLow = m.lowest_ratio[id];
+    const idHigh = m.highest_ratio[id];
+    const divLow = m.lowest_ratio[DIVINE_ID];
+    const divHigh = m.highest_ratio[DIVINE_ID];
+    const volumeDivine = m.volume_traded[DIVINE_ID] ?? 0;
+    if (!idLow || !idHigh || !divLow || !divHigh || !(volumeDivine > 0)) continue;
+    // Each extremum is its own self-contained quote - see rateFromPair.
+    const a = divLow / idLow;
+    const b = divHigh / idHigh;
+    const volumeChaos = volumeDivine * divineChaosRate;
+    if (!best || volumeChaos > best.volumeChaos) best = { buy: Math.min(a, b), sell: Math.max(a, b), volumeChaos };
+  }
+  return best;
+}
+
 export interface FaustusPrice {
   chaosValue: number;
   /** Undefined only if Divine Orb itself had no computable rate this hour. */
   divineValue?: number;
+  /** True when divineValue is the item's own Divine market quote rather than chaosValue converted. */
+  divineQuoted?: boolean;
 }
 
 /**
@@ -884,9 +920,18 @@ export async function getFaustusPrices(league: string): Promise<Map<string, Faus
       }
     }
     if (best) {
+      // Same rule as getFaustusSpreads: quote the Divine market directly when it's the bigger one.
+      const direct =
+        divineChaosRate !== undefined && id !== DIVINE_ID ? directDivineQuote(markets, id, divineChaosRate) : undefined;
+      const chaosPairVolume = markets.reduce(
+        (v, m) => (m.market_pair.includes(id) && m.market_pair.includes(CHAOS_ID) ? Math.max(v, m.volume_traded[CHAOS_ID] ?? 0) : v),
+        0
+      );
+      const quoted = direct !== undefined && direct.volumeChaos >= chaosPairVolume;
       result.set(name, {
         chaosValue: best.chaosValue,
-        divineValue: divineChaosRate ? best.chaosValue / divineChaosRate : undefined,
+        divineValue: quoted ? (direct.buy + direct.sell) / 2 : divineChaosRate ? best.chaosValue / divineChaosRate : undefined,
+        divineQuoted: quoted,
       });
     }
   }
@@ -911,9 +956,13 @@ export interface FaustusSpread {
    *  range trades actually occurred at within one closed hour, not two live standing orders, so a
    *  wide spread is a real signal the price moved, not a guaranteed instant round-trip today. */
   sellChaosValue: number;
+  /** The Divine-mode buy/sell: the item's own Divine market range when that market traded more value
+   *  than its Chaos market this hour (divineQuoted), else the chaos values converted at the hour's
+   *  Divine rate. */
   buyDivineValue?: number;
   sellDivineValue?: number;
-  /** (sell/buy - 1) * 100. */
+  divineQuoted: boolean;
+  /** (sell/buy - 1) * 100, in chaos. */
   spreadPercent: number;
   /** sell - buy, in chaos, per unit. */
   spreadChaosValue: number;
@@ -1025,12 +1074,19 @@ export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]
 
     if (!best || !(best.buy > 0)) continue;
 
+    // Divine mode shows what a trader would see: the item's own Divine market when it's the bigger
+    // market (always, for Divine-only items like Mirror of Kalandra), else a conversion.
+    const direct =
+      divineChaosRate !== undefined && id !== DIVINE_ID ? directDivineQuote(markets, id, divineChaosRate) : undefined;
+    const quoted = direct !== undefined && direct.volumeChaos >= best.volumeChaos;
+
     results.push({
       name,
       buyChaosValue: best.buy,
       sellChaosValue: best.sell,
-      buyDivineValue: divineChaosRate ? best.buy / divineChaosRate : undefined,
-      sellDivineValue: divineChaosRate ? best.sell / divineChaosRate : undefined,
+      buyDivineValue: quoted ? direct.buy : divineChaosRate ? best.buy / divineChaosRate : undefined,
+      sellDivineValue: quoted ? direct.sell : divineChaosRate ? best.sell / divineChaosRate : undefined,
+      divineQuoted: quoted,
       spreadPercent: (best.sell / best.buy - 1) * 100,
       spreadChaosValue: best.sell - best.buy,
       volumeChaos: best.volumeChaos,
