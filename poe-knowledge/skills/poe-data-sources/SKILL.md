@@ -32,7 +32,12 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   slugified name with apostrophes dropped. `?search=` on a category page did not filter. `[verified]`
   (`lib/ninja-link.ts`)
 - The current league has no ingested daily history until it ends; the app collects its own daily
-  snapshots into CSVs on the `data` branch to fill that gap. `[verified]`
+  snapshots into CSVs on the `data` branch to fill that gap. They're a weaker substitute for
+  poe.ninja's export: only items the live API lists, `Confidence` always "High", and only since
+  collection began (Allflame: from 2026-09-22, league day ~60). Train on the export instead. `[verified]`
+- poe.ninja's `/poe1/api/economy/leagues` lists the live league first (e.g. Allflame, Hardcore
+  Allflame, Standard, Hardcore); the swap check reads `[0]`. Whether it switches the moment a league
+  launches is unchecked. `[unsure]`
 
 ## In this app
 
