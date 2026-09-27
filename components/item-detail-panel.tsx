@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
+import { LegPrice } from "@/components/leg-price";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
@@ -391,8 +392,28 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   Prices are roughly 2 hours stale
                 </p>
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
-                  <Stat label={`Buy (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, priceUnit)} />
-                  <Stat label={`Sell (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, priceUnit)} />
+                  <Stat
+                    label={`Buy (${priceUnitLabel(priceUnit)})`}
+                    value={
+                      <LegPrice
+                        value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, priceUnit)}
+                        source={detail.faustus.buyIn}
+                        divineChaosRate={detail.faustus.divineChaosRate}
+                        align="start"
+                      />
+                    }
+                  />
+                  <Stat
+                    label={`Sell (${priceUnitLabel(priceUnit)})`}
+                    value={
+                      <LegPrice
+                        value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, priceUnit)}
+                        source={detail.faustus.sellIn}
+                        divineChaosRate={detail.faustus.divineChaosRate}
+                        align="start"
+                      />
+                    }
+                  />
                   {/* Same Profit %/Profit (abs)/Profit per 1k gold this card is ranked by on the
                       Currency Exchange Flip table (components/currency-exchange-flip-panel.tsx) - "today's
                       Currency Exchange flip" for this one item, not a separate metric invented for this page. */}
@@ -407,10 +428,18 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                       value={`${detail.faustus.goldCost?.approximate ? "~" : ""}${formatPriceValue(profitPer1000Gold, undefined, "chaos")}`}
                     />
                   )}
-                  <Stat label="Volume (chaos)" value={detail.faustus.volumeChaos.toLocaleString()} />
-                  <Stat label="Item volume" value={detail.faustus.volumeItem.toLocaleString()} />
-                  <Stat label="Item stock" value={detail.faustus.itemStock.toLocaleString()} />
-                  <Stat label="Chaos stock" value={detail.faustus.chaosStock.toLocaleString()} />
+                  <Stat
+                    label="Volume (chaos)"
+                    value={Math.round(detail.faustus.volumeChaos).toLocaleString()}
+                    hint="Traded this hour on the thinner of the two markets used"
+                  />
+                  <Stat label="Item volume" value={detail.faustus.buyMarket.volumeItem.toLocaleString()} hint="Units traded on the buy market" />
+                  <Stat label="Item stock" value={detail.faustus.buyMarket.itemStock.toLocaleString()} hint="Units listed on the buy market" />
+                  <Stat
+                    label="Sell stock (chaos)"
+                    value={Math.round(detail.faustus.sellMarket.currencyStockChaos).toLocaleString()}
+                    hint="Currency listed to sell into, on the sell market"
+                  />
                   {detail.faustus.goldCost && (
                     <Stat
                       label="Gold cost"
@@ -441,7 +470,14 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   <Stat label="Stack size" value={`x${divinationFlip.stackSize}`} />
                   <Stat
                     label={`Cost (${priceUnitLabel(priceUnit)})`}
-                    value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
+                    value={
+                      <LegPrice
+                        value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
+                        source={divinationFlip.buyIn}
+                        divineChaosRate={divinationFlip.divineChaosRate}
+                        align="start"
+                      />
+                    }
                   />
                   <Stat
                     label="Reward"
@@ -453,7 +489,14 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   />
                   <Stat
                     label={`Sell (${priceUnitLabel(priceUnit)})`}
-                    value={formatPriceValue(divinationFlip.rewardChaosValue, divinationFlip.rewardDivineValue, priceUnit)}
+                    value={
+                      <LegPrice
+                        value={formatPriceValue(divinationFlip.rewardChaosValue, divinationFlip.rewardDivineValue, priceUnit)}
+                        source={divinationFlip.sellIn}
+                        divineChaosRate={divinationFlip.divineChaosRate}
+                        align="start"
+                      />
+                    }
                   />
                   {divinationFlip.buyMinChaosValue !== undefined && divinationFlip.buyMaxChaosValue !== undefined && (
                     <Stat
@@ -573,7 +616,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
   return (
     <div className={hint ? "flex cursor-help flex-col" : "flex flex-col"} title={hint}>
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>

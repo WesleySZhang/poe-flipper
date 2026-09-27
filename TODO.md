@@ -141,8 +141,9 @@ forecast days (see Done), but:
   model" (`.github/workflows/retrain-model.yml`): it downloads the history, rebuilds the DB,
   retrains, checks parity and the Mirage backtest, and opens a PR comparing validation scores with
   the previous model.
-- **Currency Exchange Divine prices are quoted where it matters.** When an item's Divine market
-  traded more value than its Chaos market that hour (about 100 items, e.g. Stacked Deck), Divine
-  mode shows that market's own range instead of the chaos price converted.
+- **Flips can buy with one currency and sell for the other.** Currency Exchange Flip and
+  Divination Card Flips consider an item's Chaos and Divine markets separately and take the best of
+  the four routes, shown under each price (e.g. Stacked Deck: buy for 6c on Chaos, sell for ~7.6c
+  on Divine). This also replaced converting every Divine price from chaos (the old item 6).
 - **Current-league history** for migrated types (cards, scarabs, ...) now shows on the chart, and
   same-day duplicate rows are averaged like past leagues.

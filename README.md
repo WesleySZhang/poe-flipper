@@ -47,13 +47,19 @@ live calculation). Each row shows the current price, predicted price, change and
 
 Buy/sell spreads from GGG's own exchange data, with trade volume, a liquidity tier and the gold
 cost per trade. GGG's API is historical (about 2 hours old) and has no gold-cost field, so gold
-costs are transcribed from community sources (`lib/faustus-gold.ts`). In Divine mode, an item
-whose Divine market traded more than its Chaos market that hour shows its own Divine quote; the
-rest are converted at the hour's Divine rate.
+costs are transcribed from community sources (`lib/faustus-gold.ts`).
+
+An item can trade against Chaos and against Divine on separate markets that don't always agree, so
+each row takes the best of four routes: buy with either currency, sell for either. The market
+under each Buy and Sell price says which. Divine legs are valued at the hour's Divine rate. A
+market more than 2× away from the item's other one is ignored as an odd trade.
 
 ### Divination Card Flips
 
 Cost of a full stack (card price × stack size) versus the value of its reward, at today's prices.
+The cards and an exchange-traded reward can each be bought or sold for Chaos or Divine, so each row
+takes the best route (at the hour's midpoint on each market) and shows it under Cost and Sell. A leg
+with no exchange market uses poe.ninja's price; unique rewards always do.
 
 Only cards with a single, fixed, priceable reward are included: a specific unique, a set amount of
 currency, another card, or a specific plain item. Excluded:
@@ -343,7 +349,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `lib/poe-ninja.ts` | poe.ninja client, item keys, display names, poewiki links |
 | `lib/price-snapshot.ts` | Reads/builds `prices.json` |
-| `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client and gold costs |
+| `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client (Chaos and Divine markets per item) and gold costs |
+| `lib/exchange-route.ts`, `components/leg-price.tsx` | Picking a flip's buy/sell markets, and showing them under each price |
 | `lib/liquidity.ts` | Liquidity tiers |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |

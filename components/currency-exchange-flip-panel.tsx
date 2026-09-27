@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
+import { LegPrice } from "@/components/leg-price";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
 import { MobileSortControl } from "@/components/mobile-sort-control";
@@ -16,6 +17,7 @@ import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { FaustusSpread } from "@/lib/faustus";
+import { LEG_LABEL } from "@/lib/exchange-route";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { liquidityTier, type LiquidityTier } from "@/lib/liquidity";
@@ -29,6 +31,16 @@ type SortKey = "buy" | "sell" | "profitPercent" | "profitAbs" | "profitPerGold";
 // Same variant-as-state vocabulary as ConfidenceBadge - no green/amber, red stays reserved for warnings.
 const LIQUIDITY_VARIANT = { high: "default", medium: "secondary", low: "outline" } as const;
 const LIQUIDITY_LABEL = { high: "High", medium: "Medium", low: "Low" } as const;
+
+/** Liquidity badge hover text: what traded on each leg's market. */
+function liquidityTitle(s: FaustusSpread): string {
+  const buy = s.buyMarket;
+  const sell = s.sellMarket;
+  return [
+    `Buy on ${LEG_LABEL[s.buyIn]}: ${Math.round(buy.volumeChaos).toLocaleString()}c traded this hour, ${buy.itemStock.toLocaleString()} listed`,
+    `Sell on ${LEG_LABEL[s.sellIn]}: ${Math.round(sell.volumeChaos).toLocaleString()}c traded, ${Math.round(sell.currencyStockChaos).toLocaleString()}c to sell into`,
+  ].join("\n");
+}
 
 async function fetchFaustusSpreads(): Promise<FaustusSpread[]> {
   const res = await fetch("/api/faustus-spreads");
@@ -44,6 +56,10 @@ async function fetchFaustusSpreads(): Promise<FaustusSpread[]> {
  * hour's trade range, not two live standing orders), and a wide percentage on a barely-traded item
  * is usually just ratio-rounding noise, not a real opportunity - the Liquidity column is how to tell
  * the two apart.
+ *
+ * Each row buys and sells on whichever of the item's markets (against Chaos or against Divine) gives
+ * the best route - see lib/faustus.ts's getFaustusSpreads - and shows which under the Buy and Sell
+ * prices.
  */
 export function CurrencyExchangeFlipPanel() {
   const [spreads, setSpreads] = useState<FaustusSpread[]>([]);
@@ -238,7 +254,7 @@ export function CurrencyExchangeFlipPanel() {
                     value: (
                       <Badge
                         variant={LIQUIDITY_VARIANT[s.liquidity]}
-                        title={`Volume this hour: ${s.volumeChaos.toLocaleString()}c (${s.volumeItem.toLocaleString()} traded)\nOffers available: ${s.itemStock.toLocaleString()} to buy, ${s.chaosStock.toLocaleString()}c to sell into`}
+                        title={liquidityTitle(s)}
                       >
                         {LIQUIDITY_LABEL[s.liquidity]}
                       </Badge>
@@ -255,8 +271,14 @@ export function CurrencyExchangeFlipPanel() {
                   },
                 ]}
                 rightFields={[
-                  { label: `Buy (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit) },
-                  { label: `Sell (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit) },
+                  {
+                    label: `Buy (${priceUnitLabel(priceUnit)})`,
+                    value: <LegPrice value={formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit)} source={s.buyIn} divineChaosRate={s.divineChaosRate} />,
+                  },
+                  {
+                    label: `Sell (${priceUnitLabel(priceUnit)})`,
+                    value: <LegPrice value={formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit)} source={s.sellIn} divineChaosRate={s.divineChaosRate} />,
+                  },
                   { label: "Profit %", value: formatPercentChange(s.chaosRatio, s.divineRatio, priceUnit), emphasized: true },
                 ]}
               />
@@ -307,8 +329,12 @@ export function CurrencyExchangeFlipPanel() {
                   colSpan={7}
                   expandable={false}
                 >
-                  <TableCell className="text-right">{formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit)}</TableCell>
-                  <TableCell className="text-right">{formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit)}</TableCell>
+                  <TableCell className="text-right">
+                    <LegPrice value={formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit)} source={s.buyIn} divineChaosRate={s.divineChaosRate} />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <LegPrice value={formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit)} source={s.sellIn} divineChaosRate={s.divineChaosRate} />
+                  </TableCell>
                   <TableCell className="text-right font-medium">
                     {formatPercentChange(s.chaosRatio, s.divineRatio, priceUnit)}
                   </TableCell>
@@ -329,7 +355,7 @@ export function CurrencyExchangeFlipPanel() {
                     <div className="flex justify-center">
                       <Badge
                         variant={LIQUIDITY_VARIANT[s.liquidity]}
-                        title={`Volume this hour: ${s.volumeChaos.toLocaleString()}c (${s.volumeItem.toLocaleString()} traded)\nOffers available: ${s.itemStock.toLocaleString()} to buy, ${s.chaosStock.toLocaleString()}c to sell into`}
+                        title={liquidityTitle(s)}
                       >
                         {LIQUIDITY_LABEL[s.liquidity]}
                       </Badge>

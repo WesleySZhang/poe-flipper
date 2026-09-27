@@ -30,6 +30,8 @@
  */
 import "server-only";
 import { goldCostFor, type GoldCost } from "./faustus-gold";
+import { pickRoute, type LegOption } from "./exchange-route";
+import { liquidityTier } from "./liquidity";
 
 const EXCHANGE_URL = "https://web.poecdn.com/api/currency-exchange";
 const CACHE_TTL_MS = 20 * 60 * 1000; // same cadence as poe-ninja.ts's other overview caches
@@ -841,38 +843,137 @@ function rateFromPair(market: ExchangeMarket, id: string, chaosSideId: string): 
   return (chaosLow / idLow + chaosHigh / idHigh) / 2;
 }
 
+export type ExchangeCurrency = "chaos" | "divine";
+
+/** One item's market against one currency over the last closed hour. */
+export interface ItemMarket {
+  currency: ExchangeCurrency;
+  /** Cheapest and priciest rate traded that hour, in `currency` per unit. */
+  low: number;
+  high: number;
+  /** Currency traded on this pair that hour, in chaos (Divine volume converted at the hour's rate). */
+  volumeChaos: number;
+  /** The item's own units traded. */
+  volumeItem: number;
+  /** Units of the item listed (highest_stock reached that hour) - offers to buy from. */
+  itemStock: number;
+  /** Currency listed on the other side, in chaos - offers to sell into. */
+  currencyStockChaos: number;
+}
+
+export interface ItemMarkets {
+  chaos?: ItemMarket;
+  divine?: ItemMarket;
+}
+
+export interface ExchangeQuotes {
+  /** Chaos per Divine Orb, the Divine/Chaos pair's midpoint this hour. */
+  divineChaosRate?: number;
+  /** By display name, for every FAUSTUS_NAME_TO_ID entry with at least one market. */
+  markets: Map<string, ItemMarkets>;
+}
+
+export const marketMid = (m: ItemMarket) => (m.low + m.high) / 2;
+
 /**
- * The item's own buy/sell range against Divine Orb this hour, in divines per unit, from whichever
- * item-vs-Divine pair traded the most Divine. `volumeChaos` is that Divine volume converted to chaos,
- * so it can be compared with the Chaos pair's volume. Undefined when there's no such pair or it
- * didn't trade: an untraded pair's ratios are stale listings, not a price.
- *
- * Divine orders use whole-number ratios, so for cheap items the quote is coarse (e.g. 1 div : 5-10
- * units). Callers only use it when the Divine market is the item's bigger one (checked 2026-09-26:
- * 92 of 241 items with both pairs; Stacked Deck, Valdo's Puzzle Box, Maven's Invitation, ...), where
- * it sat ~10% above the Chaos price converted at the hour's Divine rate.
+ * How far apart (either way) an item's Chaos and Divine markets can be before one is treated as an
+ * odd trade rather than a price. Real gaps are small (Stacked Deck, 2026-09-27: 6-7.2c on Chaos vs
+ * 7.1-7.6c on Divine); the ones past 2x were a handful of trades, e.g. Delirium Scarab of Mania's
+ * whole Divine market that hour was 22 scarabs for 10 div (~184c each vs 3-6c on Chaos, 391 traded).
  */
-function directDivineQuote(
-  markets: ExchangeMarket[],
+const MAX_MARKET_GAP = 2;
+
+/**
+ * The item's market against one currency: whichever such pair traded the most of that currency.
+ * Each of lowest_ratio/highest_ratio is its own self-contained quote - see rateFromPair.
+ *
+ * A Divine pair only counts if it traded that hour: an untraded pair's ratios are stale listings,
+ * and ~30% of Divine pairs don't trade in a given hour. Divine orders use whole-number ratios, so a
+ * cheap item's Divine quote is coarse (1 div : 5-10 units). Where both pairs trade they don't
+ * always agree: checked 2026-09-26, the Divine market was the bigger one for 92 of 241 such items
+ * (Stacked Deck, Valdo's Puzzle Box, Maven's Invitation, ...) and quoted ~10% above the chaos price
+ * converted at the hour's rate.
+ */
+function itemMarket(
+  pairs: ExchangeMarket[],
   id: string,
-  divineChaosRate: number
-): { buy: number; sell: number; volumeChaos: number } | undefined {
-  let best: { buy: number; sell: number; volumeChaos: number } | undefined;
-  for (const m of markets) {
-    if (!m.market_pair.includes(id) || !m.market_pair.includes(DIVINE_ID)) continue;
+  currency: ExchangeCurrency,
+  divineChaosRate: number | undefined
+): ItemMarket | undefined {
+  const currencyId = currency === "chaos" ? CHAOS_ID : DIVINE_ID;
+  const toChaos = currency === "chaos" ? 1 : divineChaosRate;
+  if (toChaos === undefined) return undefined;
+  let best: ItemMarket | undefined;
+  for (const m of pairs) {
+    if (!m.market_pair.includes(currencyId)) continue;
     const idLow = m.lowest_ratio[id];
     const idHigh = m.highest_ratio[id];
-    const divLow = m.lowest_ratio[DIVINE_ID];
-    const divHigh = m.highest_ratio[DIVINE_ID];
-    const volumeDivine = m.volume_traded[DIVINE_ID] ?? 0;
-    if (!idLow || !idHigh || !divLow || !divHigh || !(volumeDivine > 0)) continue;
-    // Each extremum is its own self-contained quote - see rateFromPair.
-    const a = divLow / idLow;
-    const b = divHigh / idHigh;
-    const volumeChaos = volumeDivine * divineChaosRate;
-    if (!best || volumeChaos > best.volumeChaos) best = { buy: Math.min(a, b), sell: Math.max(a, b), volumeChaos };
+    const curLow = m.lowest_ratio[currencyId];
+    const curHigh = m.highest_ratio[currencyId];
+    if (!idLow || !idHigh || !curLow || !curHigh) continue;
+    const volumeCurrency = m.volume_traded[currencyId] ?? 0;
+    if (currency === "divine" && !(volumeCurrency > 0)) continue;
+    const a = curLow / idLow;
+    const b = curHigh / idHigh;
+    const volumeChaos = volumeCurrency * toChaos;
+    if (!best || volumeChaos > best.volumeChaos) {
+      best = {
+        currency,
+        low: Math.min(a, b),
+        high: Math.max(a, b),
+        volumeChaos,
+        volumeItem: m.volume_traded[id] ?? 0,
+        itemStock: m.highest_stock[id] ?? 0,
+        currencyStockChaos: (m.highest_stock[currencyId] ?? 0) * toChaos,
+      };
+    }
   }
   return best;
+}
+
+function divineRate(markets: ExchangeMarket[]): number | undefined {
+  for (const m of markets) {
+    const rate = rateFromPair(m, DIVINE_ID, CHAOS_ID);
+    if (rate !== undefined) return rate;
+  }
+  return undefined;
+}
+
+/**
+ * Every mapped item's Chaos and Divine markets this hour, kept apart so a flip can buy on one and sell
+ * on the other (lib/exchange-route.ts). Chaos Orb is the pivot and has no market of its own; Divine
+ * Orb has only its Chaos market.
+ */
+export async function getExchangeQuotes(league: string): Promise<ExchangeQuotes> {
+  const all = await fetchExchangeMarkets(league);
+  const divineChaosRate = divineRate(all);
+  const byId = new Map<string, ExchangeMarket[]>();
+  for (const m of all) {
+    for (const id of m.market_pair) {
+      const list = byId.get(id);
+      if (list) list.push(m);
+      else byId.set(id, [m]);
+    }
+  }
+  const markets = new Map<string, ItemMarkets>();
+  for (const [name, id] of Object.entries(FAUSTUS_NAME_TO_ID)) {
+    if (id === CHAOS_ID) continue;
+    const pairs = byId.get(id) ?? [];
+    let chaos = itemMarket(pairs, id, "chaos", divineChaosRate);
+    let divine = id === DIVINE_ID ? undefined : itemMarket(pairs, id, "divine", divineChaosRate);
+    // Markets more than MAX_MARKET_GAP apart can't both be a real price: keep the one that traded
+    // more units (comparable within one item, unlike chaos-equivalent volume, where a single 10 div
+    // trade counts as 4,000c+).
+    if (chaos && divine && divineChaosRate) {
+      const gap = (marketMid(divine) * divineChaosRate) / marketMid(chaos);
+      if (gap > MAX_MARKET_GAP || gap < 1 / MAX_MARKET_GAP) {
+        if (divine.volumeItem > chaos.volumeItem) chaos = undefined;
+        else divine = undefined;
+      }
+    }
+    if (chaos || divine) markets.set(name, { chaos, divine });
+  }
+  return { divineChaosRate, markets };
 }
 
 export interface FaustusPrice {
@@ -887,21 +988,16 @@ export interface FaustusPrice {
  * Every FAUSTUS_NAME_TO_ID entry this league's exchange data can actually price, in one shot - one
  * fetch (cached) covers every name, since the whole mapped set is small. Prefers, per name, whichever
  * pair (against Chaos or against Divine, converted) saw the most trade volume that hour, so a
- * thinly-traded coincidental pairing doesn't win over the real market.
+ * thinly-traded coincidental pairing doesn't win over the real market. The divine price is the
+ * item's own Divine market quote when that market traded more value than its Chaos market.
  */
 export async function getFaustusPrices(league: string): Promise<Map<string, FaustusPrice>> {
   const markets = await fetchExchangeMarkets(league);
   const result = new Map<string, FaustusPrice>();
   if (markets.length === 0) return result;
 
-  let divineChaosRate: number | undefined;
-  for (const m of markets) {
-    const rate = rateFromPair(m, DIVINE_ID, CHAOS_ID);
-    if (rate !== undefined) {
-      divineChaosRate = rate;
-      break;
-    }
-  }
+  const divineChaosRate = divineRate(markets);
+  const quotes = await getExchangeQuotes(league);
 
   for (const [name, id] of Object.entries(FAUSTUS_NAME_TO_ID)) {
     // Chaos Orb is the pivot currency - it never forms a pair with itself, so it has to be special-cased.
@@ -920,17 +1016,11 @@ export async function getFaustusPrices(league: string): Promise<Map<string, Faus
       }
     }
     if (best) {
-      // Same rule as getFaustusSpreads: quote the Divine market directly when it's the bigger one.
-      const direct =
-        divineChaosRate !== undefined && id !== DIVINE_ID ? directDivineQuote(markets, id, divineChaosRate) : undefined;
-      const chaosPairVolume = markets.reduce(
-        (v, m) => (m.market_pair.includes(id) && m.market_pair.includes(CHAOS_ID) ? Math.max(v, m.volume_traded[CHAOS_ID] ?? 0) : v),
-        0
-      );
-      const quoted = direct !== undefined && direct.volumeChaos >= chaosPairVolume;
+      const item = quotes.markets.get(name);
+      const quoted = item?.divine !== undefined && item.divine.volumeChaos >= (item.chaos?.volumeChaos ?? 0);
       result.set(name, {
         chaosValue: best.chaosValue,
-        divineValue: quoted ? (direct.buy + direct.sell) / 2 : divineChaosRate ? best.chaosValue / divineChaosRate : undefined,
+        divineValue: quoted ? marketMid(item!.divine!) : divineChaosRate ? best.chaosValue / divineChaosRate : undefined,
         divineQuoted: quoted,
       });
     }
@@ -948,152 +1038,75 @@ export async function getFaustusPrice(name: string, league: string): Promise<Fau
 
 export interface FaustusSpread {
   name: string;
-  /** Cheapest chaos-per-unit rate this pair traded at during the hour - the price you'd have paid
-   *  to acquire one. */
+  /** Which market to buy on and which to sell on (lib/exchange-route.ts's pickRoute). */
+  buyIn: ExchangeCurrency;
+  sellIn: ExchangeCurrency;
+  /** Cheapest rate the buy market traded at during the hour - the price you'd have paid for one.
+   *  In chaos; a Divine-market leg is converted at divineChaosRate. */
   buyChaosValue: number;
-  /** Priciest chaos-per-unit rate this pair traded at the same hour - the price you'd have gotten
-   *  selling one. Same "purely historical, ~2h stale" caveat as getFaustusPrices - this is the
-   *  range trades actually occurred at within one closed hour, not two live standing orders, so a
-   *  wide spread is a real signal the price moved, not a guaranteed instant round-trip today. */
+  /** Priciest rate the sell market traded at the same hour - what you'd have gotten for one. Same
+   *  "purely historical, ~2h stale" caveat as getFaustusPrices: the range trades actually occurred
+   *  at within one closed hour, not two live standing orders, so a wide spread is a real signal the
+   *  price moved, not a guaranteed instant round-trip today. */
   sellChaosValue: number;
-  /** The Divine-mode buy/sell: the item's own Divine market range when that market traded more value
-   *  than its Chaos market this hour (divineQuoted), else the chaos values converted at the hour's
-   *  Divine rate. */
+  /** The same in divines: exact for a Divine-market leg, converted for a Chaos one. */
   buyDivineValue?: number;
   sellDivineValue?: number;
-  divineQuoted: boolean;
-  /** (sell/buy - 1) * 100, in chaos. */
+  /** (sell/buy - 1) * 100. */
   spreadPercent: number;
   /** sell - buy, in chaos, per unit. */
   spreadChaosValue: number;
-  /** Chaos Orb volume traded on this pair that hour - how much value actually changed hands, the
-   *  primary liquidity signal (a wide spread on a market with near-zero volume isn't fillable). */
+  /** The thinner leg's volume in chaos - the liquidity signal (a wide spread on a market with
+   *  near-zero volume isn't fillable). */
   volumeChaos: number;
-  /** The item's own unit volume traded that hour. */
-  volumeItem: number;
-  /** Units of the item listed for trade (highest_stock reached that hour) - the "offers available"
-   *  to buy: a depth signal distinct from volume, since volume is what actually traded and this is
-   *  what's sitting there right now available to trade against. */
-  itemStock: number;
-  /** Chaos Orb listed on the other side of this same pair (highest_stock reached that hour) - the
-   *  "offers available" to sell into: how much chaos liquidity exists to absorb a sell order. */
-  chaosStock: number;
+  buyMarket: ItemMarket;
+  sellMarket: ItemMarket;
+  /** Chaos per Divine Orb this hour; what Divine legs are valued at. */
+  divineChaosRate?: number;
   /** Gold cost to place a buy order for one unit - see lib/faustus-gold.ts. Undefined when that
    *  table doesn't cover this item at all (a genuine gap, not a zero cost). */
   goldCost?: GoldCost;
 }
 
 /**
- * Buy/sell spread for every Faustus-tradeable item that has a market this hour, either directly
- * against Chaos Orb or (for items GGG's exchange never opens a Chaos pair for at all - Mirror of
- * Kalandra, Hinekora's Lock, ...) against Divine Orb, converted through that same hour's Divine/
- * Chaos rate. Same "steady price, real market" question getFaustusPrices already answers, but
- * keeping both ends of the hour's trade range instead of collapsing them to one midpoint. The
- * direct Chaos pair is always preferred when one exists - the vast majority of mapped items (515 of
- * 657, checked live) have one - since converting through a second market compounds its own
- * uncertainty into the number; the Divine path only runs at all when no Chaos pair was found.
+ * Buy/sell spread for every Faustus-tradeable item with a market this hour. An item can trade against
+ * Chaos and against Divine, so there are four routes (buy with either, sell for either); the row
+ * takes the best one by lib/exchange-route.ts's pickRoute - best weaker-leg liquidity, then the
+ * highest sell/buy ratio. Divine legs are valued at the hour's Divine rate. Items that only trade
+ * against Divine (Mirror of Kalandra, Hinekora's Lock, ...) naturally get a Divine-to-Divine route.
  */
 export async function getFaustusSpreads(league: string): Promise<FaustusSpread[]> {
-  const markets = await fetchExchangeMarkets(league);
-  if (markets.length === 0) return [];
-
-  let divineChaosRate: number | undefined;
-  for (const m of markets) {
-    const rate = rateFromPair(m, DIVINE_ID, CHAOS_ID);
-    if (rate !== undefined) {
-      divineChaosRate = rate;
-      break;
-    }
-  }
-
+  const { divineChaosRate, markets } = await getExchangeQuotes(league);
   const results: FaustusSpread[] = [];
-  for (const [name, id] of Object.entries(FAUSTUS_NAME_TO_ID)) {
-    if (id === CHAOS_ID) continue; // Chaos Orb has no spread against itself.
-
-    let best:
-      | { buy: number; sell: number; volumeChaos: number; volumeItem: number; itemStock: number; chaosStock: number }
-      | undefined;
-    for (const m of markets) {
-      if (!m.market_pair.includes(id) || !m.market_pair.includes(CHAOS_ID)) continue;
-      const idLow = m.lowest_ratio[id];
-      const idHigh = m.highest_ratio[id];
-      const chaosLow = m.lowest_ratio[CHAOS_ID];
-      const chaosHigh = m.highest_ratio[CHAOS_ID];
-      if (!idLow || !idHigh || !chaosLow || !chaosHigh) continue;
-      // Two chaos-per-unit bounds from the hour's observed ratio range - each of lowest_ratio/
-      // highest_ratio is its own self-contained quote (divide its two sides together), never
-      // cross-matched against the other extremum's sides - see rateFromPair's comment for why.
-      const a = chaosLow / idLow;
-      const b = chaosHigh / idHigh;
-      const volumeChaos = m.volume_traded[CHAOS_ID] ?? 0;
-      // Prefer whichever pair saw the most Chaos volume, same tie-break as getFaustusPrices.
-      if (!best || volumeChaos > best.volumeChaos) {
-        best = {
-          buy: Math.min(a, b),
-          sell: Math.max(a, b),
-          volumeChaos,
-          volumeItem: m.volume_traded[id] ?? 0,
-          itemStock: m.highest_stock[id] ?? 0,
-          chaosStock: m.highest_stock[CHAOS_ID] ?? 0,
-        };
-      }
-    }
-
-    // Fallback for items with no direct Chaos market this hour - a handful of very high-value
-    // items (Mirror of Kalandra, Hinekora's Lock) only ever trade against Divine Orb; GGG's
-    // exchange doesn't open every pair for every item. Same "each extremum is its own
-    // self-contained quote" math as above, converted through this hour's Divine/Chaos rate rather
-    // than skipping the item entirely. volumeChaos/chaosStock become chaos-EQUIVALENT (Divine
-    // volume/stock multiplied through the same rate) rather than literal Chaos Orb activity, so
-    // the Liquidity column's chaos-denominated thresholds still mean the same thing across both
-    // origins - noted here since nothing in the returned shape distinguishes the two paths.
-    if (!best && divineChaosRate !== undefined && id !== DIVINE_ID) {
-      for (const m of markets) {
-        if (!m.market_pair.includes(id) || !m.market_pair.includes(DIVINE_ID)) continue;
-        const idLow = m.lowest_ratio[id];
-        const idHigh = m.highest_ratio[id];
-        const divLow = m.lowest_ratio[DIVINE_ID];
-        const divHigh = m.highest_ratio[DIVINE_ID];
-        if (!idLow || !idHigh || !divLow || !divHigh) continue;
-        const a = (divLow / idLow) * divineChaosRate;
-        const b = (divHigh / idHigh) * divineChaosRate;
-        const volumeDivine = m.volume_traded[DIVINE_ID] ?? 0;
-        const volumeChaos = volumeDivine * divineChaosRate;
-        if (!best || volumeChaos > best.volumeChaos) {
-          best = {
-            buy: Math.min(a, b),
-            sell: Math.max(a, b),
-            volumeChaos,
-            volumeItem: m.volume_traded[id] ?? 0,
-            itemStock: m.highest_stock[id] ?? 0,
-            chaosStock: (m.highest_stock[DIVINE_ID] ?? 0) * divineChaosRate,
-          };
-        }
-      }
-    }
-
-    if (!best || !(best.buy > 0)) continue;
-
-    // Divine mode shows what a trader would see: the item's own Divine market when it's the bigger
-    // market (always, for Divine-only items like Mirror of Kalandra), else a conversion.
-    const direct =
-      divineChaosRate !== undefined && id !== DIVINE_ID ? directDivineQuote(markets, id, divineChaosRate) : undefined;
-    const quoted = direct !== undefined && direct.volumeChaos >= best.volumeChaos;
-
+  for (const [name, item] of markets) {
+    const toLeg = (m: ItemMarket, value: number): LegOption & { market: ItemMarket } => {
+      const chaosValue = m.currency === "chaos" ? value : value * divineChaosRate!;
+      const divineValue = m.currency === "divine" ? value : divineChaosRate ? value / divineChaosRate : undefined;
+      return { source: m.currency, chaosValue, divineValue, tier: liquidityTier(m.volumeChaos), market: m };
+    };
+    const legs = [item.chaos, item.divine].filter((m): m is ItemMarket => m !== undefined);
+    const route = pickRoute(
+      legs.map((m) => toLeg(m, m.low)),
+      legs.map((m) => toLeg(m, m.high))
+    );
+    if (!route) continue;
+    const buy = route.buy as ReturnType<typeof toLeg>;
+    const sell = route.sell as ReturnType<typeof toLeg>;
     results.push({
       name,
-      buyChaosValue: best.buy,
-      sellChaosValue: best.sell,
-      buyDivineValue: quoted ? direct.buy : divineChaosRate ? best.buy / divineChaosRate : undefined,
-      sellDivineValue: quoted ? direct.sell : divineChaosRate ? best.sell / divineChaosRate : undefined,
-      divineQuoted: quoted,
-      spreadPercent: (best.sell / best.buy - 1) * 100,
-      spreadChaosValue: best.sell - best.buy,
-      volumeChaos: best.volumeChaos,
-      volumeItem: best.volumeItem,
-      itemStock: best.itemStock,
-      chaosStock: best.chaosStock,
-      goldCost: goldCostFor(name, id),
+      buyIn: buy.market.currency,
+      sellIn: sell.market.currency,
+      buyChaosValue: buy.chaosValue,
+      sellChaosValue: sell.chaosValue,
+      buyDivineValue: buy.divineValue,
+      sellDivineValue: sell.divineValue,
+      spreadPercent: (sell.chaosValue / buy.chaosValue - 1) * 100,
+      spreadChaosValue: sell.chaosValue - buy.chaosValue,
+      volumeChaos: Math.min(buy.market.volumeChaos, sell.market.volumeChaos),
+      buyMarket: buy.market,
+      sellMarket: sell.market,
+      divineChaosRate,
+      goldCost: goldCostFor(name, FAUSTUS_NAME_TO_ID[name]),
     });
   }
   return results;
