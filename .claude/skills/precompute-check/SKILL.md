@@ -24,7 +24,13 @@ dispatch, and on pushes to prediction-algorithm files. It force-pushes an orphan
 5. **Trigger a run.** `gh workflow run precompute-predictions.yml` (or GitHub -> Actions -> Run workflow).
    Needed after: first deploy of new snapshot code, a fix to the scripts, or a missed daily run.
    Pushing to master alone won't trigger it unless a watched algorithm file changed.
-6. **App picks it up** within ~30 min (`prices.json` cache) / ~2 min (history and predictions). If the
+6. **Stale-day symptoms.** The app accepts a file up to 2 league days old (shifted to today,
+   `alignPrecomputedToDay`). Older than that, or from the wrong league, and every page degrades: the
+   predicted line has only today + target (hover shows 2 values), `/api/flip-suggestion-curve`
+   returns `[]`, `/api/flip-suggestions/precomputed` returns `null`, and tables/charts only update on
+   slider release. Compare `currentDay` in the published file with `currentLeagueDay()`.
+   Scheduled runs start hours after the 00:10 UTC cron; that alone is expected, not a failure.
+7. **App picks it up** within ~30 min (`prices.json` cache) / ~2 min (history and predictions). If the
    page still looks stale after that, suspect raw.githubusercontent.com's CDN cache (up to ~5 min).
 
 Report what you verified and what you could only infer.

@@ -203,7 +203,12 @@
   the league is it" (`lib/league-day.ts`'s `currentLeagueDay`) deliberately lags 20 minutes
   behind the real UTC day rollover, so nothing asks for "today"'s data before this job has
   had time to actually publish it - see that file's own comment for the reasoning and the
-  timing this is tuned against. Both the precomputed-predictions and current-league-history
+  timing this is tuned against. In practice GitHub starts the scheduled run hours late (runs
+  land around 04:00-05:00 UTC), so the app also accepts a file up to 2 league days old and
+  shifts it to today (`alignPrecomputedToDay` in `lib/predicted-suggestion.ts`: yesterday's
+  horizon h becomes today's duration h-1, so a day-old file covers 1-29 days). Before this,
+  every morning until the run landed the file was rejected: no detailed predicted curve (just a
+  today-to-target line) and a table/chart that only updated on slider release. Both the precomputed-predictions and current-league-history
   in-memory fetch caches (`lib/precomputed-predictions.ts`, `lib/current-league-history.ts`)
   use a short (2-minute) TTL for the same reason: picking up a freshly-published day
   quickly rather than serving an already-warm instance's stale fetch for longer.

@@ -62,6 +62,54 @@ export function isPrecomputedPredictions(value: unknown): value is PrecomputedPr
   );
 }
 
+/** How many days old a file may be and still be used (see alignPrecomputedToDay). GitHub's scheduled
+ *  runs start hours after their 00:10 UTC cron, so every day the file is a day old from 00:00 UTC
+ *  until the run lands; 2 also covers one fully missed run. */
+export const MAX_PRECOMPUTED_LAG_DAYS = 2;
+
+/**
+ * Re-expresses a file computed `lag` days before `currentDay` in today's terms: the file's horizon h
+ * targets league day (file.currentDay + h), which is today + (h - lag), so it becomes today's
+ * duration h - lag. Horizons at or before today are dropped (a lag-day-old file covers durations
+ * 1..30-lag); every per-horizon array is sliced to stay index-aligned with `durations`. Prices and
+ * ratios are the file's own, untouched - the price snapshot the app shows is from the same run, so
+ * nothing gets staler than it already was. Undefined when the file is from a later day or too old.
+ */
+export function alignPrecomputedToDay(
+  data: PrecomputedPredictions,
+  currentDay: number
+): PrecomputedPredictions | undefined {
+  const lag = currentDay - data.currentDay;
+  if (lag === 0) return data;
+  if (lag < 0 || lag > MAX_PRECOMPUTED_LAG_DAYS) return undefined;
+
+  const keep: number[] = [];
+  data.durations.forEach((h, i) => {
+    if (h > lag) keep.push(i);
+  });
+  const pick = <T>(arr: T[]): T[] => keep.map((i) => arr[i]);
+  return {
+    ...data,
+    currentDay,
+    durations: pick(data.durations).map((h) => h - lag),
+    items: data.items.map((it) => ({
+      ...it,
+      r: pick(it.r),
+      rd: pick(it.rd),
+      lc: pick(it.lc),
+      lcd: pick(it.lcd),
+      cf: pick(it.cf),
+      cfd: pick(it.cfd),
+      uf: pick(it.uf),
+      ufd: pick(it.ufd),
+      br: pick(it.br),
+      brd: pick(it.brd),
+      fs: pick(it.fs),
+      ...(it.e ? { e: pick(it.e) } : {}),
+    })),
+  };
+}
+
 /**
  * The English explanation shown per row - its own pure function (rather than inlined in
  * lib/flip-suggestions.ts's buildSuggestion) so a precomputed row - server-side or, now,

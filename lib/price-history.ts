@@ -98,7 +98,9 @@ export async function getCurrencyPriceHistory(name: string): Promise<LeagueSerie
     );
     const itemRows = itemReader.getRowObjects();
     if (itemRows.length > 0) {
-      return appendCurrentLeagueSeries(groupIntoSeries(itemRows), await getCurrentLeagueCurrencyHistory(name));
+      // The daily job files these migrated types in the current league's items CSV too, not currency.
+      const live = (await getCurrentLeagueItemHistory(name)) ?? (await getCurrentLeagueCurrencyHistory(name));
+      return appendCurrentLeagueSeries(groupIntoSeries(itemRows), live);
     }
   }
   return appendCurrentLeagueSeries(groupIntoSeries(rows), await getCurrentLeagueCurrencyHistory(name));

@@ -1,6 +1,7 @@
 import "server-only";
 import type { FlipSuggestion, PredictionCurvePoint } from "./flip-suggestions";
 import {
+  alignPrecomputedToDay,
   reconstructAllFlipSuggestions,
   isPrecomputedPredictions,
   type PrecomputedItem,
@@ -76,14 +77,22 @@ async function fetchPrecomputed(): Promise<PrecomputedPredictions | null> {
   return data;
 }
 
-/** Fetches the cached file and checks it's actually usable for TODAY's (league, currentDay) - the
- *  job only ever computes against "today", so a wrong league or stale league-day means the file is
- *  from before today's cache window rolled over (or hasn't run yet at all). Shared by every exported
- *  function below so this check can't drift between them. */
+// The aligned copy of the last file, so a day-old file is re-sliced once per (file, day), not per request.
+let aligned: { source: PrecomputedPredictions; currentDay: number; data: PrecomputedPredictions | undefined } | undefined;
+
+/** Fetches the cached file and returns it in TODAY's (league, currentDay) terms. A file from an
+ *  earlier day is still used, shifted to today (see alignPrecomputedToDay), up to
+ *  MAX_PRECOMPUTED_LAG_DAYS old: GitHub starts the 00:10 UTC scheduled run hours late, and requiring an
+ *  exact day match left every page on the degraded path for those hours each day - no detailed
+ *  predicted curve (just today -> target), and a table/chart that only updated on slider release.
+ *  Shared by every exported function below so this check can't drift between them. */
 async function fetchValidPrecomputed(league: string, currentDay: number): Promise<PrecomputedPredictions | undefined> {
   const data = await fetchPrecomputed();
-  if (!data || data.league !== league || data.currentDay !== currentDay) return undefined;
-  return data;
+  if (!data || data.league !== league) return undefined;
+  if (aligned?.source !== data || aligned.currentDay !== currentDay) {
+    aligned = { source: data, currentDay, data: alignPrecomputedToDay(data, currentDay) };
+  }
+  return aligned.data;
 }
 
 /**
