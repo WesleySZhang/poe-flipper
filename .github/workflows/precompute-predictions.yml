@@ -94,7 +94,16 @@ jobs:
           set -e
           cp predictions.json /tmp/predictions.json
           cp prices.json /tmp/prices.json
-          rm -rf /tmp/history && cp -r history /tmp/history
+          # Start from everything already on the data branch, then overlay today's files. This run
+          # only produces the current league's current month, so copying just that would drop every
+          # earlier month on the 1st and the previous league's whole folder after a league swap.
+          rm -rf /tmp/history
+          mkdir -p /tmp/history
+          if git fetch --depth=1 origin data; then
+            git archive FETCH_HEAD history | tar -x -C /tmp || echo "No history/ on the data branch yet."
+          fi
+          cp -r history/. /tmp/history/
+          echo "Publishing history files:" && (cd /tmp/history && find . -name '*.csv' | sort)
           cp vercel.json /tmp/vercel.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
