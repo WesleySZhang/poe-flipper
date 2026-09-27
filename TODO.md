@@ -1,322 +1,168 @@
 # TODO
 
-Ideas and known gaps not yet worth implementing, tracked here so they don't get lost. Not a
-schedule or a promise - just a running list to revisit. Roughly ordered by importance, most first.
+Known gaps and ideas, so they don't get lost. Not a schedule or a promise. Open items are roughly
+ordered by importance.
 
-## 1. Better mobile support - no horizontal scrolling for the important stuff
+## At a glance
 
-**Done for Flip Suggestions, the Mirage simulator, and the chart itself:**
-- Below the `sm` breakpoint, `flip-suggestions-panel.tsx` and `mirage-simulator-panel.tsx` both
-  render a stacked list of cards (`components/item-history-card.tsx`) instead of the table - every
-  column's value is still shown, just laid out vertically per item instead of as table columns, so
-  nothing needs horizontal scrolling to read. Tapping a card expands the same chart a table row
-  would. Each panel picks its own `fields` (wrapping, left) vs. `rightFields` (unwrapped, right -
-  kept to 2-3 items so it can't overflow) split - Flip Suggestions puts Current/Predicted/Change on
-  the right; the Mirage simulator puts just Predicted %/Actual % there, the two figures the whole
-  tool exists to compare, and wraps Confidence/Category/Now/Predicted/Actual future on the left.
-- `components/price-history-chart.tsx` now detects a narrow viewport (`matchMedia`) and switches to
-  a bigger axis font size (15, up from a first pass at 11 that was still too small), bigger margins
-  to fit it, and a tighter default zoom window around today/target - verified with Playwright at
-  390px width that both the card list and the expanded chart (including the Today/Target markers)
-  fit with zero horizontal scrolling. This chart component is shared by every page, so the
-  legibility fix applies everywhere, not just these two pages.
-- The chart's hover tooltip now actually works on a touch device: a tap used to be indistinguishable
-  from the start of a drag-to-zoom gesture (touch has no separate "hover" the way a mouse does,
-  and any natural finger wobble during a tap easily exceeded the drag-vs-click threshold at this
-  chart's scale), so a tap could zoom instead of showing the tooltip, and the tooltip could never
-  actually be read. Touch input (`e.pointerType === "touch"`) now always just shows/scrubs the
-  tooltip and never starts a zoom drag, and doesn't get cleared by the `pointerleave` a touch
-  pointer fires right after lifting a finger - `RangeBrush` below the chart remains the deliberate
-  zoom control on a touch device.
-- `components/app-header.tsx`'s nav row now wraps onto multiple lines on a narrow screen instead of
-  silently overflowing the whole page horizontally (it only had `flex-wrap` on the outer `<header>`,
-  not the row of nav buttons itself).
-- **Done for Currency Exchange Flip and Divination Card Flips too**: both now use the same
-  `ItemHistoryCard` mobile-card treatment, built exactly as predicted below - their own
-  `fields`/`rightFields` arrays, no changes needed to the shared expand/fetch/chart machinery. Both
-  pass `expandable={false}` (a new prop on `ItemHistoryRow`/`ItemHistoryCard`), since they rank off
-  the current market snapshot rather than a historical trend and so have no chart to expand at all.
-- **Mobile sorting**: the desktop table's `SortableHeader` column-click-to-sort disappeared entirely
-  below `sm` along with the table itself, leaving no way to change sort order on mobile at all. A new
-  `components/mobile-sort-control.tsx` (a `<Select>` for the column + a direction-toggle button,
-  styled like `SortableHeader`'s own icon) sits above the card list on all four tables, driving each
-  panel's existing `handleSort`/`toggleSort` exactly like a desktop header click would.
+| # | Item | Status |
+| --- | --- | --- |
+| 1 | [League tester has no mobile layout](#1-league-tester-has-no-mobile-layout) | Open |
+| 2 | [New items and categories aren't picked up automatically](#2-new-items-and-categories-arent-picked-up-automatically) | Open |
+| 3 | [A missed day of price history is lost for good](#3-a-missed-day-of-price-history-is-lost-for-good) | Open |
+| 4 | [Automate retraining when a new league starts](#4-automate-retraining-when-a-new-league-starts) | Open |
+| 5 | [Cache the predictions file at the CDN](#5-cache-the-predictions-file-at-the-cdn) | Open |
+| 6 | [Predict further than 30 days ahead?](#6-predict-further-than-30-days-ahead) | Undecided |
+| 7 | [Currency Exchange divine prices are converted, not quoted](#7-currency-exchange-divine-prices-are-converted-not-quoted) | Open |
+| 8 | [Live price vs history for items with several poe.ninja lines](#8-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
+| 9 | [Holes in past-league history](#9-holes-in-past-league-history) | Open |
+| 10 | [Small follow-ups](#10-small-follow-ups) | Open |
+| – | [Done](#done) | – |
 
-**Still open**: the current league tester still renders its table via the plain
-`components/ui/table.tsx` `Table` (a bare `overflow-x-auto` div) with no mobile-card equivalent -
-`ItemHistoryCard` and the `useItemHistoryExpand` hook it shares with `ItemHistoryRow`
-(`components/item-history-row.tsx`) were written to be reusable, so this should mostly be a matter
-of building its own `fields`/`rightFields` array the way every other panel now does.
+---
 
-## 2. Brand-new items (this league or a future one) aren't picked up automatically
+## 1. League tester has no mobile layout
 
-Several parts of the app depend on static, generated-at-a-point-in-time lists that don't notice
-when a new league's patch adds items that didn't exist before (Allflame Embers were the last
-example of this). Nothing breaks when this happens - everything degrades gracefully, per this
-app's usual pattern - but a genuinely new item quietly gets worse treatment than it should until
-someone notices and does the manual regeneration step. Known spots:
+Every other table switches to stacked cards on a phone (`components/item-history-card.tsx`), with a
+"Sort by" control and the confidence filter above them. The league tester still renders a plain
+table that scrolls sideways.
 
-- **`lib/poe-ninja.ts`'s `CURRENCY_OVERVIEW_TYPES`/`ITEM_OVERVIEW_TYPES`** - hand-maintained lists
-  of poe.ninja's category buckets. A wholly new CATEGORY (not just a new item within an existing
-  one - "AllflameEmber" was the last time this happened) needs a line added here by hand, or
-  poe.ninja simply never gets queried for it at all.
-- **`lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID`** - generated by `scripts/generate-faustus-mapping.ts`
-  from a live RePoE + GGG Currency Exchange snapshot, frozen at generation time. A new item
-  released after the last run has no id mapping, so it's silently invisible to the Currency
-  Exchange Flip page and to `lib/divination-flips.ts`'s Faustus-spread confidence signal - not
-  wrong, just missing, until the generator is re-run.
-- **`lib/divination-cards.ts`** - generated by `scripts/generate-divination-cards.ts` from RePoE.
-  Same issue: a new league's new cards need a fresh generator run to show up at all in Divination
-  Card Flips.
-- **`lib/faustus-gold.ts`** - gold costs are transcribed BY HAND from community sources (GGG's
-  Currency Exchange API has no gold-cost field at all). A new item has no entry until someone
-  manually looks up and adds its cost.
-- **`lib/category-reliability.ts`'s `RELIABLE_CATEGORIES_ORDERED`/`UNIQUE_CATEGORIES_ORDERED`** -
-  hand-curated display-order/tiering lists for the category filter UI. A brand new category (not
-  just a new item within an existing one) falls into the catch-all "Etc." group until added here -
-  cosmetic, not a correctness issue, but worth doing for a category that turns out to matter.
-- **The learned model itself** - trained on past leagues that, by definition, never saw a item that
-  only exists starting this league. A new item simply has no historical growth-ratio data to learn
-  from at all (same as any item with a `MIN_LEAGUES_WITH_DATA`-sized history gap already handles -
-  falls back to whatever partial/baseline behavior that path already has), not a special case to
-  add, but worth being aware of: a new item's flip suggestion (if it has one) is a much weaker bet
-  than an item with several past leagues' history behind it, for as long as it takes for enough
-  past-league data to accumulate.
+**Fix:** give it its own `fields` / `rightFields` for `ItemHistoryCard`, the way the other panels do.
+The shared card and expand logic should need no changes.
 
-**NOT in this category** - `components/item-detail-panel.tsx`'s poewiki link (`poeWikiUrl()`) is a
-pure runtime string transform (name -> `https://www.poewiki.net/wiki/Name_With_Underscores`), not a
-stored mapping generated at a point in time - it needs no regeneration ever, a brand-new item's link
-"just works" the moment the item exists, same as any other plain formatting helper in this app. Worth
-noting explicitly here so a future pass over this list doesn't mistake it for another generator to
-wire into the check below.
+## 2. New items and categories aren't picked up automatically
 
-**Recommended direction - a dedicated GitHub Action**: extend the existing "detect + open a PR,
-never push straight to master" pattern `.github/workflows/check-current-league-swap.yml` /
-`scripts/sync-current-league.ts` already established for the league-swap problem (see **Known
-limitations** in the README) to this one too, rather than a fully separate mechanism:
-1. A new `scripts/check-new-items.ts` pulls a fresh RePoE `base_items.json` (same source
-   `scripts/generate-faustus-mapping.ts`/`generate-divination-cards.ts` already trust) and
-   cross-references its names against `FAUSTUS_NAME_TO_ID` and `lib/divination-cards.ts`'s
-   `DIVINATION_CARDS`, reporting any RePoE name that isn't in either generated file yet (scoped to
-   items RePoE marks as actually tradeable/a real divination card - not every internal/legacy
-   entry). Also worth a rougher pass against `CURRENCY_OVERVIEW_TYPES`/`ITEM_OVERVIEW_TYPES`
-   (`lib/poe-ninja.ts`) - a wholly new poe.ninja category bucket, not just a new item, would show up
-   as a name RePoE has that resolves to a "type" this app doesn't recognize at all.
-2. A new (or extended) daily/weekly-scheduled workflow runs it and, on any finding, opens a PR that
-   has already re-run `scripts/generate-faustus-mapping.ts`/`generate-divination-cards.ts` (so the
-   PR contains the actual fix, not just a report) - same "automatic detection, human merge" split
-   `check-current-league-swap.yml` already uses, for the same reason: these feed live economy data,
-   so a bad RePoE pull or an unexpected schema change should get a human's eyes before it ships.
-3. `lib/faustus-gold.ts`'s hand-transcribed gold costs and `lib/category-reliability.ts`'s
-   display-order lists stay a plain, callable-out-by-name item in that same PR body (a gold cost or
-   a display tier isn't mechanically derivable from RePoE the way an id/stack-size/reward is) rather
-   than something the Action tries to fill in itself.
+Several lists are generated or typed in once and don't notice when a league adds new items. Nothing
+breaks, but a new item gets worse treatment until someone regenerates the list.
 
-## 3. ~~A dedicated per-item detail page~~ - Done
+| List | What a new item misses | How it's updated today |
+| --- | --- | --- |
+| `CURRENCY_OVERVIEW_TYPES` / `ITEM_OVERVIEW_TYPES` (`lib/poe-ninja.ts`) | A whole new poe.ninja category is never fetched | By hand |
+| `FAUSTUS_NAME_TO_ID` (`lib/faustus.ts`) | Invisible to Currency Exchange Flip and card-flip confidence | `scripts/generate-faustus-mapping.ts` |
+| `DIVINATION_CARDS` (`lib/divination-cards.ts`) | New cards don't appear in Divination Card Flips | `scripts/generate-divination-cards.ts` |
+| `lib/faustus-gold.ts` | No gold cost | By hand, from community sources |
+| Category display order (`lib/category-reliability.ts`) | Lands in "Etc." in the filter (cosmetic) | By hand |
+| `lib/ninja-link.ts` category slugs | No poe.ninja link on the detail page | By hand |
 
-`app/item/[category]/[key]/page.tsx` + `components/item-detail-panel.tsx`, `key` being
-`encodeURIComponent(itemPriceKey(historyName, variant))` (`lib/poe-ninja.ts`'s new inverse
-`parseItemPriceKey`, since Next.js 16 does NOT auto-decode a dynamic segment - verified live, the
-route explicitly `decodeURIComponent`s it). Has its own "Days ahead" slider reusing
-`lib/predicted-suggestion.ts`'s client-side reconstruction (zero network round-trips within the
-precomputed 1-30 range, same as the main table, confirmed with Playwright), the same
-`components/price-history-chart.tsx` given a full page column instead of a table cell, and every
-metric the item has: current/predicted price, confidence + `describeConfidence()`'s full text
-(not just the badge), momentum (1/3/6-day %, volatility, acceleration - `lib/prediction-features.ts`'s
-own `momentumFromPath`/`sparkToLogPath` applied to the raw sparkline, via new `lib/item-detail.ts` +
-`app/api/item-detail/route.ts`), and the full Faustus spread/volume/stock/gold cost/liquidity for
-Faustus-tradeable currency. Linked from every table row: the item's **name** in both
-`ItemHistoryRow` and `ItemHistoryCard` is now a `next/link` (`stopPropagation`'d so it doesn't also
-fire the row's own click-to-expand) - a deliberate second, visually distinct action from the row's
-existing inline-preview click, appearing on every page that already uses these shared components.
+The model itself can't predict a brand-new item at all until past leagues have data for it; that's
+expected, not a bug. The poewiki link needs no upkeep (it's built from the name).
 
-## 4. Daily price-history job has no way to recover a missed day
+**Suggested fix:** a scheduled GitHub Action, following the league-swap job's pattern (detect, then
+open a pull request for a human to merge):
 
-`scripts/precompute-price-history.ts` (run daily by
-`.github/workflows/precompute-predictions.yml`) only ever writes TODAY's row - its own doc
-confirms re-running the same day safely replaces that day's rows, but says nothing about an
-earlier day it never got to run for at all (a GitHub Actions outage, a transient poe.ninja
-failure, the workflow itself breaking for a day before someone notices and fixes it). When that
-happens, the per-league CSV on the `data` branch just has a silent gap for that date - nothing
-errors, it's simply missing, the same way `lib/current-league-history.ts` already tolerates gaps
-in general (matches within its 5-day tooltip tolerance, etc.) - but a real day of history is gone
-for good once it's outside poe.ninja's live sparkline recall window.
+1. A `scripts/check-new-items.ts` pulls RePoE's `base_items.json` and lists tradeable items missing
+   from the exchange map and card list, plus any poe.ninja category the app doesn't know.
+2. On a finding, the job reruns the generators and opens a PR with the result.
+3. Gold costs, display order and link slugs can't be derived from RePoE, so the PR lists them as
+   manual follow-ups.
 
-The fix already exists in prototype form: `scripts/backfill-current-league-history.ts` (written
-this session, one-time/manual) reconstructs a missing recent day's absolute prices from poe.ninja's
-own live 7-point sparkline, anchored on today's live price - the exact same trick would work here,
-just needs to run automatically as part of the daily job instead of by hand.
+## 3. A missed day of price history is lost for good
 
-**Two pieces needed:**
-1. **Detection** - before writing today's row, check whether the day(s) immediately before today
-   are actually present in the freshly-downloaded CSV (not just "does today exist yet"). A gap of
-   more than one day means at least one run was missed.
-2. **Backfill** - for any missed day still within the live sparkline's ~7-day recall window,
-   reconstruct it the same way `scripts/backfill-current-league-history.ts` already does, tagged
-   `Confidence=Medium` like that script does (not `High`, to stay honest that it's a same-day
-   reconstruction, not a direct reading). A gap OLDER than the sparkline can reach is unrecoverable
-   - the job should just log that plainly rather than silently leaving the hole unexplained.
+`scripts/precompute-price-history.ts` only writes today's row. If a run is missed (an outage, a
+poe.ninja failure), that day is simply absent from the current league's CSVs.
 
-## 5. ~~Expanding a row's chart can be slow to load~~ - Root cause fixed
+**Fix:**
 
-Traced to two concrete bugs, both fixed, not just a caching-window tweak:
+1. **Detect:** before writing today's row, check whether the previous days are present.
+2. **Backfill:** rebuild any missed day still within poe.ninja's 7-day sparkline, the same way
+   `scripts/backfill-current-league-history.ts` does, tagged `Confidence=Medium`. Log anything older
+   as unrecoverable.
 
-1. `lib/flip-suggestions.ts`'s `getFlipSuggestions` and `lib/divination-flips.ts`'s
-   `getDivinationFlips` had no caching or in-flight-request coalescing at all - every call re-ran a
-   full cross-sectional DB growth-ratio scan plus the learned model from scratch, and concurrent
-   callers (e.g. the per-item detail page's several simultaneous fetches) each independently redid
-   the same work. Added the short-TTL cache + promise-coalescing pattern already used in
-   `lib/faustus.ts`/`lib/precomputed-predictions.ts`. Also added `cachedJsonResponse`
-   (`lib/api-response.ts`) to cache the SERIALIZED (stringified + gzipped) response bytes for the
-   heaviest/most-repeated routes, since `JSON.stringify`+gzip of a multi-MB payload was itself a
-   real, synchronous, main-thread-blocking cost paid on every request regardless of data-level
-   caching - see item 7 below for the (still open, different) CDN-level version of this idea.
-2. The actual severe one: `app/api/flip-suggestion-curve`'s live fallback (`getLiveFlipSuggestionCurve`)
-   reran that same full-catalog computation once per duration (30 durations = 30x a normal request's
-   cost) whenever an item wasn't in today's precomputed file - which turned out to be common (a
-   divination card's category migration mismatch, or just a name that simply isn't a live-priced
-   candidate that day - see item 2's "not every currency/item has a live price right now" case),
-   not the rare "file is briefly stale" edge case it was designed for. This could stall the WHOLE
-   app (not just the one request) for tens of seconds to over a minute, reported live as "fans
-   spinning up, can't navigate anywhere until it finishes." Removed the live fallback outright -
-   an item missing from the precomputed file just means no detailed curve; `PriceHistoryChart`
-   already draws its plain two-point line (today's price to the one selected duration's own
-   prediction) when `predictedCurve` is empty, so this is a graceful "less detail," not a broken
-   chart. Deleted the now-unused `getLiveFlipSuggestionCurve`.
+Scheduled runs are routinely hours late, but they have landed every day so far; the app already
+copes with the delay (see Done).
 
-Verified with a fresh server restart + 318 unique item detail pages fetched cold across three
-different tables, plus a repeated-visit test on four previously-problematic items crossing the
-cache TTL boundary multiple times over ~2.3 minutes - stayed under 700ms throughout, no
-degradation over time.
+## 4. Automate retraining when a new league starts
 
-## 6. Automate retraining the model when a new league starts
+Retraining is fully manual today (download, ingest, train on a GPU, parity check, backtest, commit).
+Deciding *whether* a league is worth training on should stay a human call, but the mechanical steps
+could run from a manual `workflow_dispatch` once that decision is made.
 
-Right now, per the README's own **Refreshing the learned model** section, this is a fully manual,
-by-hand process (download the new league's export, `npm run db:ingest`, run `ml/fit_production.py`
-with a GPU, `npm run ml:parity`/`ml:backtest`, then commit the new `predictor.json`) - and
-deliberately so: it also means deciding whether/when a given league is even worth training on
-(`scripts/ingest-history.ts`'s `PRODUCTION_LEAGUES` is intentionally curated, not "every league
-ever"), which isn't a decision to make unattended (see `.github/workflows/check-current-league-swap.yml`'s
-own reasoning for a similar "detect automatically, but keep a human checkpoint" split). Automating
-the MECHANICAL half of this (kicking off `ml:export-features`/`fit_production.py`/`ml:parity`/
-`ml:backtest` on some trigger, maybe a manual `workflow_dispatch` right after deciding to include a
-league, rather than a fully scheduled/unattended run) is worth exploring separately from the
-"should this league count at all" judgment call, which should probably stay manual either way.
+## 5. Cache the predictions file at the CDN
 
-## 7. Cache the precomputed-predictions API response at the CDN, not just in-memory
+`/api/flip-suggestions/precomputed` caches its gzipped response in memory, but sends no
+`Cache-Control` header, so every cold server instance still does the work. The file changes once a
+day.
 
-Item 5 added an in-process cache (`cachedJsonResponse`, `lib/api-response.ts`) that skips redoing
-the stringify/gzip work within one warm server instance, which fixed the immediate stalling bug -
-but `app/api/flip-suggestions/precomputed/route.ts` still sets no `Cache-Control` header at all, so
-every visitor still invokes the Vercel Function at least once (a cold instance, or Vercel routing to
-a different instance than the one holding the in-memory cache), even though the underlying file
-(`predictions.json`) only actually changes once a day, whenever `scripts/precompute-predictions.ts`
-runs. This is the still-open, complementary CDN-level version of the same idea. Confirmed against
-Vercel's own current docs, not assumed:
+- Add `Cache-Control: public, s-maxage=120, stale-while-revalidate=...` so Vercel's CDN serves
+  repeats without invoking the function. Available on the free plan.
+- Vercel won't cache a response over **10 MB**; today's is about 5.4 MB gzipped (see item 6).
+- This saves server work, not visitor download size.
 
-- Adding `Cache-Control: public, s-maxage=<TTL>, stale-while-revalidate=<window>` (a short TTL,
-  matching this app's other in-memory caches' 2 minutes, would be a reasonable start) lets Vercel's
-  Edge Network serve repeat requests directly from the CDN - the Function isn't invoked at all on a
-  cache hit. Available on every plan including Hobby, not a paid-tier feature.
-- No need to add a `Vary: Accept-Encoding` header by hand - Vercel already includes
-  `Accept`/`Accept-Encoding` in its own cache key automatically.
-- Real ceiling to watch: Vercel's CDN won't cache a non-streaming Function response over **10MB**.
-  Today's file (30 durations) is 5.37MB gzipped - comfortably under it. See item 8 - this ceiling is
-  directly relevant to how far the duration count can go before this specific response stops being
-  cacheable at all, not just "less effective."
-- What this fixes and doesn't: eliminates the repeated server-side gzip work and Function
-  invocations (helps stay inside Hobby's Function Invocations/Active CPU allotments). It does NOT
-  reduce how many bytes each visitor's browser actually downloads - that's edge-to-client bandwidth,
-  identical on a cache hit or miss, and still paid on every single page load either way.
+## 6. Predict further than 30 days ahead?
 
-## 8. Precompute predictions further than 30 days ahead? (60 under consideration, maybe 90)
+Raising `CURVE_MAX_DURATION_DAYS` would extend the instant slider range and the detailed forecast
+line. Measured on the real file:
 
-Extending `lib/flip-suggestions.ts`'s `CURVE_MAX_DURATION_DAYS` (30 today) would let the "Days
-ahead" slider's zero-network-request range, and the chart's detailed day-by-day predicted curve,
-both reach further before falling back to a coarser/live path. Measured against the REAL current
-file (not a guess): 30 days -> 20.6MB raw / 5.37MB gzipped `predictions.json`, 10,475 items. Broken
-down: ~2.4MB is fixed per-item overhead that doesn't grow with more durations; the rest averages
-~0.61MB raw per additional day. Projected from those real measurements:
-
-| Days ahead | Raw size | Gzipped | Precompute job time |
+| Days ahead | Raw size | Gzipped | Job time |
 | --- | --- | --- | --- |
-| 30 (today) | 20.6 MB | 5.37 MB | ~31s |
-| 60 | ~39 MB | ~10 MB | ~60s |
-| 90 | ~57 MB | ~15 MB | ~90s |
+| 30 (today) | 20.6 MB | 5.4 MB | ~31 s |
+| 60 | ~39 MB | ~10 MB | ~60 s |
+| 90 | ~57 MB | ~15 MB | ~90 s |
 
-The nightly job's extra time is free either way (public repo = unlimited GitHub Actions minutes,
-and the job has no per-request latency budget to protect). The real tradeoff is entirely on the
-file-serving side: this whole file is shipped to every visitor's browser on page load
-(`lib/precomputed-predictions.ts`/`components/flip-suggestions-panel.tsx`'s client-side
-reconstruction design), so a bigger file is a cost every visitor pays on every page load, not a
-one-time cost. 60 days lands right at Vercel's 10MB CDN-cacheable-response ceiling (see item 7); 90
-days is comfortably OVER it - `app/api/flip-suggestions/precomputed`'s response couldn't be
-CDN-cached at that size at all with the current single-whole-file design, so item 7's fix would stop
-helping this specific endpoint if 90 is where this lands. Also cuts directly against item 1 (mobile
-support) - a bigger payload matters more, not less, on a slower connection.
+The job time is free. The cost is that every visitor downloads the whole file: 60 days sits at the
+CDN's 10 MB limit, 90 is over it, and a bigger file hurts on mobile. If this goes ahead, ship only
+the days actually needed instead of the whole file.
 
-Not decided yet whether to do this at all, or at 60 vs 90. If it does happen, worth revisiting
-whether shipping the whole file once still makes sense at that size, or whether it's time to only
-ship what's actually needed (e.g. paginating/lazy-loading durations beyond a smaller always-fetched
-reactive range) instead of scaling the current all-at-once design linearly.
+## 7. Currency Exchange divine prices are converted, not quoted
 
-## 9. Currency Exchange divine-mode prices are a chaos->divine conversion, not the exchange's own divine quote
+`getFaustusSpreads()` (`lib/faustus.ts`) always gets divine prices by dividing the chaos price by
+that hour's Divine Orb rate. When the exchange has a direct divine market for the item, that quote
+can differ, so Divine mode shows a derived number rather than what a trader would see.
 
-`lib/faustus.ts`'s `getFaustusSpreads()` always derives `buyDivineValue`/`sellDivineValue` by
-dividing the chosen chaos-denominated buy/sell (`best.buy`/`best.sell`) by that hour's separately-
-computed Divine/Chaos rate (`divineChaosRate`, itself just `rateFromPair(m, DIVINE_ID, CHAOS_ID)`)
-- see the `buyDivineValue: divineChaosRate ? best.buy / divineChaosRate : undefined` line near the
-end of that function. For an item whose exchange market is picked via its direct pair against Chaos
-Orb (`rateFromPair(m, id, CHAOS_ID)` - the vast majority, "515 of 657" per this file's own module
-doc), this silently discards any direct divine-denominated market GGG's exchange might also have
-open for that same item, in favor of a computed conversion through Divine Orb's own rate. The two
-can legitimately disagree (each pair has its own independent spread/liquidity/rounding), so Divine
-mode on the Currency Exchange Flip page (and this item detail page's own Currency Exchange card) is
-showing a derived number, not what a trader would actually see quoting/filling directly in divines.
+**Fix:** use the item-vs-Divine pair's own buy/sell range when it exists that hour; convert only
+when it doesn't.
 
-Fix direction: when a direct `id` vs `DIVINE_ID` pair exists for the same hour, compute its own
-buy/sell range directly (same `rateFromPair`-style low/high math already used for the `id` vs
-`CHAOS_ID` case) and use THAT for `buyDivineValue`/`sellDivineValue`, falling back to the current
-chaos-conversion approach only when no direct divine pair exists at all for that item that hour -
-mirroring the "prefer direct data, convert only as a last resort" pattern the Divine-pair FALLBACK
-branch (`id` has no chaos pair at all) already uses for the chaos side, just applied to the more
-common case in reverse.
+## 8. Live price vs history for items with several poe.ninja lines
 
-## 10. ~~Global item search, with live suggestions, linking straight to the item's detail page~~ - Done
+Base types (e.g. Dragonscale Doublet) have one poe.ninja line per item level or influence, all under
+one name. The live price takes the **first** line (1.8c); past-league and current-league history
+**average** the day's lines (~1.4c). The chart's history line and forecast start at different
+prices, and the model predicts from a price that doesn't match what it was trained on.
 
-Built: `components/global-search.tsx` (header box, icon + overlay on mobile), `GET /api/item-search`
-and `lib/item-search.ts` (name search over the daily price snapshot, live fallback). Resolves each
-suggestion to the category that has a live price ("currency" wins a tie). The notes below are the
-original plan.
+**Option:** average the lines for the live price too. That would change the starting price, and so
+the forecast and ranking, for every affected item (mostly base types). Needs a decision.
 
-Every table today only has `components/search-input.tsx` - a per-table, client-side text filter
-over whatever rows that ONE table already fetched, with no destination beyond narrowing the visible
-rows. There's no way to jump directly to a specific item's dedicated page
-(`app/item/[category]/[key]/page.tsx`) without first finding it in whichever table happens to list
-it. `components/app-header.tsx` is the natural home for this - it's already the one shared
-component every real page renders, so a search box there is available everywhere, not just on
-pages that happen to have their own table.
+## 9. Holes in past-league history
 
-**What this needs, roughly:**
-- A search box in the header (collapsed to an icon on mobile, given how tight the nav row already
-  gets - see `TODO.md` item 1/README's **Navigation** section) that shows a live suggestion
-  dropdown as you type, not just a "press enter to search" box - matches on both currency and item
-  names, likely with a debounce so it isn't re-querying on every single keystroke.
-- A backing data source to search AGAINST. Nothing today exposes "every currency/item name
-  currently live-priced" as one flat, searchable list - `getAllCurrentCurrencyPrices`/
-  `getAllCurrentItemPrices` (`lib/poe-ninja.ts`) have the names but return full price maps, and
-  matching purely against `lib/flip-suggestions.ts`'s candidates would miss anything without a
-  historical trend (the exact "no live price"/category-migration gaps item 5 and this session's
-  work already ran into) - worth deciding whether search should also surface an item with NO
-  prediction at all, same as the detail page itself now gracefully handles that case.
-- Each suggestion needs to resolve to a real `(category, historyName, variant)` triple to link to,
-  built the same way `ItemHistoryRow`/`ItemHistoryCard` already do
-  (`itemDetailUrlKey`/`parseItemDetailUrlKey`, `lib/poe-ninja.ts`) - and the SAME category-ambiguity
-  this session repeatedly hit (a divination card/Scarab/Essence/etc. filed under "item" in some
-  data but requested as "currency" elsewhere, see item 2 and `lib/flip-suggestions.ts`'s migration
-  comment) needs a real answer here too, not another silent mismatch: probably resolve to whichever
-  category actually has a live price for that name, the same fallback direction
-  `fetchItemDetailWithFallback` (`components/item-detail-panel.tsx`) already uses.
-- Keyboard navigation (arrow keys + Enter to accept a suggestion) and a sensible empty/no-match
-  state, matching the UI conciseness guideline (AGENTS.md's **Keep on-page text short**) rather than
-  a verbose "no results found for..." message.
+Some items have gaps in a past league's data. The Last One Standing has no Keepers prices on days
+78–93, and its Mirage history stops at day 34. The daily job now fills the resulting missing
+forecast days (see Done), but:
+
+- the live calculation path (used past 30 days, or when the file is missing) doesn't fill;
+- training data keeps the holes;
+- a Mirage series ending at day 34 for a card is suspicious and worth checking against the raw
+  export and the ingest's outlier filters.
+
+**Option:** interpolate short gaps (say up to 20 days) within a league at ingest time.
+
+## 10. Small follow-ups
+
+- **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
+  day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
+  table on the previous value until release, then waits for a live calculation.
+- **poe.ninja links** aren't shown for Prophecy, Seed, Helmet Enchant, Watchstone, Unique Idol,
+  Kalguuran Rune and Coffin, since no matching poe.ninja page was found.
+
+---
+
+## Done
+
+- **Per-item detail page** (`app/item/[category]/[key]/`). Linked from every item name and from
+  search. Slider, big chart, overview, historical performance, momentum, Currency Exchange and card
+  flip data, poewiki and poe.ninja links.
+- **Mobile support** for Flip Suggestions, Mirage simulator, Currency Exchange Flip and Divination
+  Card Flips: stacked cards, "Sort by" control, confidence/liquidity filter, larger chart text, and
+  tap-to-show tooltips on the chart. (The league tester is item 1.)
+- **Slow chart loading and app-wide freezes.** Added caching and request sharing for the heavy
+  calculations, cached serialized responses, and removed the live forecast-curve fallback, which
+  recomputed the whole catalog 30 times and could stall the app for over a minute.
+- **Global search** in the header, over everything poe.ninja prices, linking to detail pages.
+- **Fewer poe.ninja calls.** The daily job publishes `prices.json`; the detail page, search and
+  Mirage simulator read it instead of poe.ninja.
+- **Every item predicts all 30 days.** Missing days are filled with marked, lower-confidence
+  estimates (`lib/horizon-fill.ts`).
+- **Late daily runs no longer degrade the app.** GitHub starts the scheduled job hours late; the app
+  used to reject the day-old file until then, losing the detailed forecast line and the instant
+  slider. It now shifts a file up to 2 days old to today (`alignPrecomputedToDay`).
+- **Current-league history** for migrated types (cards, scarabs, ...) now shows on the chart, and
+  same-day duplicate rows are averaged like past leagues.

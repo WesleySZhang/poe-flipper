@@ -15,10 +15,16 @@ poe-knowledge/
 
 ## Using them
 
-Claude Code only auto-discovers skills in `.claude/skills/` or an enabled plugin. Either:
+On the owner's machine each skill folder is linked into `~/.claude/skills/` (a Windows directory
+junction), so Claude Code loads them in every project with no flags. Edits through either path change
+the same file.
 
-- run with the plugin: `claude --plugin-dir ./poe-knowledge` (skills appear as `poe-knowledge:<name>`), or
-- copy/symlink a skill folder into `.claude/skills/` to use it in this project directly.
+- **Adding a skill:** create `skills/<name>/SKILL.md`, then link it (PowerShell):
+  `New-Item -ItemType Junction -Path "$env:USERPROFILE\.claude\skills\<name>" -Target "<repo>\poe-knowledge\skills\<name>"`
+- **Another machine:** junctions don't come with a clone; re-create them, or run with
+  `claude --plugin-dir ./poe-knowledge` (skills then appear as `poe-knowledge:<name>`).
+- Claude Code looks exactly one level deep (`skills/<name>/SKILL.md`), so skills can't be nested in
+  subfolders; the `poe-` name prefix groups them instead.
 
 ## Conventions
 
@@ -43,10 +49,10 @@ Claude Code only auto-discovers skills in `.claude/skills/` or an enabled plugin
 | Skill | Use it for |
 | --- | --- |
 | `poe-economy-basics` | How PoE prices work: Currency Exchange vs stash scrape, liquidity, spreads, gold cost |
-| `poe-data-sources` | Which source answers which question, and each one's quirks |
+| `poe-data-sources` | Which source answers which question, each one's quirks, poe.ninja page URLs |
 | `poe-divination-cards` | Stacks, rewards, which cards are priceable, card flips |
-| `poe-league-lifecycle` | How prices move across a league; what this app's history covers |
-| `poe-item-categories` | poe.ninja/GGG categories, names, variants, and the migrated-category trap |
+| `poe-league-lifecycle` | How prices move across a league; what this app's history covers; the 3-league minimum |
+| `poe-item-categories` | poe.ninja/GGG categories, names, variants, the migrated-category trap, duplicate lines |
 
 ## Ideas for next skills
 

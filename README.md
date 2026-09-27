@@ -1,443 +1,330 @@
 # PoE Flipper
 
-## How it works
+A Path of Exile trading assistant. It predicts which items and currency are likely to gain value
+over the next few days of the current league, and finds same-day flips on GGG's Currency Exchange
+and in divination card turn-ins.
 
-- **Flip suggestions**: ranks items/currency by their forecast growth from a chosen day
-  of the current league over a chosen number of days. The forecast starts from how much
-  each item historically grew over that stretch of past leagues (a local DuckDB database
-  built from historical poe.ninja price exports; every past league counts equally - see
-  `lib/league-recency.ts`) and is then adjusted by a learned model - see **Learned
-  forecast** below - against today's live price. The current league and its start date are hardcoded in
-  `lib/league-recency.ts` (`CURRENT_LEAGUE`) and need updating by hand each time a new
-  challenge league launches - though this is now caught and fixed automatically rather
-  than requiring someone to notice (see **Known limitations** below for how). `npm run
-  check-league` still exists for an instant manual check (read-only, just reports
-  staleness) and `npm run league:sync` for a manual write (same edit the scheduled job's
-  pull request makes, applied directly instead), for whenever you don't want to wait for
-  the next scheduled run.
-- **Learned forecast** (`lib/prediction-model.ts`, `lib/prediction-features.ts`): the
-  historical average alone is a weak predictor - in a backtest it ranked late-league items
-  about as well as a coin flip. The forecast therefore also uses (1) how today's price
-  compares with what the item cost on the same day of past leagues (expensive items tend
-  to fall, cheap ones to rise) and (2) poe.ninja's 7-day price sparkline (currency
-  momentum tends to continue, items' does not). Two interchangeable models are shipped in
-  `lib/models/predictor.json` (4.5 MB): gradient-boosted trees (default) and a small
-  linear formula per league-day bucket. Chosen with the optional `PREDICTOR` env var:
-  `xgb` (default), `formula`, or `baseline` (the original plain average); a missing model
-  file falls back automatically. Replaying the finished Mirage league with a model that
-  never saw it: rank correlation 0.185 -> 0.334, share of top-decile picks that gained
-  61.7% -> 72.8% (`npm run ml:backtest`). Training, validation and every experiment are
-  documented in [`ml/README.md`](ml/README.md); the Python there is offline tooling and
-  is not part of the deployed app.
-- **Full 30-day coverage**: the model needs at least 3 past leagues with a price near both
-  today and the target day, so one league with a hole in its data used to drop a whole
-  stretch of horizons for an item. The daily job now fills those gaps
-  (`lib/horizon-fill.ts`): between two real horizons it interpolates, before the first it
-  interpolates from "no change at 0 days", and past the last it holds the last ratio. Filled
-  values are flagged (`estimate` on a suggestion; the detail page says "Estimated from
-  nearby days" / "Held from the last full day") and their confidence is cut to 75% (held:
-  50%), so nearly all land in the Low tier. Real model rows are never changed. Against the
-  model's own output on items with full coverage, a hidden 10-horizon stretch was
-  reproduced with a median error of about 2% (90th percentile 7%); this compares the fill
-  to the model, not to realized prices. The live fallback path doesn't fill.
-- **Confidence scoring**: each suggestion also gets a confidence tier (High/Medium/Low)
-  based on how reliably that item has actually gained in past leagues, not just how big
-  the predicted gain is - see `lib/confidence.ts`. A separate "forecast precision" note in
-  the same badge's hover text (chaos mode, learned-forecast predictor only) says how wide
-  the model's *own* uncertainty band is around this specific number - a deliberately
-  distinct question from the tier, which is answered by a second, independent pair of
-  quantile models trained alongside the point forecast (see `ml/README.md`). The Currency
-  Exchange Flip and Divination Card Flips pages show a differently-named "Confidence"
-  column instead, based on live trade liquidity rather than historical reliability - see
-  their own sections below and `lib/liquidity.ts`.
-- **Price history charts**: click any row to expand a chart of that item's price across
-  every past league used for training, with markers for the current day and the
-  prediction's target day - lets you sanity-check a prediction against the real shape of
-  history rather than trusting the ratio blind (`components/price-history-chart.tsx`). The
-  currently active league also gets its own real, solid line up to today - built from the
-  daily precomputed snapshots below rather than the past-league database, which only ever
-  holds finished leagues (`lib/current-league-history.ts`) - drawn in the same color as,
-  and connecting directly into, the dashed forecast line, so the two read as one continuous
-  "actually happened, then predicted" story instead of two unrelated series. That line
-  always reaches all the way to today even if the daily snapshot for today hasn't landed
-  yet (see **Daily precomputed data** below) - it stitches on today's own already-fetched
-  live price as its last point in that case, so there's never a visible gap between the
-  real history and the forecast regardless of the snapshot job's timing. On the Flip
-  Suggestions page this also draws the model's own day-by-day forecast for every
-  "Days ahead" value from 1-30, not just whichever one is currently selected, extending
-  with one final straight segment past day 30 if the selected duration goes further -
-  fetched lazily on row expand (`app/api/flip-suggestion-curve`), straight from today's
-  precomputed file. Deliberately no live fallback for an item missing from that file (an
-  earlier version reran the full cross-sectional model once per duration - 30 full
-  recomputes - which turned out to be a common, not rare, case and could stall the whole
-  app for tens of seconds under load): a missing/stale file or an item absent from it just
-  means no detailed curve, and the chart already draws its plain two-point line (today's
-  price to the one selected duration's own prediction) in that case. The chart's own axis text,
-  margins and default zoom level adapt for a narrow/mobile screen (same fixed SVG
-  `viewBox`, just bigger text and a tighter default window around today/target so it stays
-  legible without pinch-zooming). On a touch device, tapping the chart always shows/moves
-  the hover tooltip instead of ever starting a drag-to-zoom - touch has no separate "hover"
-  the way a mouse does, so without this a tap could be indistinguishable from the start of
-  a zoom drag; the range brush below the chart is the deliberate way to zoom on touch.
-- **Per-item detail page** (`/item/[category]/[key]`, `components/item-detail-panel.tsx`):
-  every item's name in a table (`ItemHistoryRow`/`ItemHistoryCard`) links here - a
-  deliberate second action separate from the row's own click-to-expand, so clicking the
-  name navigates while clicking elsewhere on the row still just opens the inline preview.
-  URL segments use `_` for spaces (`itemDetailUrlKey`/`parseItemDetailUrlKey` in
-  `lib/poe-ninja.ts`) rather than a raw `%20`. Has its own "Days ahead" slider (reusing the
-  same client-side precomputed reconstruction the main table uses, so it's just as
-  instant); on desktop the price history chart takes the left 70% of the page below the
-  slider and Overview, with every other card (Historical performance, Recent momentum,
-  Currency Exchange, Divination Card Flip) stacked in the remaining 30% on the right,
-  falling back to a single full-width column on mobile. Shows 1/3/6-day price momentum
-  derived from the same sparkline inputs the learned model itself sees
-  (`lib/prediction-features.ts`, via `lib/item-detail.ts`); for Faustus-tradeable
-  currency, the full buy/sell spread/profit/volume/stock/gold cost/liquidity tier; and for
-  a divination card, its own stack-flip economics (cost, reward, profit, confidence),
-  reusing `lib/divination-flips.ts`. Today's live price (`ItemDetail.currentChaosValue`)
-  is shown independently of whether a prediction exists for the selected duration - an
-  item whose past leagues are too short to support a longer forecast still has a real
-  price worth showing, it just has no prediction at that specific "Days ahead" value.
-  Also links out to the item's poewiki.net page (`lib/poe-ninja.ts`'s `poeWikiUrl` - a
-  plain name-to-URL string transform, not a fetched/generated mapping, so it needs no
-  upkeep as new items appear each league; poewiki.net is independently hosted, not Fandom -
-  confirmed live). The same poewiki link also appears as a small icon next to the name in
-  every table row, for a quick cross-check without leaving the table.
-  The detail page also has a "View on poe.ninja" link to the item's own poe.ninja page
-  (`lib/ninja-link.ts`: a fixed category-slug map plus poe.ninja's `detailsId`, which the daily
-  price snapshot stores per item; no link is shown for a type poe.ninja has no page for).
-- **Category filters**: tables can be filtered by category - an item's BaseType, or
-  "Currency" for every currency row - built from whatever categories are actually
-  present in the current results.
-- **Mobile layout**: on a narrow screen, every table except the current league tester
-  (Flip Suggestions, Mirage simulator, Currency Exchange Flip, Divination Card Flips)
-  becomes a stacked list of cards instead (`components/item-history-card.tsx`) - every
-  column's value is still visible, just laid out vertically instead of sideways, so
-  nothing needs horizontal scrolling to read. Tapping a card expands the same price
-  history chart a table row would, except on Currency Exchange Flip/Divination Card Flips,
-  which rank off the current market snapshot rather than a historical trend and so have no
-  chart to expand (`expandable={false}` on `ItemHistoryRow`/`ItemHistoryCard`). Sorting by
-  a column also works on mobile - the desktop table header's click-to-sort disappears with
-  the table itself, so a `MobileSortControl` (column picker + direction toggle) sits above
-  the card list instead, driving the same sort state a header click would. The same row
-  also carries the Confidence/Liquidity tier filter (H/M/L badges), which lives in the
-  table header on desktop. The current league tester doesn't have this treatment yet -
-  see `TODO.md`.
-- **Currency Exchange Flip** (`/currency_exchange_flip`): a separate, non-predictive
-  page showing live buy/sell spreads on GGG's in-game Currency Exchange ("Faustus"),
-  for same-day flipping rather than long-range prediction. Includes a liquidity signal
-  and the gold cost of trading each item (`lib/faustus.ts`, `lib/faustus-gold.ts`) -
-  GGG's exchange API has no gold-cost field, so those numbers are transcribed by hand
-  from community sources (mostly exact; a handful of items fall back to a range
-  estimate - see the comments in `lib/faustus-gold.ts`).
-- **Divination Card Flips** (`/divination-cards`): ranks divination cards by the profit
-  from buying a full stack (poe.ninja's live card price x the card's stack size) and
-  turning it in for its reward, at today's live prices. Only cards whose reward is a
-  single, deterministic, currently-priced unique item, plain named item (a specific
-  Scarab/Fragment with no randomness at all, e.g. "Sulphite Scarab"), currency amount, or
-  other card are included - cards with a randomized reward (a roll, a random item of a
-  category) are excluded, since their true value can't be computed from a single number.
-  This also excludes a guaranteed-corrupted unique reward (Headhunter, Kaom's Heart, ...) -
-  the item itself is guaranteed, but a corrupted unique typically trades for meaningfully
-  LESS than its pristine price, and poe.ninja doesn't track a separate corrupted price
-  point to measure that real gap from. A Magic/Rare-rarity reward (e.g. a rare "Six-Link
-  Astral Plate") IS included, but deliberately priced as if it were just its plain base
-  type, ignoring whatever affixes actually get rolled onto it - a real simplification, not
-  an exact number, but usually close since the base itself is most of a reward like this
-  one's value (`lib/divination-cards.ts`, generated from RePoE's game data by
-  `scripts/generate-divination-cards.ts`; `lib/divination-flips.ts` does the live
-  scoring). Confidence here is the weaker of the two legs' live trade liquidity (buying
-  the card, selling the reward), not the historical-reliability score used elsewhere - a
-  low reading is expected and not a bug on an older, quieter league, since most card
-  trading happens off GGG's Currency Exchange (the confidence signal's only data source)
-  entirely; it should read higher on a fresh league with more active trading.
-- **Mirage simulator** (`/mirage-simulator`): a testing page that replays the model
-  against the Mirage league - which is always excluded from the historical averages - so
-  you can pick a day and duration and see the model's prediction next to what actually
-  happened. (The shipped learned model was trained on all five past leagues including
-  Mirage, so this page flatters it; `npm run ml:backtest` does the honest version with a
-  model trained without Mirage.)
-- **Current league tester** (`/current-league-tester`): look up a single item/currency
-  by name and apply its historical growth ratio to a price you type in. It uses the
-  historical ratio only, not the learned forecast (it has no live price to work from).
-- **Navigation** (`components/app-header.tsx`): every page shares one standard top bar (shadcn
-  `NavigationMenu` + `Sheet`) - app name, a link per top-level page plus a "Testing" menu
-  grouping the Mirage simulator and current league tester (opens on hover or click), the
-  theme toggle, and the search box. The current page's link is highlighted. The page's own
-  title sits below the bar, so the bar's size and position are identical on every page.
-  Below `xl` the links move into a side sheet opened by a menu button at the left.
-- **Global search** (`components/global-search.tsx`, `lib/item-search.ts`): a header box that
-  suggests matching currency/items as you type (arrow keys + Enter, or click) and opens that
-  item's detail page. It searches everything poe.ninja currently prices (from the daily price
-  snapshot), so it also finds items with no forecast. On a phone it collapses to an icon that
-  opens a full-width overlay.
-- **Data store**: [DuckDB](https://duckdb.org) (embedded, columnar, great for analytical
-  queries over large CSV history) - no external database server required.
-- **Daily precomputed data** (`scripts/precompute-predictions.ts`,
-  `scripts/precompute-price-history.ts`): a GitHub Actions job
-  (`.github/workflows/precompute-predictions.yml`, cron `10 0 * * *` - shortly after UTC
-  midnight, taking about 2 minutes end to end) runs once a day and publishes to this
-  repo's `data` branch, which is configured (`vercel.json`) to never trigger a Vercel
-  deployment. It also runs automatically on any push to `master` that touches the
-  prediction algorithm itself (`lib/flip-suggestions.ts`, `lib/prediction-model.ts`,
-  `lib/models/predictor.json`, and the rest of that call chain - see the workflow's own
-  `push.paths` filter for the exact list), so a merged algorithm change doesn't sit stale
-  in production for up to a day waiting on the next scheduled run - plus `workflow_dispatch`
-  for triggering it by hand any other time. Each run fully replaces `predictions.json` (a
-  disposable snapshot, not appended to) and today's row in the price-history CSVs (dropped
-  and re-added, so re-running the same day is safe). It does two things: (1) runs the
-  learned model once for every "Days ahead"
-  deployment. It does two things: (1) runs the learned model once for every "Days ahead"
-  value, so a page load reads a ready-made result (`lib/precomputed-predictions.ts`)
-  instead of waiting on a live model run, falling back to computing live if that file is
-  missing or stale; (2) snapshots today's live prices into a growing, per-league CSV pair
-  matching `scripts/ingest-history.ts`'s own format (see **Historical price data** below) -
-  the currently active league otherwise has no daily price history at all until it ends
-  and someone manually downloads poe.ninja's export. The Flip Suggestions page fetches
-  this whole file once (`/api/flip-suggestions/precomputed`) and reconstructs every
-  duration's rows itself in the browser (`lib/predicted-suggestion.ts`, shared with the
-  server so both sides stay in sync) - so its "Days ahead" slider, bounded to the
-  precomputed 1-30 day range, updates the table live while being dragged with zero further
-  network requests; a separate exact-entry number input allows any value beyond that too,
-  at the cost of a live compute for that one request. The app's own notion of "what day of
-  the league is it" (`lib/league-day.ts`'s `currentLeagueDay`) deliberately lags 20 minutes
-  behind the real UTC day rollover, so nothing asks for "today"'s data before this job has
-  had time to actually publish it - see that file's own comment for the reasoning and the
-  timing this is tuned against. In practice GitHub starts the scheduled run hours late (runs
-  land around 04:00-05:00 UTC), so the app also accepts a file up to 2 league days old and
-  shifts it to today (`alignPrecomputedToDay` in `lib/predicted-suggestion.ts`: yesterday's
-  horizon h becomes today's duration h-1, so a day-old file covers 1-29 days). Before this,
-  every morning until the run landed the file was rejected: no detailed predicted curve (just a
-  today-to-target line) and a table/chart that only updated on slider release. Both the precomputed-predictions and current-league-history
-  in-memory fetch caches (`lib/precomputed-predictions.ts`, `lib/current-league-history.ts`)
-  use a short (2-minute) TTL for the same reason: picking up a freshly-published day
-  quickly rather than serving an already-warm instance's stale fetch for longer.
-- **poe.ninja price snapshot** (`scripts/precompute-price-snapshot.ts`,
-  `lib/price-snapshot.ts`): the same daily job also publishes `prices.json` - poe.ninja's
-  whole price map (776 currency + ~15k items with type, 7-day sparkline and seller count,
-  about 1.2 MB) plus which category buckets had any listings. The running app reads it
-  instead of calling poe.ninja (~48 requests per cold server instance): the per-item detail
-  page and the Mirage simulator take their price/sparkline/momentum/seller/category data
-  from it, matching the day the predictions were computed on, and fall back to live
-  poe.ninja if the file is missing, for another league, or over 36 hours old. Divination
-  Card Flips (a live profit calculation) and the flip-suggestions live fallback still fetch
-  prices live, but skip the category buckets that had no listings at snapshot time (12 of
-  46 currently - about a quarter fewer requests). The job's three scripts share one set of
-  poe.ninja responses through a disk cache (`POE_NINJA_DISK_CACHE`,
-  `scripts/raw-response-cache.ts`), so a run makes ~48 requests total instead of ~48 per
-  script.
+Built with Next.js, DuckDB (an embedded database holding past leagues' price history) and a small
+learned model. Prices come from [poe.ninja](https://poe.ninja) and GGG's Currency Exchange API.
+
+- [Pages](#pages)
+- [How predictions work](#how-predictions-work)
+- [The daily data job](#the-daily-data-job)
+- [Setup](#setup)
+- [Updating data and the model](#updating-data-and-the-model)
+- [Deploying](#deploying)
+- [Working on this repo](#working-on-this-repo)
+- [Known limitations](#known-limitations)
+- [Project structure](#project-structure)
+
+See [`TODO.md`](TODO.md) for open ideas and known gaps.
+
+---
+
+## Pages
+
+| Page | Path | What it's for |
+| --- | --- | --- |
+| **Flip Suggestions** | `/` | Items ranked by predicted growth over a chosen number of days (default 7). |
+| **Currency Exchange Flip** | `/currency_exchange_flip` | Live buy/sell spreads on GGG's Currency Exchange, for flipping today. |
+| **Divination Card Flips** | `/divination-cards` | Cards whose full stack costs less than the reward it turns into. |
+| **Item detail** | `/item/<category>/<Item_Name>` | Everything the app knows about one item. |
+| **Mirage league simulator** | `/mirage-simulator` | Replays a finished league to compare predictions with what happened. |
+| **League tester** | `/current-league-tester` | Applies an item's historical growth to a price you type in. |
+
+### Flip Suggestions
+
+Pick a "Days ahead" value with the slider (1–30, instant) or type any number (beyond 30 triggers a
+live calculation). Each row shows the current price, predicted price, change and a confidence tier.
+
+- **Click a row** to expand a price chart across every past league, with markers for today and
+  the target day, and the model's day-by-day forecast as a dotted line.
+- **Click an item's name** to open its detail page. The small icon next to it opens poewiki.
+- **Filters:** category, price range, search, and confidence tier (Low is hidden by default).
+- **Chaos / Divine** toggle switches every price and ratio to that currency.
+
+### Currency Exchange Flip
+
+Buy/sell spreads from GGG's own exchange data, with trade volume, a liquidity tier and the gold
+cost per trade. GGG's API is historical (about 2 hours old) and has no gold-cost field, so gold
+costs are transcribed from community sources (`lib/faustus-gold.ts`).
+
+### Divination Card Flips
+
+Cost of a full stack (card price × stack size) versus the value of its reward, at today's prices.
+
+Only cards with a single, fixed, priceable reward are included: a specific unique, a set amount of
+currency, another card, or a specific plain item. Excluded:
+
+- random rewards (a random unique of a class, a random gem roll);
+- guaranteed-corrupted uniques, since poe.ninja has no separate corrupted price.
+
+Magic/rare rewards are priced as their base type, ignoring affixes. Card data is generated from
+RePoE's game files (`scripts/generate-divination-cards.ts`).
+
+"Confidence" here means **liquidity**: the weaker of the two trades (buying the card, selling the
+reward). It is usually low on an old league, because most card trading happens off the exchange.
+
+### Item detail page
+
+Reached from any item name, or from the header search. It shows:
+
+- a **Days ahead** slider and a large price chart with the detailed forecast line;
+- **Overview**: current price, predicted price, change, category, seller count;
+- **Historical performance**: model prediction, past-leagues average, leagues used, share of
+  leagues that rose, forecast precision (hover any label for a short explanation);
+- **Recent momentum**: 1/3/6-day change, volatility and acceleration, from the same inputs the
+  model uses;
+- **Currency Exchange** (if the item trades there) and **Divination Card Flip** (if it's a card);
+- links to the item's **poewiki** and **poe.ninja** pages.
+
+On desktop the chart and Overview take the left 70%, and the other cards stack on the right.
+
+### Shared across pages
+
+- **Header:** app name, page links (a menu button on narrower screens), theme toggle and a
+  **global search** box. Search suggests any item poe.ninja currently prices as you type, and
+  opens its detail page. On a phone it's an icon that opens a full-width search.
+- **Mobile:** tables become stacked cards, with a "Sort by" control and the confidence/liquidity
+  filter above them. Nothing needs horizontal scrolling. The league tester doesn't have this yet.
+- **Charts:** the current league has its own solid line up to today, joining the dotted forecast.
+  On touch devices a tap shows the tooltip; the bar under the chart is for zooming.
+
+---
+
+## How predictions work
+
+1. **Historical growth.** For each item, the app looks up how its price changed over the same
+   stretch of days in past leagues (`lib/growth-ratios.ts`). It needs at least **3 past leagues**
+   with a price near both today and the target day. Every league counts equally.
+2. **Learned adjustment.** A gradient-boosted model adjusts that average using how today's price
+   compares with past leagues on the same day (expensive items tend to fall, cheap ones to rise)
+   and poe.ninja's 7-day sparkline (currency momentum tends to continue, items' does not).
+   Replaying the finished Mirage league with a model that never saw it, rank correlation went from
+   0.185 to 0.334, and the share of top-10% picks that actually gained from 61.7% to 72.8%.
+   Details in [`ml/README.md`](ml/README.md).
+3. **Confidence tier (High/Medium/Low).** How consistently the item gained in past leagues, not
+   how big the predicted gain is (`lib/confidence.ts`). "Forecast precision" is a separate number:
+   how wide the model's own uncertainty range is for this item.
+4. **Filling gaps.** One past league with a hole in an item's data can drop it below 3 leagues for
+   a stretch of days. The daily job fills those gaps so every item gets all 30 days
+   (`lib/horizon-fill.ts`): interpolated between real days, or held flat past the last one.
+   Filled days are marked on the detail page and their confidence is cut to 75% (held: 50%), so
+   almost all land in Low. Against the model's own output, a hidden 10-day stretch was reproduced
+   with a median error of about 2%.
+
+The model is chosen with `PREDICTOR`: `xgb` (default), `formula` (a simpler per-day linear model)
+or `baseline` (the plain historical average). A missing model file falls back automatically.
+
+The current league and its start date are set in `lib/league-recency.ts`. A daily GitHub Action
+checks poe.ninja for a new league and opens a pull request with the change
+(`.github/workflows/check-current-league-swap.yml`). `npm run check-league` checks by hand;
+`npm run league:sync` applies the change locally.
+
+---
+
+## The daily data job
+
+`.github/workflows/precompute-predictions.yml` runs once a day (cron 00:10 UTC), on demand, and on
+any push to `master` that changes the prediction code. It publishes to the **`data` branch**, which
+never triggers a Vercel deploy. Each run replaces the branch with fresh files:
+
+| File | Made by | Used for |
+| --- | --- | --- |
+| `prices.json` (~1.7 MB) | `scripts/precompute-price-snapshot.ts` | poe.ninja's whole price map (price, type, sparkline, seller count, poe.ninja id) plus which categories had listings. The detail page, search and Mirage simulator read this instead of calling poe.ninja. |
+| `predictions.json` (~20 MB, ~5 MB gzipped) | `scripts/precompute-predictions.ts` | Every item's prediction for every "Days ahead" from 1 to 30. |
+| `history/<League>/*.csv` | `scripts/precompute-price-history.ts` | The current league's daily prices, one CSV pair per month. Past leagues only exist in the database once they end. |
+
+How the app uses them:
+
+- **Instant slider.** The browser downloads `predictions.json` once and rebuilds each day's rows
+  itself (`lib/predicted-suggestion.ts`), so dragging the slider makes no network requests.
+- **Late runs are expected.** GitHub starts the scheduled run hours late (usually 04:00–05:00 UTC).
+  Until it lands, the app uses yesterday's file shifted to today: yesterday's 5-day forecast is
+  today's 4-day forecast (`alignPrecomputedToDay`). A day-old file covers 1–29 days; files more
+  than 2 days old are rejected.
+- **When a file can't be used** (missing, wrong league, too old): predictions fall back to a live
+  calculation, prices to live poe.ninja, and the chart shows only a straight today-to-target line.
+- **Fewer poe.ninja calls.** The job's three scripts share one set of poe.ninja responses through a
+  disk cache (`POE_NINJA_DISK_CACHE`), about 48 requests per run. Divination Card Flips still fetch
+  live prices but skip categories that had no listings.
+- **Caching.** The app re-checks the predictions and history files every 2 minutes and the price
+  snapshot every 30 minutes, so a new day is picked up quickly.
+
+---
 
 ## Setup
 
-1. Copy `.env.local.example` to `.env.local` and fill in:
-   - `POE_DATA_DIR` - folder containing `<League>/<League>.currency.csv` and
-     `<League>.items.csv` exports (semicolon-delimited, columns
-     `League;Date;Get;Pay;Value;Confidence` for currency and
-     `League;Date;Id;Type;Name;BaseType;Variant;Links;Value;Confidence` for items) - see
-     **Historical price data** below for where these come from and how to lay them out.
-   - `SITE_PASSWORD` - a shared password gating the whole app (see `proxy.ts` /
-     `lib/site-auth.ts`). Not per-user auth, just a gate since this is shared with a
-     handful of people. Required - unset, the login page rejects every attempt.
-   - `PREDICTOR` - optional: `xgb` (default), `formula` or `baseline`, see above.
-2. Ingest historical data into DuckDB:
-   ```bash
-   npm run db:ingest
-   ```
-3. Run the dev server:
-   ```bash
-   npm run dev
-   ```
+1. Copy `.env.local.example` to `.env.local` and set:
+
+   | Variable | Required | Meaning |
+   | --- | --- | --- |
+   | `SITE_PASSWORD` | yes | Shared password for the whole app (`proxy.ts`, `lib/site-auth.ts`). Not per-user auth. |
+   | `POE_DATA_DIR` | for ingest | Folder with past leagues' CSV exports (see below). Default `../poe-pricing/data`. |
+   | `PREDICTOR` | no | `xgb` (default), `formula` or `baseline`. |
+   | `PREDICTIONS_REPO` | no | Repo whose `data` branch to read. Defaults to this repo. |
+
+2. Build the history database: `npm run db:ingest`
+3. Start the dev server: `npm run dev`
 
 ### Historical price data
 
-The app trains and backtests on real historical prices, not live poe.ninja data alone - this data
-isn't included in the repo (it's a per-league CSV export, not something to commit) and has to be
-downloaded once per machine before `npm run db:ingest` has anything to ingest.
+Past leagues' prices aren't in the repo; download them once per machine.
 
-1. Go to [poe.ninja/poe1/data](https://poe.ninja/poe1/data) and download the currency and item
-   history export for each league below (a zip per league containing that league's currency and
-   item CSVs). This is a manual, per-league download - poe.ninja doesn't expose these as a stable
-   API endpoint.
-2. Unzip each league's export and arrange the CSVs under `POE_DATA_DIR` as
-   `<POE_DATA_DIR>/<League>/<League>.currency.csv` and `<POE_DATA_DIR>/<League>/<League>.items.csv`
-   - one subfolder per league, named exactly as poe.ninja names the league. `POE_DATA_DIR` can be
-   any folder on disk - the suggested default (`../poe-pricing/data`) is just a sibling folder next
-   to this repo, outside it entirely, so there's nothing to gitignore or commit; nothing about the
-   ingest script assumes a specific machine or location, only the folder layout above.
-3. The production model is trained on five specific leagues - `scripts/ingest-history.ts`'s
-   `PRODUCTION_LEAGUES` - so at minimum you need exports for: **Mirage, Keepers, Mercenaries,
-   Settlers, Phrecia 2.0**. (`POE_INCLUDED_LEAGUES`, a comma-separated env var, overrides this list
-   for an experiment without editing the script - see its comment.)
-4. Run `npm run db:ingest` (step 2 above) once the folders are in place. It rebuilds
-   `db/history.duckdb` from scratch every run, so re-download and re-ingest whenever you want to
-   pick up a league poe.ninja has since finished.
+1. Download each league's export from [poe.ninja/poe1/data](https://poe.ninja/poe1/data).
+2. Unzip into `<POE_DATA_DIR>/<League>/<League>.currency.csv` and `<League>.items.csv`, one folder
+   per league, named exactly as poe.ninja names it.
+3. You need the five training leagues in `scripts/ingest-history.ts`'s `PRODUCTION_LEAGUES`:
+   **Mirage, Keepers, Mercenaries, Settlers, Phrecia 2.0**. (`POE_INCLUDED_LEAGUES` overrides the
+   list for an experiment.)
+4. Run `npm run db:ingest`. It rebuilds `db/history.duckdb` from scratch each time.
 
-**The currently active league doesn't need a manual download at all** - the scheduled job described
-above (`scripts/precompute-price-history.ts`) has already been snapshotting its live prices daily
-onto the `data` branch, one CSV pair per calendar month
-(`<League>/<League>.currency.YYYY-MM.csv`/`<League>/<League>.items.YYYY-MM.csv` - chunked by month
-since one file for a whole league would otherwise grow past GitHub's 100MB push limit). Copy that
-league's folder from the `data` branch into `POE_DATA_DIR` alongside the others and run
-`npm run db:ingest` the same as any other league - `ingest-history.ts`'s file matching already
-handles both the chunked convention and a real one-file poe.ninja export the same way.
+The **current league** needs no download: copy its folder from the `data` branch's `history/` into
+`POE_DATA_DIR` once it ends. The ingest handles the monthly chunks.
 
-### Refreshing the learned model
+---
 
-After ingesting a new league, retrain (needs Python 3.11+ with the packages in
-`ml/requirements.txt`; training uses an NVIDIA GPU by default - set `XGB_DEVICE=cpu`
-without one):
+## Updating data and the model
+
+### Retraining after a new league
+
+Needs Python 3.11+ with `ml/requirements.txt`. Training uses an NVIDIA GPU; set `XGB_DEVICE=cpu`
+without one.
 
 ```bash
-npm run ml:export-features          # ~30 min: training rows, built by the app's own TypeScript
-python ml/fit_production.py all     # validation report + writes lib/models/predictor.json
-npm run ml:parity                   # TypeScript runtime reproduces Python's predictions
-npm run ml:backtest                 # replay Mirage through the app's simulator, per predictor
+npm run ml:export-features          # ~30 min: builds training rows with the app's own code
+python ml/fit_production.py all     # validation report, writes lib/models/predictor.json
+npm run ml:parity                   # checks the TypeScript model matches Python's output
+npm run ml:backtest                 # replays Mirage through the app, per predictor
 ```
 
-Commit `lib/models/predictor.json`. Details, and why features are built in TypeScript
-rather than Python, are in [`ml/README.md`](ml/README.md).
+Then commit `lib/models/predictor.json`. The full new-league checklist (config, ingest, retrain,
+regenerating name maps, new poe.ninja categories) is in `.claude/skills/new-league/SKILL.md`.
 
-## Deploying to Vercel
+### Regenerating generated files
 
-The app deploys as a normal Next.js project; nothing is built or trained in production.
+| Command | Regenerates |
+| --- | --- |
+| `npx tsx scripts/generate-faustus-mapping.ts` | Currency Exchange name ↔ id map in `lib/faustus.ts` |
+| `npx tsx scripts/generate-faustus-doc.ts` | `docs/faustus-mapping.md` |
+| `npx tsx scripts/generate-divination-cards.ts` | `lib/divination-cards.ts` (stack sizes, rewards) |
 
-- **Pushing to `master` no longer auto-deploys** (`vercel.json`'s `git.deploymentEnabled.master:
-  false`, same mechanism already used to keep the `data` branch from ever deploying). Deploying is
-  a deliberate, separate step: trigger `.github/workflows/deploy-production.yml` by hand (Actions
-  tab -> "Deploy to production" -> Run workflow), which hits a Vercel Deploy Hook - set up once via
-  Vercel dashboard -> Settings -> Git -> Deploy Hooks (branch `master`) and a matching
-  `VERCEL_DEPLOY_HOOK_URL` repo secret; see that workflow's own comment for the exact steps. It
-  always deploys whatever the latest commit on `master` happens to be at the moment it's run, not
-  necessarily anything freshly pushed.
-- `db/history.duckdb` (~72 MB) is committed through **Git LFS** (see `.gitattributes`), so the
-  Vercel project needs its Git LFS setting enabled - if the database looks tiny or every
-  query fails, the build checked out an LFS pointer instead of the file. `next.config.ts`
-  force-includes DuckDB's native binaries in the function bundle, and `lib/db.ts` opens the
-  database read-only because a function's filesystem is read-only.
-- Set `SITE_PASSWORD` under the project's Environment Variables; `PREDICTOR` is optional
-  (set it to `baseline` to revert to the original forecast without a code change).
-- The learned model is a plain 4.5 MB JSON file, so it adds nothing to Git LFS storage or
-  bandwidth; scoring ~10k items takes roughly 0.2 s of CPU per request (repeat requests
-  are cached in memory).
+### Running the daily job by hand
+
+GitHub → Actions → "Precompute predictions" → Run workflow, or `gh workflow run
+precompute-predictions.yml`. Do this after changing any of the job's scripts. The
+`precompute-check` skill covers checking the output.
+
+---
+
+## Deploying
+
+The app deploys to Vercel as a normal Next.js project; nothing is trained in production.
+
+- **Pushing to `master` doesn't deploy.** Run "Deploy to production" from the Actions tab
+  (`.github/workflows/deploy-production.yml`). It calls a Vercel Deploy Hook, which needs a
+  `VERCEL_DEPLOY_HOOK_URL` repo secret; see that workflow's comments for setup.
+- **Git LFS:** `db/history.duckdb` (~72 MB) is stored with Git LFS, so enable LFS in the Vercel
+  project. If every query fails, the build got an LFS pointer instead of the file.
+- **Environment:** set `SITE_PASSWORD`. Set `PREDICTOR=baseline` to switch off the learned model
+  without a code change.
+- **Cost:** the model is a 4.5 MB JSON file; scoring ~10k items takes about 0.2 s of CPU.
+
+---
+
+## Working on this repo
+
+- **`AGENTS.md`** (loaded via `CLAUDE.md`) holds the working rules: shared UI changes go in the
+  shared row/card components, every UI change is checked at phone width, on-page text stays
+  short, and README/skills are updated alongside the change.
+- **Project skills** in `.claude/skills/`:
+  - `verify-ui` runs the app and checks a change at desktop and phone width;
+  - `precompute-check` checks or reruns the daily job;
+  - `new-league` is the checklist for a league launch or end.
+- **Path of Exile knowledge skills** in `poe-knowledge/` (economy, data sources, divination cards,
+  league lifecycle, item categories), kept generic for use in other projects. See
+  [`poe-knowledge/README.md`](poe-knowledge/README.md).
+
+---
 
 ## Known limitations
 
-See also [`TODO.md`](TODO.md) for known gaps and ideas that aren't implemented yet (not a
-schedule or a promise - just a running list).
+- **poe.ninja's API is unofficial** and can change without notice. Categories have moved between
+  its endpoints more than once (see the comments above `CURRENCY_OVERVIEW_TYPES` in
+  `lib/poe-ninja.ts`).
+- **Predictions aren't trade advice.** The model learned from five past leagues and is measured on
+  how well it ranks items, not on spreads, fees or whether an item can actually be sold. Items
+  under 1c use the plain historical average.
+- **Confidence describes history,** not the learned forecast, and varies with how many past
+  leagues have data for an item.
+- **New leagues need a human.** The league-swap PR must be reviewed and merged (the repo needs
+  Settings → Actions → "Allow GitHub Actions to create and approve pull requests"). Ingesting a
+  finished league and retraining are manual.
+- **Currency Exchange data is about 2 hours old** and gold costs are hand-transcribed.
+- **One item, several poe.ninja lines.** Base types have one line per item level or influence.
+  The live price uses the first line while history averages them, so the two can differ.
 
-- poe.ninja's economy/pricing endpoints aren't part of any officially documented public
-  API and may change or break without notice, though poe.ninja does publish a small API
-  reference (poe.ninja/docs/api) covering some of what's used here, including the
-  leagues-list endpoint `npm run check-league` relies on.
-- Flip suggestions are a statistical forecast, not financial/trade advice. The learned
-  model is trained on only five past leagues (the current one is a sixth, different
-  economy) and its accuracy is measured as *ranking quality* - it says nothing about
-  spreads, fees or whether a cheap item can actually be traded. Live poe.ninja sparklines
-  are noisier than the cleaned stored history the model learned from, and no live
-  league's outcomes have been scored against its forecasts yet. Items under 1c keep the
-  plain historical ratio. The confidence tier still describes how consistently an item
-  gained in past leagues, not the learned forecast, and varies with how many past leagues
-  have data for it.
-- The current league is still hardcoded (see above), but swapping it is no longer a
-  fully manual chore: a scheduled job (`.github/workflows/check-current-league-swap.yml`,
-  `scripts/sync-current-league.ts`) checks poe.ninja's live leagues list daily and, on a
-  mismatch, opens a pull request with the exact edit already made (the new league's
-  release date plus the `CURRENT_LEAGUE` flip) - review and merge it and the live site
-  picks up the new league on the next deploy. It stops short of pushing straight to
-  master itself on purpose: this constant feeds live economy data to every visitor, and a
-  bad detection (a poe.ninja hiccup, an unexpected reordering of that endpoint) should get
-  a human's eyes before it deploys. Deciding whether/when to start *training* on the new
-  league (ingesting it, retraining the model) is separate and still fully manual, same as
-  always - see **Historical price data** and **Refreshing the learned model** below.
-  **One-time repo setup this relies on**: Settings -> Actions -> General -> Workflow
-  permissions -> "Allow GitHub Actions to create and approve pull requests", otherwise the
-  job can detect a swap but can't open the PR for it.
-- GGG's Currency Exchange API is purely historical (roughly 2 hours stale) and has no
-  gold-cost field at all - the Currency Exchange Flip page's buy/sell spreads and gold
-  costs are the best available approximation, not a live order book.
+---
 
 ## Project structure
 
-- `TODO.md` - known gaps and unimplemented ideas, tracked outside this README since they're not
-  "how it works" - see **Known limitations** above.
-- `scripts/ingest-history.ts` - bulk-loads historical CSVs into `db/history.duckdb`.
-- `scripts/backtest-mirage.ts` - CLI backtest of the model against the Mirage holdout.
-- `scripts/discover-*.ts` - one-off analyses behind past modeling decisions (peer-group
-  shrinkage, training-league selection, error budget) - not part of the running app.
-- `scripts/backfill-current-league-history.ts` - one-time script that reconstructs a
-  currently-active league's early days of price history from poe.ninja's own live 7-point
-  sparkline, for a league too new to have much real daily-collected history yet; not part
-  of the running app or the daily precompute job.
-- `scripts/generate-faustus-*.ts` - regenerates the Currency Exchange name/id mapping
-  and its doc from RePoE data.
-- `scripts/generate-divination-cards.ts` - regenerates `lib/divination-cards.ts` (stack
-  size + reward per card) from RePoE data.
-- `scripts/check-current-league.ts` - compares the hardcoded `CURRENT_LEAGUE` against
-  poe.ninja's live leagues list; run via `npm run check-league`.
-- `scripts/sync-current-league.ts` - same check, but on a mismatch actually rewrites
-  `lib/league-recency.ts` with the fix; run via `npm run league:sync`, or automatically
-  daily by `.github/workflows/check-current-league-swap.yml` (which opens the result as a
-  pull request rather than committing it directly - see **Known limitations** above).
-- `scripts/export-training-features.ts`, `check-predictor-parity.ts`,
-  `backtest-predictor.ts` - the learned model's training-data export, TypeScript/Python
-  parity check and out-of-sample Mirage replay (`npm run ml:*`);
-  `export-backtest-baseline.ts` feeds the experiments in `ml/`.
-- `ml/` - offline Python for the learned model: experiments, validation, and
-  `fit_production.py`, which writes `lib/models/predictor.json`. See `ml/README.md`.
-- `lib/db.ts` - shared DuckDB connection.
-- `lib/poe-ninja.ts` - live poe.ninja price client (with caching), including each item's
-  7-day sparkline. Falls back to poe.ninja's Currency Exchange-backed overview for any
-  category whose stash-listing scrape returns no data (most non-Currency/Fragment
-  categories did, as of 2026-09-20 - see the comment above `CURRENCY_OVERVIEW_TYPES`).
-- `lib/growth-ratios.ts` - core historical growth-ratio queries.
-- `lib/prediction-features.ts` - the one implementation of the learned model's inputs,
-  shared by the live app, the Mirage simulator and the training export.
-- `lib/prediction-model.ts` / `lib/models/predictor.json` - tree/formula evaluator and
-  the trained model; also the `PREDICTOR` switch.
-- `lib/history-now.ts` - reads a past league's stored prices in the same shape as the live
-  feed (price now + 7-day sparkline), for replays and training rows.
-- `lib/league-recency.ts` - per-league recency weighting, and the current league.
-- `lib/confidence.ts` - confidence-tier scoring for a prediction.
-- `lib/price-history.ts` - per-item price history across past leagues, for the chart.
-- `lib/current-league-history.ts` - the active league's own real price history, read
-  straight from the daily precomputed CSV snapshots on the `data` branch (see **Daily
-  precomputed data** above) rather than the past-league database - appended onto
-  `lib/price-history.ts`'s results as the chart's solid "up to today" line.
-- `lib/flip-suggestions.ts` - ranks live prices by projected growth.
-- `lib/mirage-simulator.ts` - backs the `/mirage-simulator` testing page.
-- `lib/faustus.ts` - GGG Currency Exchange client (live prices and buy/sell spreads).
-- `lib/faustus-gold.ts` - gold cost per item on the Currency Exchange.
-- `lib/liquidity.ts` - liquidity tiering shared by Currency Exchange spreads and
-  Divination Card Flips' Confidence column.
-- `lib/divination-cards.ts` - generated card metadata (stack size, reward); see
-  `scripts/generate-divination-cards.ts` above.
-- `lib/divination-flips.ts` - live scoring for the Divination Card Flips page.
-- `lib/price-snapshot.ts` - reader/builder for the daily `prices.json` poe.ninja snapshot; see
-  **poe.ninja price snapshot** above.
-- `lib/item-detail.ts` - one item's live "extras" a table row doesn't show (seller count,
-  raw sparkline/momentum, Faustus spread) - see **Per-item detail page** above.
-- `lib/site-auth.ts` / `proxy.ts` - the shared-password login gate.
-- `app/api/*/route.ts` - read-only data endpoints used by the UI (deliberately Route
-  Handlers, not Server Actions - see the comment in `mirage-simulation/route.ts`).
-- `app/currency_exchange_flip`, `app/divination-cards`, `app/mirage-simulator`,
-  `app/current-league-tester` - the app's secondary pages; the dashboard (flip
-  suggestions) lives at `/`. `app/item/[category]/[key]` is the per-item detail page -
-  see its own section above for the URL scheme.
-- `components/app-header.tsx` - the shared nav header every page renders; see
-  **Navigation** above.
-- `components/item-history-row.tsx` / `item-history-card.tsx` - the shared desktop-table-
-  row/mobile-card components every table's items render through (click-to-expand chart,
-  the detail-page link, the poewiki link).
-- `components/mobile-sort-control.tsx` - the column-picker + direction-toggle control (plus the
-  tier filter row) that stands in for a desktop `SortableHeader` click once the table itself
-  is replaced by the mobile card list.
-- `lib/horizon-fill.ts` - fills missing "Days ahead" horizons in the precomputed file with
-  lower-confidence estimates; see **Full 30-day coverage** above.
-- `lib/api-response.ts` - JSON response helpers shared by every `app/api/*/route.ts`;
-  `cachedJsonResponse` also caches the serialized (and gzipped) response bytes, not just
-  the underlying data, for the handful of routes whose payload is large enough that
-  `JSON.stringify`/gzip alone is a meaningful, repeat-request cost.
-- `components/item-detail-panel.tsx` - the per-item detail page's actual content.
-- `components/*.tsx` - the rest of the dashboard UI (category/confidence/liquidity
-  filters, price history chart), the Currency Exchange Flip panel, the Divination Card
-  Flips panel, and the Mirage simulator panel.
+### Pages and API
+
+| Path | What it is |
+| --- | --- |
+| `app/page.tsx` | Flip Suggestions (renders `components/dashboard.tsx`) |
+| `app/item/[category]/[key]/` | Item detail page |
+| `app/currency_exchange_flip/`, `app/divination-cards/`, `app/mirage-simulator/`, `app/current-league-tester/` | Other pages |
+| `app/api/*/route.ts` | Read-only JSON endpoints (Route Handlers, not Server Actions) |
+| `proxy.ts`, `lib/site-auth.ts` | Password gate |
+
+### Components
+
+| File | What it is |
+| --- | --- |
+| `app-header.tsx`, `global-search.tsx` | Header, page links and search |
+| `item-history-row.tsx`, `item-history-card.tsx` | Shared table row (desktop) and card (mobile) every table uses |
+| `price-history-chart.tsx` | The price chart |
+| `item-detail-panel.tsx` | Item detail page content |
+| `*-panel.tsx` | Each page's main panel |
+| `mobile-sort-control.tsx` | Mobile sort and confidence/liquidity filter |
+| `ui/` | shadcn components |
+
+### Predictions
+
+| File | What it is |
+| --- | --- |
+| `lib/growth-ratios.ts` | Historical growth queries against DuckDB |
+| `lib/prediction-features.ts`, `lib/prediction-model.ts` | Model inputs and evaluator; `lib/models/predictor.json` is the trained model |
+| `lib/flip-suggestions.ts` | Ranks live prices by predicted growth (live path) |
+| `lib/confidence.ts` | Confidence tiers |
+| `lib/precomputed-predictions.ts` | Reads `predictions.json` from the `data` branch |
+| `lib/predicted-suggestion.ts` | Rebuilds rows from that file (server and browser), and shifts a day-old file to today |
+| `lib/horizon-fill.ts` | Fills missing days in the precomputed file |
+| `lib/league-recency.ts`, `lib/league-day.ts` | Current league, release dates, league-day math |
+
+### Prices and history
+
+| File | What it is |
+| --- | --- |
+| `lib/poe-ninja.ts` | poe.ninja client, item keys, display names, poewiki links |
+| `lib/price-snapshot.ts` | Reads/builds `prices.json` |
+| `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client and gold costs |
+| `lib/liquidity.ts` | Liquidity tiers |
+| `lib/price-history.ts` | Past-league history for the chart |
+| `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
+| `lib/item-detail.ts`, `lib/item-search.ts`, `lib/ninja-link.ts` | Detail page data, search, poe.ninja links |
+| `lib/divination-cards.ts`, `lib/divination-flips.ts` | Card data (generated) and card flip scoring |
+| `lib/db.ts`, `lib/api-response.ts` | DuckDB connection; JSON responses with cached, gzipped bytes |
+
+### Scripts and tooling
+
+| Path | What it is |
+| --- | --- |
+| `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
+| `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
+| `scripts/check-current-league.ts`, `sync-current-league.ts` | League-swap check and fix |
+| `scripts/generate-*.ts` | Regenerate the exchange map, its doc and card data from RePoE |
+| `scripts/export-training-features.ts`, `check-predictor-parity.ts`, `backtest-predictor.ts` | Model training export, parity check and backtest (`npm run ml:*`) |
+| `scripts/backtest-mirage.ts`, `discover-*.ts`, `backfill-current-league-history.ts` | One-off analyses and a one-time history backfill |
+| `ml/` | Offline Python for training and experiments; see `ml/README.md` |
