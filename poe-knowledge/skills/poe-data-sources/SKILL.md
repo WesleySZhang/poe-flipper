@@ -32,6 +32,13 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   listed stock during the hour, not stock at the low or high price: the API has no order-book depth
   and no split of stock by price. A pair can trade with 0 of the item listed at both extremes (orders
   filled as soon as they were placed). `[verified]` (2026-09-27; `stockRange` in `lib/faustus.ts`)
+  The in-game exchange's order book (stock at each price) is only visible in game.
+- The trade site's bulk exchange (`POST https://www.pathofexile.com/api/trade/exchange/<League>`,
+  body `{"query":{"status":{"option":"online"|"any"},"have":["chaos"],"want":["the-doctor"]},"sort":{"have":"asc"}}`,
+  ids from `/api/trade/data/static`) does give price + stock per listing and needs no login, but it's
+  a different, mostly dead market since the in-game exchange: on 2026-09-27 The Doctor had 0 online
+  chaos listings, and "any" returned weeks-old offline 1c-per-Doctor listings (bait). Rate limit per
+  IP: 5/15s, 10/90s, 30/300s (`X-Rate-Limit-Ip`). Not a stand-in for exchange depth. `[verified]`
 - poe.ninja has **no API listing its categories**. Its site sidebar is built from a config object
   compiled into one of its JavaScript chunks (`{availableViews:[...], title, type, url}` per
   category); chunk names change every deploy, so find it by walking the imports from the page's
