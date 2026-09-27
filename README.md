@@ -82,7 +82,9 @@ Reached from any item name, or from the header search. It shows:
   leagues that rose, forecast precision (hover any label for a short explanation);
 - **Recent momentum**: 1/3/6-day change, volatility and acceleration, from the same inputs the
   model uses;
-- **Currency Exchange** (if the item trades there) and **Divination Card Flip** (if it's a card);
+- **Currency Exchange** (if the item trades there): the same flip as the Currency Exchange Flip
+  table, each price in its market's currency whatever the page's Chaos/Divine toggle says;
+- **Divination Card Flip** (if it's a card);
 - links to the item's **poewiki** and **poe.ninja** pages.
 
 On desktop the chart and Overview take the left 70%, and the other cards stack on the right.

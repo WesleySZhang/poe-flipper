@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
-import { otherCurrencyTitle, profitUnit } from "@/lib/exchange-route";
+import { LEG_LABEL, otherCurrencyTitle, profitUnit } from "@/lib/exchange-route";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
@@ -386,7 +386,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Currency Exchange</CardTitle>
-                <FaustusPriceButton name={historyName} priceUnit={priceUnit} />
+                <FaustusPriceButton name={historyName} priceUnit="market" />
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground">
@@ -424,14 +424,14 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   <Stat
                     label="Volume (chaos)"
                     value={Math.round(detail.faustus.volumeChaos).toLocaleString()}
-                    hint="Traded this hour on the thinner of the two markets used"
+                    hint={`Traded this hour on the thinner market (buy: ${LEG_LABEL[detail.faustus.buyIn]}, sell: ${LEG_LABEL[detail.faustus.sellIn]})`}
                   />
-                  <Stat label="Item volume" value={detail.faustus.buyMarket.volumeItem.toLocaleString()} hint="Units traded on the buy market" />
-                  <Stat label="Item stock" value={detail.faustus.buyMarket.itemStock.toLocaleString()} hint="Units listed on the buy market" />
+                  <Stat label="Item volume" value={detail.faustus.buyMarket.volumeItem.toLocaleString()} hint={`Units traded on the ${LEG_LABEL[detail.faustus.buyIn]} market (buy)`} />
+                  <Stat label="Item stock" value={detail.faustus.buyMarket.itemStock.toLocaleString()} hint={`Units listed on the ${LEG_LABEL[detail.faustus.buyIn]} market (buy)`} />
                   <Stat
                     label="Sell stock (chaos)"
                     value={Math.round(detail.faustus.sellMarket.currencyStockChaos).toLocaleString()}
-                    hint="Currency listed to sell into, on the sell market"
+                    hint={`Currency listed to sell into on the ${LEG_LABEL[detail.faustus.sellIn]} market`}
                   />
                   {detail.faustus.goldCost && (
                     <Stat
