@@ -1,0 +1,56 @@
+name: Check for new items
+
+# Finds items and poe.ninja categories a new league added that this app's lists don't know about
+# yet (scripts/check-new-items.ts has the full list of what it checks and fixes), and opens a pull
+# request with the fixes plus a report of what needs a human (gold costs, category filter order).
+#
+# Same "detect automatically, a human merges" split as check-current-league-swap.yml: these lists
+# feed live prices to every visitor, so a bad upstream pull (RePoE, poe.ninja's site, GGG's exchange)
+# should get a human's eyes before it ships. Reuses one branch, so a still-open PR is updated in
+# place instead of a new one opening each day.
+#
+# Findings with nothing to change (e.g. a category poe.ninja stopped listing) only go to the run's
+# job summary.
+
+on:
+  schedule:
+    - cron: "20 1 * * *" # daily, after the league-swap check and the precompute job have started
+  workflow_dispatch: {} # manual trigger, e.g. right after a league launch
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-new-items:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Check for new items and categories
+        id: check
+        run: npx tsx scripts/check-new-items.ts
+        env:
+          REPORT_PATH: ${{ runner.temp }}/new-items-report.md
+
+      - name: Typecheck the changes
+        if: steps.check.outputs.changed == 'true'
+        run: npx tsc --noEmit -p .
+
+      - name: Open or update the pull request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Pick up new items and categories"
+          title: "New items and categories detected"
+          body-path: ${{ runner.temp }}/new-items-report.md
+          branch: auto/new-items
+          delete-branch: true

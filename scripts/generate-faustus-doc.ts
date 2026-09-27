@@ -5,8 +5,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { readFaustusMap } from "./generated-data";
 
-const FAUSTUS_PATH = path.join(__dirname, "..", "lib", "faustus.ts");
 const OUT_PATH = path.join(__dirname, "..", "docs", "faustus-mapping.md");
 
 function categoryFor(id: string): string {
@@ -20,13 +20,10 @@ function categoryFor(id: string): string {
   return "Other";
 }
 
-function main() {
-  const content = fs.readFileSync(FAUSTUS_PATH, "utf8");
-  const start = content.indexOf("export const FAUSTUS_NAME_TO_ID");
-  const braceStart = content.indexOf("{", start);
-  const braceEnd = content.indexOf("};", braceStart);
-  const body = content.slice(braceStart, braceEnd + 1);
-  const map: Record<string, string> = eval(`(${body})`);
+/** Rewrites the doc from lib/faustus.ts's current map. Returns whether the file changed. Also used by
+ *  scripts/check-new-items.ts. */
+export function writeFaustusDoc(): boolean {
+  const map: Record<string, string> = Object.fromEntries(readFaustusMap());
 
   const byCategory = new Map<string, Array<[string, string]>>();
   for (const [name, id] of Object.entries(map)) {
@@ -85,9 +82,14 @@ function main() {
     lines.push("");
   }
 
+  const out = lines.join("\n");
+  const previous = fs.existsSync(OUT_PATH) ? fs.readFileSync(OUT_PATH, "utf8").replace(/\r\n/g, "\n") : undefined;
+  if (previous === out) return false;
   fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
-  fs.writeFileSync(OUT_PATH, lines.join("\n"));
-  console.log(`Wrote ${OUT_PATH} (${total} entries).`);
+  fs.writeFileSync(OUT_PATH, out);
+  return true;
 }
 
-main();
+if (require.main === module) {
+  console.log(writeFaustusDoc() ? `Wrote ${OUT_PATH}.` : `${OUT_PATH} already up to date.`);
+}
