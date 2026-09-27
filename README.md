@@ -142,7 +142,7 @@ never triggers a Vercel deploy. Each run replaces the branch with fresh files:
 | --- | --- | --- |
 | `prices.json` (~1.7 MB) | `scripts/precompute-price-snapshot.ts` | poe.ninja's whole price map (price, type, sparkline, seller count, poe.ninja id) plus which categories had listings. The detail page, search and Mirage simulator read this instead of calling poe.ninja. |
 | `predictions.json` (~20 MB, ~5 MB gzipped) | `scripts/precompute-predictions.ts` | Every item's prediction for every "Days ahead" from 1 to 30. |
-| `history/<League>/*.csv` | `scripts/precompute-price-history.ts` | The current league's daily prices, one CSV pair per month. Earlier months and ended leagues' folders are kept (the job copies them forward). |
+| `history/<League>/*.csv` | `scripts/precompute-price-history.ts` | The current league's daily prices, one CSV pair per month. Earlier months and ended leagues' folders are kept (the job copies them forward). A missed day within the last 6 is rebuilt from poe.ninja's sparkline (see below). |
 
 How the app uses them:
 
@@ -157,8 +157,14 @@ How the app uses them:
 - **Fewer poe.ninja calls.** The job's three scripts share one set of poe.ninja responses through a
   disk cache (`POE_NINJA_DISK_CACHE`), about 48 requests per run. Divination Card Flips still fetch
   live prices but skip categories that had no listings.
+- **Missed days are rebuilt.** If a run is skipped or fails, the next one rebuilds any of the last
+  6 days with no rows from each price's 7-day poe.ninja sparkline, tagged `Confidence=Medium`
+  (`lib/spark-backfill.ts`). Stash items come back exact; exchange-priced types within a median
+  ~8-17% of what the job would have read. Older holes can't be rebuilt and show as a warning in
+  the Actions run.
 - **Caching.** The app re-checks the predictions and history files every 2 minutes and the price
-  snapshot every 30 minutes, so a new day is picked up quickly.
+  snapshot every 30 minutes, so a new day is picked up quickly. The predictions endpoint is also
+  cached at Vercel's CDN for 2 minutes (`s-maxage=120`), so repeat visits don't run the function.
 
 ---
 
@@ -355,6 +361,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/liquidity.ts` | Liquidity tiers |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
+| `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |
 | `lib/item-detail.ts`, `lib/item-search.ts`, `lib/ninja-link.ts` | Detail page data, search, poe.ninja links |
 | `lib/divination-cards.ts`, `lib/divination-flips.ts` | Card data (generated) and card flip scoring |
 | `lib/db.ts`, `lib/api-response.ts` | DuckDB connection; JSON responses with cached, gzipped bytes |
@@ -370,5 +377,5 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `scripts/generate-*.ts`, `scripts/generated-data.ts` | Regenerate the exchange map, its doc and card data; shared fetch/parse/write helpers |
 | `scripts/export-training-features.ts`, `check-predictor-parity.ts`, `backtest-predictor.ts` | Model training export, parity check and backtest (`npm run ml:*`) |
 | `scripts/retrain-leagues.ts`, `download-league-history.ts`, `retrain-report.ts` | The Retrain model workflow: edit the league list, fetch history, write the PR report |
-| `scripts/backtest-mirage.ts`, `discover-*.ts`, `backfill-current-league-history.ts` | One-off analyses and a one-time history backfill |
+| `scripts/backtest-mirage.ts`, `discover-*.ts` | One-off analyses |
 | `ml/` | Offline Python for training and experiments; see `ml/README.md` |
