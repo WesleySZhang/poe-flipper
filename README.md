@@ -117,8 +117,8 @@ The model is chosen with `PREDICTOR`: `xgb` (default), `formula` (a simpler per-
 or `baseline` (the plain historical average). A missing model file falls back automatically.
 
 The current league and its start date are set in `lib/league-recency.ts`. A daily GitHub Action
-checks poe.ninja for a new league and opens a pull request with the change
-(`.github/workflows/check-current-league-swap.yml`). `npm run check-league` checks by hand;
+checks poe.ninja for a new league and opens a pull request with the change, taking the start date
+from GGG's leagues API (`.github/workflows/check-current-league-swap.yml`). `npm run check-league` checks by hand;
 `npm run league:sync` applies the change locally.
 
 ---
@@ -181,6 +181,9 @@ Past leagues' prices aren't in the repo; download them once per machine.
 ---
 
 ## Updating data and the model
+
+For the whole changeover in order (retrain, league swap, new items, deploys), see
+[`docs/new-league.md`](docs/new-league.md).
 
 ### Retraining after a new league
 

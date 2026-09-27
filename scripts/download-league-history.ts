@@ -10,7 +10,8 @@
  *   2. poe.ninja's export, published after a league ends: GET /poe1/api/data/dumps lists them, and
  *      /poe1/api/data/dumps/dump?name=<League> is a zip that also holds hardcore/standard files we skip;
  *   3. this app's own daily snapshots on the data branch (history/<League>/*.YYYY-MM.csv), for a league
- *      that just ended and isn't exported yet. Less complete: only the items poe.ninja's live API listed.
+ *      that ended but isn't exported yet (never CURRENT_LEAGUE, which may still be running). Less
+ *      complete: only the items poe.ninja's live API listed, and only since collection began.
  *
  * Writes sources.json (league -> where its data came from) to RETRAIN_OUT when set, for the report.
  */
@@ -19,6 +20,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { config } from "dotenv";
+import { CURRENT_LEAGUE } from "../lib/league-recency";
 import { TRAINING_LEAGUES } from "../lib/training-leagues";
 
 config({ path: ".env.local" });
@@ -106,6 +108,8 @@ async function main() {
       console.log(`${league}: poe.ninja export (${detail})`);
       continue;
     }
+    // The data branch keeps growing while a league runs; without an export it hasn't ended.
+    if (league === CURRENT_LEAGUE) throw new Error(`${league} is still running (no poe.ninja export yet).`);
     const detail = await fromDataBranch(league, destDir);
     if (!detail) throw new Error(`${league}: no poe.ninja export and no history on the data branch.`);
     sources.push({ league, source: "data branch", detail });

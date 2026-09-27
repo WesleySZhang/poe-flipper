@@ -4,8 +4,9 @@
  *
  *   npx tsx scripts/retrain-leagues.ts [--add "League"] [--drop "League"]    (comma-separate several)
  *
- * Refuses a league that's still running (CURRENT_LEAGUE) or has no release date in lib/league-recency.ts
- * (growth ratios only read leagues listed there), and a set too small for the model's league minimum.
+ * Refuses a league with no release date in lib/league-recency.ts (growth ratios only read leagues listed
+ * there), and a set too small for the model's league minimum. CURRENT_LEAGUE is allowed once poe.ninja has
+ * exported it: a league ends about 4 days before the next launches, so it can be trained on before the swap.
  *
  * Holdouts: the newest training league (the forward-in-time test) plus Mirage while it's in the set, since
  * scripts/backtest-predictor.ts replays Mirage and needs a model trained without it.
@@ -32,18 +33,27 @@ function argList(flag: string): string[] {
 }
 
 function fail(message: string): never {
-  console.error(`::error::${message}`);
-  process.exit(1);
+  throw new Error(message);
 }
 
-function main() {
+/** poe.ninja only exports a league after it ends. */
+async function hasNinjaExport(league: string): Promise<boolean> {
+  const res = await fetch("https://poe.ninja/poe1/api/data/dumps");
+  if (!res.ok) fail(`poe.ninja's export list failed (HTTP ${res.status}).`);
+  const dumps = (await res.json()) as Array<{ leagueName: string }>;
+  return dumps.some((d) => d.leagueName === league);
+}
+
+async function main() {
   const add = argList("--add");
   const drop = argList("--drop");
   const leagues = [...TRAINING_LEAGUES];
 
   for (const league of add) {
     if (leagues.includes(league)) fail(`${league} is already a training league.`);
-    if (league === CURRENT_LEAGUE) fail(`${league} is still running (CURRENT_LEAGUE); train on it once it ends.`);
+    if (league === CURRENT_LEAGUE && !(await hasNinjaExport(league))) {
+      fail(`${league} is still CURRENT_LEAGUE and poe.ninja hasn't exported it, so it hasn't ended yet.`);
+    }
     if (!leagueReleaseDate(league)) fail(`${league} has no release date in lib/league-recency.ts. Add it there first.`);
     leagues.push(league);
   }
@@ -79,4 +89,7 @@ function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error(`::error::${err instanceof Error ? err.message : err}`);
+  process.exitCode = 1;
+});

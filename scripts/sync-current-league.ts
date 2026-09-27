@@ -1,9 +1,10 @@
 /**
  * Checks poe.ninja's live leagues list against lib/league-recency.ts's hardcoded CURRENT_LEAGUE,
  * same as scripts/check-current-league.ts - but where that script only reports a mismatch, this
- * one actually rewrites lib/league-recency.ts to fix it: adds the new league's release date (set
- * to TODAY, the day this script first detects it - not the league's true launch instant) and
- * points CURRENT_LEAGUE at it. Everything downstream (day_offset math, the daily precompute job,
+ * one actually rewrites lib/league-recency.ts to fix it: adds the new league's release date and
+ * points CURRENT_LEAGUE at it. The date is the league's startAt from GGG's public leagues API when
+ * it lists the league (launches are ~20:00 UTC, so this job's 00:05 UTC run is already the next
+ * day - using today would shift every league day by one), else today. Everything downstream (day_offset math, the daily precompute job,
  * live pricing lookups) already keys off those two exports alone (see that file's own comments),
  * so this one edit is the entire "swap."
  *
@@ -27,6 +28,7 @@ import path from "node:path";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
 
 const LEAGUES_URL = "https://poe.ninja/poe1/api/economy/leagues";
+const GGG_LEAGUES_URL = "https://api.pathofexile.com/leagues?type=main&realm=pc";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
 const LEAGUE_RECENCY_PATH = path.join(__dirname, "..", "lib", "league-recency.ts");
 
@@ -37,6 +39,19 @@ interface PoeNinjaLeague {
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+/** The league's UTC start date from GGG's public leagues API, or undefined if it isn't listed there. */
+async function gggStartDate(league: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(GGG_LEAGUES_URL, { headers: { "User-Agent": USER_AGENT } });
+    if (!res.ok) return undefined;
+    const leagues = (await res.json()) as Array<{ id: string; startAt: string | null }>;
+    const startAt = leagues.find((l) => l.id === league)?.startAt;
+    return startAt ? startAt.slice(0, 10) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Writes a GITHUB_OUTPUT entry when running in Actions; a harmless no-op locally (GITHUB_OUTPUT
@@ -75,8 +90,12 @@ async function main() {
     return;
   }
 
-  const today = isoDate(new Date());
-  console.log(`Detected a league swap: ${CURRENT_LEAGUE} -> ${live} (as of ${today}).`);
+  const gggStart = await gggStartDate(live);
+  const today = gggStart ?? isoDate(new Date());
+  console.log(
+    `Detected a league swap: ${CURRENT_LEAGUE} -> ${live}, started ${today} ` +
+      `(${gggStart ? "from GGG's leagues API" : "not in GGG's leagues API, using today"}).`
+  );
 
   let source = fs.readFileSync(LEAGUE_RECENCY_PATH, "utf8");
 
@@ -112,6 +131,8 @@ async function main() {
   setOutput("changed", "true");
   setOutput("new_league", live);
   setOutput("old_league", CURRENT_LEAGUE);
+  setOutput("start_date", today);
+  setOutput("start_source", gggStart ? "GGG's leagues API" : "the day it was detected");
 }
 
 main().catch((err) => {
