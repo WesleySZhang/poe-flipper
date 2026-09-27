@@ -470,14 +470,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   <Stat label="Stack size" value={`x${divinationFlip.stackSize}`} />
                   <Stat
                     label={`Cost (${priceUnitLabel(priceUnit)})`}
-                    value={
-                      <LegPrice
-                        value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
-                        source={divinationFlip.buyIn}
-                        divineChaosRate={divinationFlip.divineChaosRate}
-                        align="start"
-                      />
-                    }
+                    value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
                   />
                   <Stat
                     label="Reward"
@@ -489,14 +482,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   />
                   <Stat
                     label={`Sell (${priceUnitLabel(priceUnit)})`}
-                    value={
-                      <LegPrice
-                        value={formatPriceValue(divinationFlip.rewardChaosValue, divinationFlip.rewardDivineValue, priceUnit)}
-                        source={divinationFlip.sellIn}
-                        divineChaosRate={divinationFlip.divineChaosRate}
-                        align="start"
-                      />
-                    }
+                    value={formatPriceValue(divinationFlip.rewardChaosValue, divinationFlip.rewardDivineValue, priceUnit)}
                   />
                   {divinationFlip.buyMinChaosValue !== undefined && divinationFlip.buyMaxChaosValue !== undefined && (
                     <Stat

@@ -57,9 +57,6 @@ market more than 2× away from the item's other one is ignored as an odd trade.
 ### Divination Card Flips
 
 Cost of a full stack (card price × stack size) versus the value of its reward, at today's prices.
-The cards and an exchange-traded reward can each be bought or sold for Chaos or Divine, so each row
-takes the best route (at the hour's midpoint on each market) and shows it under Cost and Sell. A leg
-with no exchange market uses poe.ninja's price; unique rewards always do.
 
 Only cards with a single, fixed, priceable reward are included: a specific unique, a set amount of
 currency, another card, or a specific plain item. Excluded:

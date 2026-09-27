@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
-import { LegPrice } from "@/components/leg-price";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
 import { MobileSortControl } from "@/components/mobile-sort-control";
@@ -243,26 +242,8 @@ export function DivinationFlipsPanel() {
                   { label: `Profit (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.profitChaosValue, f.profitDivineValue, priceUnit) },
                 ]}
                 rightFields={[
-                  {
-                    label: `Cost (${priceUnitLabel(priceUnit)})`,
-                    value: (
-                      <LegPrice
-                        value={formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit)}
-                        source={f.buyIn}
-                        divineChaosRate={f.divineChaosRate}
-                      />
-                    ),
-                  },
-                  {
-                    label: `Sell (${priceUnitLabel(priceUnit)})`,
-                    value: (
-                      <LegPrice
-                        value={formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit)}
-                        source={f.sellIn}
-                        divineChaosRate={f.divineChaosRate}
-                      />
-                    ),
-                  },
+                  { label: `Cost (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit) },
+                  { label: `Sell (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit) },
                   { label: "Profit %", value: formatPercentChange(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit), emphasized: true },
                 ]}
               />
@@ -311,11 +292,7 @@ export function DivinationFlipsPanel() {
                 >
                   <TableCell className="text-right text-muted-foreground">x{f.stackSize}</TableCell>
                   <TableCell className="text-right">
-                    <LegPrice
-                      value={formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit)}
-                      source={f.buyIn}
-                      divineChaosRate={f.divineChaosRate}
-                    />
+                    {formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-2">
@@ -334,13 +311,7 @@ export function DivinationFlipsPanel() {
                   <TableCell className="max-w-[160px] truncate" title={f.rewardName}>
                     {f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <LegPrice
-                      value={formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit)}
-                      source={f.sellIn}
-                      divineChaosRate={f.divineChaosRate}
-                    />
-                  </TableCell>
+                  <TableCell className="text-right">{formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit)}</TableCell>
                   <TableCell className="text-right font-medium">
                     {formatPercentChange(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit)}
                   </TableCell>
