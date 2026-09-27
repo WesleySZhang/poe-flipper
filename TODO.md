@@ -118,7 +118,8 @@ forecast days (see Done), but:
   what needs a human.
 - **Divination Card Flips have an Instant buy button.** Off by default; on, Cost/Profit %/Profit use
   the stack bought off sell orders (the top of the card's hour range on the exchange × stack size),
-  in both price modes, on the table and the item page. Min/Max's hover shows the hour's listed stock.
+  in both price modes, on the table and the item page. Cards that never had a full stack listed that
+  hour are hidden while it's on. Min/Max's hover shows the hour's listed stock.
 - **Divination Card Flips' Divine mode buys the cards with divines.** Each card at its own Divine
   market price (hour midpoint) instead of its chaos price converted; cards with no Divine market that
   hour are hidden in Divine mode. The reward stays at its chaos price, converted.

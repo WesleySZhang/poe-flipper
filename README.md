@@ -66,7 +66,8 @@ Cost of a full stack (card price × stack size) versus the value of its reward, 
   valued at its chaos price, converted to divines.
 - **Instant buy** (button, off by default): Cost, Profit % and Profit switch to the stack bought off
   other players' sell orders instead of with a buy order: the top of the card's hour trade range on
-  the exchange × stack size. Cards with no exchange market are hidden. The item page's card section
+  the exchange × stack size. Cards with no exchange market, or fewer listed than a stack at any point
+  that hour, are hidden. The item page's card section
   has the same button.
 - Hovering Min/Max shows the stock listed on that market during the hour (cards for sale, currency in
   buy orders), lowest to highest.

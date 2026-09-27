@@ -43,6 +43,11 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   inside the exchange range: on 2026-09-27, 7 of 31 cards with an exchange market had poe.ninja's
   price above the hour's high (The Doctor: 460c vs 401c), so instant cost can read lower than Cost.
   Divine ratios are coarse, so in Divine mode instant cost often equals Cost. `[verified]`
+- Nothing says a full stack can be bought at the Min/Max price: the exchange API has no stock per
+  price. The one quantity check is the hour's highest listed card stock vs the stack size - on
+  2026-09-27, 8 of 34 exchange-traded cards never had a full stack listed (The Soul 0-5 for a stack
+  of 9, Outfoxed 0, Mawr Blaidd 7-12 for 16), some rated Medium. Instant buy hides those
+  (`fullStackListed` in `lib/exchange-route.ts`). `[verified]`
 
 ## Sources
 

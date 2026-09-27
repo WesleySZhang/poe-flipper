@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
-import { LEG_LABEL, otherCurrencyTitle, profitUnit, stockRangeTitle } from "@/lib/exchange-route";
+import { LEG_LABEL, fullStackListed, otherCurrencyTitle, profitUnit, stockRangeTitle } from "@/lib/exchange-route";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
@@ -252,11 +252,16 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   // The card flip's figures for the active price unit and buy mode, same as
   // divination-flips-panel.tsx's `enriched`. Undefined cost = can't be bought that way this hour.
   const cardDivine = priceUnit === "divine";
+  const cardStock = cardDivine ? divinationFlip?.buyStockDivine : divinationFlip?.buyStock;
+  // An instant buy also needs a full stack listed that hour.
+  const cardInstantBuyable = divinationFlip ? fullStackListed(cardStock, divinationFlip.stackSize) : false;
   const cardCost = divinationFlip
     ? instantBuy
-      ? cardDivine
-        ? divinationFlip.instantCostDivineValue
-        : divinationFlip.instantCostChaosValue
+      ? cardInstantBuyable
+        ? cardDivine
+          ? divinationFlip.instantCostDivineValue
+          : divinationFlip.instantCostChaosValue
+        : undefined
       : cardDivine
         ? divinationFlip.stackCostDivineValue
         : divinationFlip.stackCostChaosValue
@@ -501,7 +506,9 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   <p className="text-sm text-muted-foreground">
                     {cardDivine && divinationFlip.stackCostDivineValue === undefined
                       ? "Not traded for divines this hour"
-                      : "Not on the Currency Exchange this hour"}
+                      : cardStock === undefined
+                        ? "Not on the Currency Exchange this hour"
+                        : "Fewer listed than a stack this hour"}
                   </p>
                 ) : (
                 <div className="flex flex-wrap gap-x-8 gap-y-3">

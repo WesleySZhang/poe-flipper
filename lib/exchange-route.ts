@@ -59,6 +59,13 @@ export function stockRangeTitle(stock: MarketStockRange | undefined): string | u
   ].join("\n");
 }
 
+/** Whether a full stack was ever listed for sale on the market during the hour - an instant buy
+ *  needs sellers holding that many cards. Says nothing about price: they could be spread over
+ *  several prices, the top ones above the hour's Max. */
+export function fullStackListed(stock: MarketStockRange | undefined, stackSize: number): boolean {
+  return stock !== undefined && stock.cards[1] >= stackSize;
+}
+
 export function weakerTier(a: LiquidityTier, b: LiquidityTier): LiquidityTier {
   return TIER_RANK[a] <= TIER_RANK[b] ? a : b;
 }

@@ -19,7 +19,7 @@ import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { DivinationFlip } from "@/lib/divination-flips";
 import type { LiquidityTier } from "@/lib/liquidity";
-import { stockRangeTitle } from "@/lib/exchange-route";
+import { fullStackListed, stockRangeTitle } from "@/lib/exchange-route";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
@@ -87,10 +87,14 @@ export function DivinationFlipsPanel() {
     () =>
       flips.map((f) => {
         const divine = priceUnit === "divine";
+        // An instant buy also needs a full stack listed that hour; without one the card is hidden.
+        const instantBuyable = fullStackListed(divine ? f.buyStockDivine : f.buyStock, f.stackSize);
         const cost = instant
-          ? divine
-            ? f.instantCostDivineValue
-            : f.instantCostChaosValue
+          ? instantBuyable
+            ? divine
+              ? f.instantCostDivineValue
+              : f.instantCostChaosValue
+            : undefined
           : divine
             ? f.stackCostDivineValue
             : f.stackCostChaosValue;
@@ -212,14 +216,6 @@ export function DivinationFlipsPanel() {
             title="Cards at their own Divine market price on the Currency Exchange; rewards at their chaos price, converted"
           >
             Only cards traded for divines this hour
-          </p>
-        )}
-        {instant && (
-          <p
-            className="text-xs text-muted-foreground"
-            title="Cost is the top of each card's hour range on the Currency Exchange, times the stack size"
-          >
-            Stacks bought off sell orders
           </p>
         )}
         <div className="flex flex-wrap items-end gap-4">
