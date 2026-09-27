@@ -4,10 +4,13 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatPriceValue, type PriceUnit } from "@/lib/price-unit";
+import { otherCurrencyTitle } from "@/lib/exchange-route";
 
 interface FaustusPriceResponse {
   chaosValue: number;
   divineValue?: number;
+  /** divineValue is the item's own Divine market quote (that market traded more) - see lib/faustus.ts. */
+  divineQuoted?: boolean;
 }
 
 type State = { status: "idle" } | { status: "loading" } | { status: "error" } | { status: "loaded"; price: FaustusPriceResponse };
@@ -17,8 +20,12 @@ type State = { status: "idle" } | { status: "loading" } | { status: "error" } | 
  * for the small, evergreen currency subset it actually covers (see lib/faustus.ts), so a click here
  * should basically always succeed; the error state exists for the rare case the exchange had no
  * recent trades for this specific currency.
+ *
+ * priceUnit "market" shows the price in the currency the item mainly trades in on the exchange
+ * (divines when its Divine market traded more, else chaos), like the Currency Exchange Flip table;
+ * otherwise it follows the page's Chaos/Divine toggle.
  */
-export function FaustusPriceButton({ name, priceUnit }: { name: string; priceUnit: PriceUnit }) {
+export function FaustusPriceButton({ name, priceUnit }: { name: string; priceUnit: PriceUnit | "market" }) {
   const [state, setState] = useState<State>({ status: "idle" });
 
   async function handleClick(e: React.MouseEvent) {
@@ -39,9 +46,12 @@ export function FaustusPriceButton({ name, priceUnit }: { name: string; priceUni
   }
 
   if (state.status === "loaded") {
+    const { chaosValue, divineValue, divineQuoted } = state.price;
+    const unit: PriceUnit = priceUnit === "market" ? (divineQuoted ? "divine" : "chaos") : priceUnit;
+    const other = priceUnit === "market" ? otherCurrencyTitle(chaosValue, divineValue, unit) : undefined;
     return (
-      <span className="text-sm tabular-nums" title="From GGG's Currency Exchange, not poe.ninja">
-        {formatPriceValue(state.price.chaosValue, state.price.divineValue, priceUnit)}
+      <span className="text-sm tabular-nums" title={`From GGG's Currency Exchange, not poe.ninja${other ? ` (${other})` : ""}`}>
+        {formatPriceValue(chaosValue, divineValue, unit)}
       </span>
     );
   }

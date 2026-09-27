@@ -21,6 +21,17 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   beats the gold cost. `[verified]` (`lib/faustus-gold.ts`)
 - Exchange ratios are integers, so a barely-traded cheap item can show a huge "spread" from one
   unlucky trade. Volume is the check on whether a spread is real. `[verified]`
+- An item can trade against Chaos and against Divine on separate markets, and the two don't
+  always agree, so a flip can buy on one and sell on the other. For about 100 items (2026-09-26:
+  Stacked Deck, Valdo's Puzzle Box, Maven's Invitation, Harvest seeds, ...) the Divine market
+  traded more value than the Chaos one and quoted ~10% above the chaos price converted at the
+  hour's Divine rate. `[verified]` (`getExchangeQuotes` in `lib/faustus.ts`, `lib/exchange-route.ts`)
+- Divine markets are noisy in their own ways: quotes for cheap items are coarse (1 div : 5-10
+  units), ~30% of Divine pairs don't trade in a given hour, and a single big trade can sit far off
+  the real price (2026-09-27: Delirium Scarab of Mania's whole Divine market was 22 scarabs for
+  10 div, ~184c each, vs 3-6c on Chaos). Chaos-equivalent volume doesn't catch that - one 10 div
+  trade is 4,000c+ - so the app drops a market more than 2x from the item's other one, keeping
+  whichever traded more units. `[verified]`
 - Liquidity tiers used here, by chaos volume in the last closed hour: high >= 10,000, medium >=
   1,000, low below that. `[verified]` (`lib/liquidity.ts`)
 - Unique items are not exchange-tradeable, so they only have poe.ninja prices and a seller count,

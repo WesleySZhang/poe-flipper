@@ -10,6 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
+import { LEG_LABEL, otherCurrencyTitle, profitUnit } from "@/lib/exchange-route";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
@@ -233,10 +234,11 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   // means the same thing in both places.
   const faustus = detail?.faustus;
   const faustusChaosRatio = faustus ? faustus.sellChaosValue / faustus.buyChaosValue : undefined;
-  const faustusDivineRatio =
+  const faustusSpreadDivine =
     faustus?.buyDivineValue !== undefined && faustus?.sellDivineValue !== undefined
-      ? faustus.sellDivineValue / faustus.buyDivineValue
+      ? faustus.sellDivineValue - faustus.buyDivineValue
       : undefined;
+  const faustusProfitIn = faustus ? profitUnit(faustus.buyIn, faustus.sellIn) : undefined;
   const profitPer1000Gold =
     faustus?.goldCost && faustus.goldCost.perItem > 0 ? (faustus.spreadChaosValue / faustus.goldCost.perItem) * 1000 : undefined;
 
@@ -384,22 +386,34 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Currency Exchange</CardTitle>
-                <FaustusPriceButton name={historyName} priceUnit={priceUnit} />
+                <FaustusPriceButton name={historyName} priceUnit="market" />
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground">
                   Prices are roughly 2 hours stale
                 </p>
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
-                  <Stat label={`Buy (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, priceUnit)} />
-                  <Stat label={`Sell (${priceUnitLabel(priceUnit)})`} value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, priceUnit)} />
+                  {/* Buy/Sell in the currency each leg's market trades in, and Profit in divines only
+                      when both legs are - the same as the Currency Exchange Flip table, regardless of
+                      this page's Chaos/Divine toggle. */}
+                  <Stat
+                    label="Buy"
+                    value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, detail.faustus.buyIn)}
+                    hint={otherCurrencyTitle(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, detail.faustus.buyIn)}
+                  />
+                  <Stat
+                    label="Sell"
+                    value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, detail.faustus.sellIn)}
+                    hint={otherCurrencyTitle(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, detail.faustus.sellIn)}
+                  />
                   {/* Same Profit %/Profit (abs)/Profit per 1k gold this card is ranked by on the
                       Currency Exchange Flip table (components/currency-exchange-flip-panel.tsx) - "today's
                       Currency Exchange flip" for this one item, not a separate metric invented for this page. */}
-                  <Stat label="Profit %" value={formatPercentChange(faustusChaosRatio ?? 1, faustusDivineRatio, priceUnit)} />
+                  <Stat label="Profit %" value={formatPercentChange(faustusChaosRatio ?? 1, undefined, "chaos")} />
                   <Stat
-                    label={`Profit (${priceUnitLabel(priceUnit)})`}
-                    value={formatPriceValue(detail.faustus.spreadChaosValue, detail.faustus.sellDivineValue !== undefined && detail.faustus.buyDivineValue !== undefined ? detail.faustus.sellDivineValue - detail.faustus.buyDivineValue : undefined, priceUnit)}
+                    label="Profit"
+                    value={formatPriceValue(detail.faustus.spreadChaosValue, faustusSpreadDivine, faustusProfitIn ?? "chaos")}
+                    hint={otherCurrencyTitle(detail.faustus.spreadChaosValue, faustusSpreadDivine, faustusProfitIn ?? "chaos")}
                   />
                   {profitPer1000Gold !== undefined && (
                     <Stat
@@ -407,10 +421,18 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                       value={`${detail.faustus.goldCost?.approximate ? "~" : ""}${formatPriceValue(profitPer1000Gold, undefined, "chaos")}`}
                     />
                   )}
-                  <Stat label="Volume (chaos)" value={detail.faustus.volumeChaos.toLocaleString()} />
-                  <Stat label="Item volume" value={detail.faustus.volumeItem.toLocaleString()} />
-                  <Stat label="Item stock" value={detail.faustus.itemStock.toLocaleString()} />
-                  <Stat label="Chaos stock" value={detail.faustus.chaosStock.toLocaleString()} />
+                  <Stat
+                    label="Volume (chaos)"
+                    value={Math.round(detail.faustus.volumeChaos).toLocaleString()}
+                    hint={`Traded this hour on the thinner market (buy: ${LEG_LABEL[detail.faustus.buyIn]}, sell: ${LEG_LABEL[detail.faustus.sellIn]})`}
+                  />
+                  <Stat label="Item volume" value={detail.faustus.buyMarket.volumeItem.toLocaleString()} hint={`Units traded on the ${LEG_LABEL[detail.faustus.buyIn]} market (buy)`} />
+                  <Stat label="Item stock" value={detail.faustus.buyMarket.itemStock.toLocaleString()} hint={`Units listed on the ${LEG_LABEL[detail.faustus.buyIn]} market (buy)`} />
+                  <Stat
+                    label="Sell stock (chaos)"
+                    value={Math.round(detail.faustus.sellMarket.currencyStockChaos).toLocaleString()}
+                    hint={`Currency listed to sell into on the ${LEG_LABEL[detail.faustus.sellIn]} market`}
+                  />
                   {detail.faustus.goldCost && (
                     <Stat
                       label="Gold cost"
@@ -573,7 +595,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
   return (
     <div className={hint ? "flex cursor-help flex-col" : "flex flex-col"} title={hint}>
       <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>

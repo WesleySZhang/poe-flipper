@@ -49,6 +49,13 @@ Buy/sell spreads from GGG's own exchange data, with trade volume, a liquidity ti
 cost per trade. GGG's API is historical (about 2 hours old) and has no gold-cost field, so gold
 costs are transcribed from community sources (`lib/faustus-gold.ts`).
 
+An item can trade against Chaos and against Divine on separate markets that don't always agree, so
+each row takes the best of four routes: buy with either currency, sell for either. Buy and Sell
+are shown in the currency their market trades in (`c` or `d`; hover for the other). Profit is in
+divines only when both legs are. There's no Chaos/Divine toggle on this page. Divine legs are valued
+at the hour's Divine rate for sorting and profit. A market more than 2× away from the item's other
+one is ignored as an odd trade.
+
 ### Divination Card Flips
 
 Cost of a full stack (card price × stack size) versus the value of its reward, at today's prices.
@@ -75,7 +82,9 @@ Reached from any item name, or from the header search. It shows:
   leagues that rose, forecast precision (hover any label for a short explanation);
 - **Recent momentum**: 1/3/6-day change, volatility and acceleration, from the same inputs the
   model uses;
-- **Currency Exchange** (if the item trades there) and **Divination Card Flip** (if it's a card);
+- **Currency Exchange** (if the item trades there): the same flip as the Currency Exchange Flip
+  table, each price in its market's currency whatever the page's Chaos/Divine toggle says;
+- **Divination Card Flip** (if it's a card);
 - links to the item's **poewiki** and **poe.ninja** pages.
 
 On desktop the chart and Overview take the left 70%, and the other cards stack on the right.
@@ -341,7 +350,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `lib/poe-ninja.ts` | poe.ninja client, item keys, display names, poewiki links |
 | `lib/price-snapshot.ts` | Reads/builds `prices.json` |
-| `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client and gold costs |
+| `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client (Chaos and Divine markets per item) and gold costs |
+| `lib/exchange-route.ts` | Picking a flip's buy/sell markets, and which currency to show profit in |
 | `lib/liquidity.ts` | Liquidity tiers |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
