@@ -4,7 +4,7 @@ import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey } fr
 import { getActiveTypes } from "./price-snapshot";
 import { getExchangeQuotes, isFaustusTradeable, marketMid, type ItemMarket } from "./faustus";
 import type { MarketStockRange } from "./exchange-route";
-import { liquidityTier, type LiquidityTier } from "./liquidity";
+import { liquidityTier, sellerCountTier, type LiquidityTier } from "./liquidity";
 
 /**
  * Finds divination cards where buying a full stack and turning it in costs less than the reward is
@@ -75,22 +75,6 @@ export interface DivinationFlip {
   /** The same for Divine mode, with the card leg measured on its Divine market. Undefined with
    *  cardDivineValue. */
   confidenceDivine?: LiquidityTier;
-}
-
-// Seller-count tiering for a unique-item reward leg, which poe.ninja exposes no volume figure for
-// (ItemPrice.sellerCount only) - mirrors the shape of the thin-market guard already established in
-// lib/flip-suggestions.ts (MIN_ITEM_SELLER_COUNT_FOR_EXTREME_RATIO), not a new invented scheme.
-// Thresholds are deliberately much lower than lib/liquidity.ts's chaos-volume ones since seller
-// count and chaos volume aren't the same unit - this only needs to separate "plenty of listings to
-// actually buy from" from "one or two sellers setting the whole price."
-const UNIQUE_SELLER_COUNT_HIGH_MIN = 20;
-const UNIQUE_SELLER_COUNT_MEDIUM_MIN = 5;
-
-function sellerCountTier(sellerCount: number | undefined): LiquidityTier {
-  if (sellerCount === undefined) return "low";
-  if (sellerCount >= UNIQUE_SELLER_COUNT_HIGH_MIN) return "high";
-  if (sellerCount >= UNIQUE_SELLER_COUNT_MEDIUM_MIN) return "medium";
-  return "low";
 }
 
 // Weaker-of-two-legs: "high" confidence needs BOTH legs to be liquid, "low" if EITHER leg is thin.

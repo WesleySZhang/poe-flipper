@@ -28,6 +28,7 @@ See [`TODO.md`](TODO.md) for open ideas and known gaps.
 | **Flip Predictions** | `/` | Items ranked by predicted growth over a chosen number of days (default 7). |
 | **Currency Exchange Flip** | `/currency_exchange_flip` | Live buy/sell spreads on GGG's Currency Exchange, for flipping today. |
 | **Divination Card Flips** | `/divination-cards` | Cards whose full stack costs less than the reward it turns into. |
+| **Dust Value** | `/dust-value` | Uniques ranked by Thaumaturgic Dust per chaos, for disenchanting in Kingsmarch. |
 | **Item detail** | `/item/<category>/<Item_Name>` | Everything the app knows about one item. |
 | **Mirage league simulator** | `/mirage-simulator` | Replays a finished league to compare predictions with what happened. |
 | **League tester** | `/current-league-tester` | Applies an item's historical growth to a price you type in. |
@@ -83,6 +84,21 @@ RePoE's game files (`scripts/generate-divination-cards.ts`).
 
 "Confidence" here means **liquidity**: the weaker of the two trades (buying the card, selling the
 reward). It is usually low on an old league, because most card trading happens off the exchange.
+
+### Dust Value
+
+Uniques ranked by how much Thaumaturgic Dust they give when disenchanted in Kingsmarch, per chaos
+(or divine) they cost. Dust values come from poedb's Kingsmarch page
+(`scripts/generate-disenchant-values.ts`); prices are poe.ninja's.
+
+- **One row per unique:** its cheapest poe.ninja line (variant, link count), preferring lines with at
+  least 5 sellers so a lone lowball listing doesn't win.
+- **Item level** (default 84) scales the dust shown: ×1 at 65 and below up to ×20 at 84+. It's the
+  same factor for every unique, so it never changes the order. poe.ninja prices don't say a
+  listing's item level.
+- **Confidence** is the seller count on poe.ninja (High 20+, Medium 5+).
+- **Left out:** Foulborn (mutated) uniques, since it's unchecked whether they give their base's dust;
+  quality and corruption bonuses.
 
 ### Item detail page
 
@@ -266,6 +282,7 @@ To regenerate one list by hand (prints by default; `--write` writes the file):
 | `npx tsx scripts/generate-faustus-mapping.ts --write` | Currency Exchange name ↔ id map in `lib/faustus.ts` (replaces it with what's traded this hour) |
 | `npx tsx scripts/generate-faustus-doc.ts` | `docs/faustus-mapping.md` |
 | `npx tsx scripts/generate-divination-cards.ts --write` | `lib/divination-cards.ts` (stack sizes, rewards) |
+| `npx tsx scripts/generate-disenchant-values.ts --write` | `lib/disenchant-values.ts` (each unique's dust value, from poedb; not part of the daily check) |
 
 ### Running the daily job by hand
 
@@ -332,7 +349,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `app/page.tsx` | Flip Predictions (renders `components/dashboard.tsx`; code/routes still say "flip-suggestions") |
 | `app/item/[category]/[key]/` | Item detail page |
-| `app/currency_exchange_flip/`, `app/divination-cards/`, `app/mirage-simulator/`, `app/current-league-tester/` | Other pages |
+| `app/currency_exchange_flip/`, `app/divination-cards/`, `app/dust-value/`, `app/mirage-simulator/`, `app/current-league-tester/` | Other pages |
 | `app/api/*/route.ts` | Read-only JSON endpoints (Route Handlers, not Server Actions) |
 | `proxy.ts`, `lib/site-auth.ts` | Password gate |
 
@@ -370,12 +387,13 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/price-snapshot.ts` | Reads/builds `prices.json` |
 | `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client (Chaos and Divine markets per item) and gold costs |
 | `lib/exchange-route.ts` | Picking a flip's buy/sell markets, and which currency to show profit in |
-| `lib/liquidity.ts` | Liquidity tiers |
+| `lib/liquidity.ts` | Liquidity tiers (exchange volume, and poe.ninja seller count for uniques) |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
 | `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |
 | `lib/item-detail.ts`, `lib/item-search.ts`, `lib/ninja-link.ts` | Detail page data, search, poe.ninja links |
 | `lib/divination-cards.ts`, `lib/divination-flips.ts` | Card data (generated) and card flip scoring |
+| `lib/disenchant-values.ts`, `lib/dust.ts`, `lib/dust-value.ts` | Dust values (generated), the dust formula, and the Dust Value ranking |
 | `lib/db.ts`, `lib/api-response.ts` | DuckDB connection; JSON responses with cached, gzipped bytes |
 
 ### Scripts and tooling
@@ -386,7 +404,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
 | `scripts/check-current-league.ts`, `sync-current-league.ts` | League-swap check and fix |
 | `scripts/check-new-items.ts` | Daily check for new items and poe.ninja categories (see [New items and categories](#new-items-and-categories)) |
-| `scripts/generate-*.ts`, `scripts/generated-data.ts` | Regenerate the exchange map, its doc and card data; shared fetch/parse/write helpers |
+| `scripts/generate-*.ts`, `scripts/generated-data.ts` | Regenerate the exchange map, its doc, card data and dust values; shared fetch/parse/write helpers |
 | `scripts/export-training-features.ts`, `check-predictor-parity.ts`, `backtest-predictor.ts` | Model training export, parity check and backtest (`npm run ml:*`) |
 | `scripts/retrain-leagues.ts`, `download-league-history.ts`, `retrain-report.ts` | The Retrain model workflow: edit the league list, fetch history, write the PR report |
 | `scripts/backtest-mirage.ts`, `discover-*.ts` | One-off analyses |

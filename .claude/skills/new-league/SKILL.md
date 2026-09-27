@@ -21,7 +21,8 @@ sync with this. In short, in order:
    new league after the swap is merged; run it by hand then instead of waiting for 01:20 UTC. Its
    report lists the manual follow-ups: gold costs (`lib/faustus-gold.ts`) and category filter
    placement (`lib/category-reliability.ts`). RePoE can lag a patch by a few days; rerun it once
-   RePoE updates.
+   RePoE updates. Dust values aren't part of that check: once poedb has the new league's uniques,
+   run `npx tsx scripts/generate-disenchant-values.ts --write` (Dust Value page) and commit it.
 4. **Categories that moved** between the currency and item endpoints need a look beyond what the check
    does (see the `poe-item-categories` skill): history lookups by exact category can miss.
 5. **First days:** the league day reads 0-1, and `history/<League>/` appears on the `data` branch

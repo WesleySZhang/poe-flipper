@@ -18,3 +18,19 @@ export function liquidityTier(volumeChaos: number): LiquidityTier {
   if (volumeChaos >= LIQUIDITY_MEDIUM_MIN) return "medium";
   return "low";
 }
+
+// Seller-count tiering for a unique item on poe.ninja, which exposes no volume figure for it (only
+// ItemPrice.sellerCount) - mirrors the shape of the thin-market guard in lib/flip-suggestions.ts
+// (MIN_ITEM_SELLER_COUNT_FOR_EXTREME_RATIO). Much lower thresholds than the chaos-volume ones above,
+// since seller count and chaos volume aren't the same unit - this only separates "plenty of
+// listings to buy from" from "one or two sellers setting the whole price". Used by the Divination
+// Card Flips' unique-reward leg and the Dust Value page.
+export const UNIQUE_SELLER_COUNT_HIGH_MIN = 20;
+export const UNIQUE_SELLER_COUNT_MEDIUM_MIN = 5;
+
+export function sellerCountTier(sellerCount: number | undefined): LiquidityTier {
+  if (sellerCount === undefined) return "low";
+  if (sellerCount >= UNIQUE_SELLER_COUNT_HIGH_MIN) return "high";
+  if (sellerCount >= UNIQUE_SELLER_COUNT_MEDIUM_MIN) return "medium";
+  return "low";
+}
