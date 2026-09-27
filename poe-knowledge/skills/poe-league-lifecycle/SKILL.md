@@ -14,8 +14,13 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   launch, with a new day starting at 00:00 UTC. `[verified]` (`lib/league-day.ts`)
 - Leagues in this app's data, newest first: Allflame (current, 2026-07-24), Mirage (2026-03-06),
   Phrecia 2.0 (2026-01-29), Keepers (2025-10-31), Mercenaries (2025-06-13), Settlers (2024-07-26). `[verified]`
-- The model trains on the finished leagues Mirage, Keepers, Mercenaries, Settlers, Phrecia 2.0.
-  Plain "Phrecia" is excluded as too noisy. `[verified]`
+- The model trains on the finished leagues Mirage, Keepers, Mercenaries, Settlers, Phrecia 2.0
+  (as of 2026-09; the list lives in `lib/training-leagues.ts`). Plain "Phrecia" is excluded as too
+  noisy. `[verified]`
+- Leagues launch at 20:00 UTC on a Friday (Allflame: 2026-07-24T20:00Z, from GGG's leagues API). `[verified]`
+- The old league ends about 4 days before the next launches: Keepers' poe.ninja data ends
+  2026-03-02 and Mirage starts 2026-03-06; Mirage ends 2026-07-20 and Allflame starts 2026-07-24.
+  poe.ninja published Mirage's export a day after it ended. `[verified]` (two leagues only)
 - Price growth is measured as the ratio of price at day N+d vs day N, matched across past leagues at
   the same league day, then adjusted with the item's live momentum. `[verified]`
 - Weighting older vs newer leagues equally beat a recency decay in backtests, so all leagues count
@@ -34,10 +39,8 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 
 - Dates and current league: `lib/league-recency.ts` (edited by hand each league).
 - League day math: `lib/league-day.ts`; predictions: `lib/flip-suggestions.ts`, `lib/growth-ratios.ts`.
-- Training set: `PRODUCTION_LEAGUES` in `scripts/ingest-history.ts`; model: `ml/`, `lib/models/predictor.json`.
-- **New league checklist:** update `CURRENT_LEAGUE` + release dates; add the finished league's CSVs
-  and re-ingest; retrain the model; regenerate the Faustus and divination card maps; check new
-  poe.ninja category types; rerun the precompute workflow.
+- Training set: `lib/training-leagues.ts`; model: `ml/`, `lib/models/predictor.json`.
+- **New league course of action:** `docs/new-league.md` (dated timeline) and the `new-league` skill.
 
 ## Sources
 

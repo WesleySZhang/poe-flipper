@@ -9,7 +9,8 @@ name: Check for a new league
 # divination card pricing) to every visitor of the site, so a bad detection - a poe.ninja hiccup,
 # an unexpected reordering of its leagues endpoint - should get a human's eyes before it deploys,
 # not skip straight to it. In exchange, the actual noticing and editing is fully automatic - the
-# only manual step left is reviewing and merging a pull request GitHub already notified you about.
+# only manual step left is reviewing and merging a pull request GitHub already notified you about
+# (then deploying - see docs/new-league.md).
 #
 # Runs independently of precompute-predictions.yml (different concern, different schedule) - if a
 # swap happens, that job keeps computing against the outgoing league (harmlessly - poe.ninja simply
@@ -51,23 +52,20 @@ jobs:
           title: "New challenge league detected: ${{ steps.check.outputs.new_league }}"
           body: |
             poe.ninja is now serving **${{ steps.check.outputs.new_league }}** instead of
-            **${{ steps.check.outputs.old_league }}** - a new challenge league has likely launched.
+            **${{ steps.check.outputs.old_league }}**, so a new challenge league has likely launched.
 
-            Opened automatically by `.github/workflows/check-current-league-swap.yml`
-            (`scripts/sync-current-league.ts`). The only change is in `lib/league-recency.ts`:
-            the new league's release date (set to today, the day this was first detected) and
-            `CURRENT_LEAGUE` itself - everything else in the app already keys off those two exports.
+            Changes `lib/league-recency.ts` only: `CURRENT_LEAGUE`, and the new league's start date,
+            **${{ steps.check.outputs.start_date }}** (from ${{ steps.check.outputs.start_source }}).
 
-            **Before merging**, sanity-check this is a real launch and not a poe.ninja hiccup (a
-            briefly reordered or stale leagues endpoint) - merging deploys immediately and changes
-            what live economy every visitor's Flip Suggestions, Currency Exchange Flip, and
-            Divination Card Flips price against.
+            **Before merging:**
+            - Check this is a real launch, not a poe.ninja hiccup.
+            - Check the start date against the launch announcement. League days count from it.
 
-            Once merged, also worth doing eventually (not automated, not urgent - see the README's
-            **Historical price data** section):
-            - Once ${{ steps.check.outputs.old_league }} is finalized, ingest its
-              already-collected `data`-branch history (`npm run db:ingest`) so it joins the
-              training set.
-            - Retrain the model (see `ml/README.md`) once enough leagues include it.
+            **After merging** (full plan: `docs/new-league.md`):
+            1. Run **Deploy to production**. The daily job reruns by itself.
+            2. If ${{ steps.check.outputs.old_league }} isn't in the training set yet, run
+               **Retrain model** with it once poe.ninja has exported it.
+
+            Opened by `.github/workflows/check-current-league-swap.yml` (`scripts/sync-current-league.ts`).
           branch: auto/current-league-swap
           delete-branch: true

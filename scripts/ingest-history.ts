@@ -3,6 +3,7 @@ import { config } from "dotenv";
 import { glob } from "glob";
 import fs from "node:fs";
 import path from "node:path";
+import { TRAINING_LEAGUES } from "../lib/training-leagues";
 
 config({ path: ".env.local" });
 
@@ -17,24 +18,18 @@ const DB_PATH = process.env.POE_DB_PATH
   ? path.resolve(process.env.POE_DB_PATH)
   : path.join(process.cwd(), "db", "history.duckdb");
 
-// Restricting to the last handful of leagues trades away data volume for data quality - older
-// leagues' price history is noisier/less complete, and league-recency weighting (see
-// league-recency.ts) already discounts old leagues heavily, so keeping them around was mostly
-// just adding stale signal the model had to average away. Phrecia 2.0 was excluded for a while
-// (it's a short event league, not a normal challenge league economy) after a data glitch traced
-// back to it - re-included now that the currency/item magnitude sanity checks below have both been
-// hardened enough to catch that specific class of bug (verified against the actual glitch that
-// prompted the exclusion). Plain "Phrecia" (the original, non-2.0 event) stays out - noisier and
-// never included to begin with.
+// Which leagues, and why only these: see lib/training-leagues.ts. Phrecia 2.0 was excluded for a
+// while after a data glitch traced back to it - re-included once the currency/item magnitude sanity
+// checks below were hardened enough to catch that specific class of bug (verified against the actual
+// glitch that prompted the exclusion).
 // POE_INCLUDED_LEAGUES (comma-separated) overrides this for an experiment, the same way POE_DB_PATH
 // overrides the destination - so evaluating a different training set means building a separate DB,
 // never editing this list and rebuilding the real one by accident.
-const PRODUCTION_LEAGUES = ["Mirage", "Keepers", "Mercenaries", "Settlers", "Phrecia 2.0"];
-const INCLUDED_LEAGUES = process.env.POE_INCLUDED_LEAGUES
+const INCLUDED_LEAGUES: readonly string[] = process.env.POE_INCLUDED_LEAGUES
   ? process.env.POE_INCLUDED_LEAGUES.split(",")
       .map((league) => league.trim())
       .filter(Boolean)
-  : PRODUCTION_LEAGUES;
+  : TRAINING_LEAGUES;
 
 // One-day "spike" glitches: a steady price suddenly drops (or jumps) to a small fraction/multiple
 // of itself for exactly one day, then returns to right around its former level and keeps trending

@@ -57,7 +57,7 @@ export const DEFAULT_TOLERANCE_DAYS = 3;
 // (up to ~17% apart for a few items) on consecutive runs. Ties now deterministically take the earlier day.
 // Likewise MAX(type) instead of ANY_VALUE(type) when picking an item's peer bucket.
 // The ingested history now only covers a handful of the most recent leagues (see
-// scripts/ingest-history.ts's INCLUDED_LEAGUES), and the currently-active/backtested league is
+// lib/training-leagues.ts), and the currently-active/backtested league is
 // always excluded on top of that, leaving at most a few training leagues - so 5 (tuned back when
 // ~20 leagues were ingested) is often unreachable. 3 was already shown to perform about as well as
 // 5 did in that earlier tuning pass.

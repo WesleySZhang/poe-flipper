@@ -4,7 +4,7 @@ import { daysBetweenUtc } from "./league-day";
  * Release dates for past challenge leagues, most recent first. Keyed on the short name as it
  * appears in the ingested history tables (e.g. "Mirage", not "Mirage league").
  * Source: PoE wiki league list (as of 2026-09-12). Only the leagues actually ingested (see
- * scripts/ingest-history.ts's INCLUDED_LEAGUES - the model is intentionally trained on just the
+ * lib/training-leagues.ts - the model is intentionally trained on just the
  * last few leagues for data quality) plus the current one need an entry here; a league with no
  * ingested history simply never matches a row in growth-ratios.ts's queries either way.
  */
@@ -67,6 +67,11 @@ export function leagueRecencyWeightWithHalfLife(league: string, halfLifeDays: nu
  */
 export function allLeagueRecencyWeights(): Array<{ league: string; weight: number }> {
   return allKnownLeagues().map((league) => ({ league, weight: 1 }));
+}
+
+/** "YYYY-MM-DD", or undefined for a league not listed above. */
+export function leagueReleaseDate(league: string): string | undefined {
+  return LEAGUE_RELEASE_DATES[league];
 }
 
 /** Every known league - i.e. every key allLeagueRecencyWeights can return. */

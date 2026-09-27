@@ -10,13 +10,12 @@ ordered by importance.
 | 1 | [League tester has no mobile layout](#1-league-tester-has-no-mobile-layout) | Open |
 | 2 | [New items and categories: manual follow-ups](#2-new-items-and-categories-manual-follow-ups) | Open (small) |
 | 3 | [A missed day of price history is lost for good](#3-a-missed-day-of-price-history-is-lost-for-good) | Open |
-| 4 | [Automate retraining when a new league starts](#4-automate-retraining-when-a-new-league-starts) | Open |
-| 5 | [Cache the predictions file at the CDN](#5-cache-the-predictions-file-at-the-cdn) | Open |
-| 6 | [Predict further than 30 days ahead?](#6-predict-further-than-30-days-ahead) | Undecided |
-| 7 | [Currency Exchange divine prices are converted, not quoted](#7-currency-exchange-divine-prices-are-converted-not-quoted) | Open |
-| 8 | [Live price vs history for items with several poe.ninja lines](#8-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
-| 9 | [Holes in past-league history](#9-holes-in-past-league-history) | Open |
-| 10 | [Small follow-ups](#10-small-follow-ups) | Open |
+| 4 | [Cache the predictions file at the CDN](#4-cache-the-predictions-file-at-the-cdn) | Open |
+| 5 | [Predict further than 30 days ahead?](#5-predict-further-than-30-days-ahead) | Undecided |
+| 6 | [Currency Exchange divine prices are converted, not quoted](#6-currency-exchange-divine-prices-are-converted-not-quoted) | Open |
+| 7 | [Live price vs history for items with several poe.ninja lines](#7-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
+| 8 | [Holes in past-league history](#8-holes-in-past-league-history) | Open |
+| 9 | [Small follow-ups](#9-small-follow-ups) | Open |
 | – | [Done](#done) | – |
 
 ---
@@ -59,13 +58,7 @@ poe.ninja failure), that day is simply absent from the current league's CSVs.
 Scheduled runs are routinely hours late, but they have landed every day so far; the app already
 copes with the delay (see Done).
 
-## 4. Automate retraining when a new league starts
-
-Retraining is fully manual today (download, ingest, train on a GPU, parity check, backtest, commit).
-Deciding *whether* a league is worth training on should stay a human call, but the mechanical steps
-could run from a manual `workflow_dispatch` once that decision is made.
-
-## 5. Cache the predictions file at the CDN
+## 4. Cache the predictions file at the CDN
 
 `/api/flip-suggestions/precomputed` caches its gzipped response in memory, but sends no
 `Cache-Control` header, so every cold server instance still does the work. The file changes once a
@@ -73,10 +66,10 @@ day.
 
 - Add `Cache-Control: public, s-maxage=120, stale-while-revalidate=...` so Vercel's CDN serves
   repeats without invoking the function. Available on the free plan.
-- Vercel won't cache a response over **10 MB**; today's is about 5.4 MB gzipped (see item 6).
+- Vercel won't cache a response over **10 MB**; today's is about 5.4 MB gzipped (see item 5).
 - This saves server work, not visitor download size.
 
-## 6. Predict further than 30 days ahead?
+## 5. Predict further than 30 days ahead?
 
 Raising `CURVE_MAX_DURATION_DAYS` would extend the instant slider range and the detailed forecast
 line. Measured on the real file:
@@ -91,7 +84,7 @@ The job time is free. The cost is that every visitor downloads the whole file: 6
 CDN's 10 MB limit, 90 is over it, and a bigger file hurts on mobile. If this goes ahead, ship only
 the days actually needed instead of the whole file.
 
-## 7. Currency Exchange divine prices are converted, not quoted
+## 6. Currency Exchange divine prices are converted, not quoted
 
 `getFaustusSpreads()` (`lib/faustus.ts`) always gets divine prices by dividing the chaos price by
 that hour's Divine Orb rate. When the exchange has a direct divine market for the item, that quote
@@ -100,7 +93,7 @@ can differ, so Divine mode shows a derived number rather than what a trader woul
 **Fix:** use the item-vs-Divine pair's own buy/sell range when it exists that hour; convert only
 when it doesn't.
 
-## 8. Live price vs history for items with several poe.ninja lines
+## 7. Live price vs history for items with several poe.ninja lines
 
 Base types (e.g. Dragonscale Doublet) have one poe.ninja line per item level or influence, all under
 one name. The live price takes the **first** line (1.8c); past-league and current-league history
@@ -110,7 +103,7 @@ prices, and the model predicts from a price that doesn't match what it was train
 **Option:** average the lines for the live price too. That would change the starting price, and so
 the forecast and ranking, for every affected item (mostly base types). Needs a decision.
 
-## 9. Holes in past-league history
+## 8. Holes in past-league history
 
 Some items have gaps in a past league's data. The Last One Standing has no Keepers prices on days
 78–93, and its Mirage history stops at day 34. The daily job now fills the resulting missing
@@ -123,7 +116,7 @@ forecast days (see Done), but:
 
 **Option:** interpolate short gaps (say up to 20 days) within a league at ingest time.
 
-## 10. Small follow-ups
+## 9. Small follow-ups
 
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
@@ -154,5 +147,9 @@ forecast days (see Done), but:
   (`.github/workflows/check-new-items.yml`) adds new poe.ninja categories (read from poe.ninja's own
   site config), new Currency Exchange names and regenerated divination cards, and opens a PR listing
   what needs a human.
+- **Retraining runs from a workflow.** After choosing a finished league to train on, run "Retrain
+  model" (`.github/workflows/retrain-model.yml`): it downloads the history, rebuilds the DB,
+  retrains, checks parity and the Mirage backtest, and opens a PR comparing validation scores with
+  the previous model.
 - **Current-league history** for migrated types (cards, scarabs, ...) now shows on the chart, and
   same-day duplicate rows are averaged like past leagues.

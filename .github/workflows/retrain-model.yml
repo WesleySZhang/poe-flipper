@@ -1,0 +1,141 @@
+name: Retrain model
+
+# Rebuilds db/history.duckdb and retrains the prediction model, then opens a pull request with the
+# result and a report (scripts/retrain-report.ts). The same steps as the manual process in
+# ml/README.md ("Retraining the shipped model"), on CPU instead of a GPU.
+#
+# Choosing the training leagues stays a human call: this only runs when started by hand, with the
+# league to add (usually the one that just ended) or drop, and nothing ships until the PR is merged.
+# A run with both inputs empty retrains on the same leagues, which checks the pipeline still works.
+#
+# Takes roughly 1-3 hours, mostly the feature export.
+
+on:
+  workflow_dispatch:
+    inputs:
+      add_league:
+        description: "Finished league(s) to add to the training set, comma-separated (e.g. Allflame)"
+        required: false
+        default: ""
+      drop_league:
+        description: "League(s) to remove from the training set, comma-separated"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: retrain-model
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash # explicit, so steps run with pipefail and a failed script piped into tee still fails the job
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      POE_DATA_DIR: ${{ runner.temp }}/poe-data
+      RETRAIN_OUT: ${{ runner.temp }}/retrain
+      XGB_DEVICE: cpu
+      # The ingest's spike-correction pass holds every item row in memory.
+      NODE_OPTIONS: --max-old-space-size=12288
+      ADD_LEAGUE: ${{ inputs.add_league }}
+      DROP_LEAGUE: ${{ inputs.drop_league }}
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          lfs: true # db/history.duckdb is Git LFS-tracked
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ml/requirements.txt
+
+      - run: npm ci
+      - run: pip install -r ml/requirements.txt
+
+      - name: Update the training league list
+        id: leagues
+        run: npx tsx scripts/retrain-leagues.ts --add "$ADD_LEAGUE" --drop "$DROP_LEAGUE"
+
+      - name: Keep the current model for comparison
+        run: mkdir -p "$RETRAIN_OUT" && cp lib/models/predictor.json "$RETRAIN_OUT/previous-predictor.json"
+
+      - name: Download price history
+        run: npx tsx scripts/download-league-history.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Rebuild db/history.duckdb
+        run: npm run db:ingest
+
+      - name: Export training rows
+        run: npm run ml:export-features
+        env:
+          HOLDOUTS: ${{ steps.leagues.outputs.holdouts }}
+
+      - name: Train and validate
+        run: python ml/fit_production.py all 2>&1 | tee "$RETRAIN_OUT/fit.log"
+
+      - name: Check TypeScript matches Python
+        run: |
+          IFS=, read -ra holdouts <<< "${{ steps.leagues.outputs.holdouts }}"
+          for h in "${holdouts[@]}"; do
+            npx tsx scripts/check-predictor-parity.ts "$h" 2>&1 | tee "$RETRAIN_OUT/parity-$h.log"
+          done
+
+      - name: Replay Mirage through the app
+        if: contains(steps.leagues.outputs.holdouts, 'Mirage')
+        run: npm run -s ml:backtest 2>&1 | tee "$RETRAIN_OUT/backtest.log"
+
+      - name: Write the report
+        id: report
+        run: |
+          npx tsx scripts/retrain-report.ts --old "$RETRAIN_OUT/previous-predictor.json" \
+            --added "$ADD_LEAGUE" --dropped "$DROP_LEAGUE"
+          cat "$RETRAIN_OUT/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REGRESSION: ${{ steps.report.outputs.regression }}
+        run: |
+          title="Retrain model"
+          [ -n "$ADD_LEAGUE" ] && title="$title: add $ADD_LEAGUE"
+          [ -n "$DROP_LEAGUE" ] && title="$title, drop $DROP_LEAGUE"
+          [ -z "$ADD_LEAGUE$DROP_LEAGUE" ] && title="$title on the same leagues"
+          [ "$REGRESSION" = "true" ] && title="$title (worse on a holdout)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git lfs install --local
+          git checkout -B auto/retrain-model
+          git add lib/training-leagues.ts lib/models/predictor.json db/history.duckdb
+          git commit -m "$title"
+          git push --force origin auto/retrain-model
+
+          if [ "$(gh pr view auto/retrain-model --json state -q .state 2>/dev/null)" = "OPEN" ]; then
+            gh pr edit auto/retrain-model --title "$title" --body-file "$RETRAIN_OUT/report.md"
+          else
+            gh pr create --base master --head auto/retrain-model --title "$title" --body-file "$RETRAIN_OUT/report.md"
+          fi
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-logs
+          path: ${{ runner.temp }}/retrain
+          if-no-files-found: ignore

@@ -6,8 +6,8 @@
  * For a target league T and an exclusion set E (always containing T), each row is one item at one scenario
  * (league day t, horizon h): the cross-league ratio statistics come from every league NOT in E, "now" is
  * T's own stored price + 7-day sparkline on day t (causal), and the label is what T's price really did.
- *   - final-model rows:  E = [T]      (4 reference leagues; also the test rows when T is the holdout)
- *   - validation rows:   E = [T, H]   (3 reference leagues; the nested exclusion that keeps holdout H
+ *   - final-model rows:  E = [T]      (every other league as reference; also the test rows when T is the holdout)
+ *   - validation rows:   E = [T, H]   (one reference league fewer; the nested exclusion that keeps holdout H
  *                                      out of both features and labels of the model being tested on H)
  *
  * Output: ml/cache/tsrows/<label>.f32 (row-major float32, NaN = missing) + <label>.json (column names, row
@@ -15,6 +15,7 @@
  *   npx tsx scripts/export-training-features.ts                    # holdouts from HOLDOUTS (default Mirage,Keepers)
  *   HOLDOUTS=Mirage npx tsx scripts/export-training-features.ts
  *   FORCE=1 ...                                                    # recompute runs that already exist
+ * Leagues come from lib/training-leagues.ts. Also writes manifest.json (leagues + holdouts of this export).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -25,10 +26,10 @@ import {
   MIN_LEAGUES_WITH_DATA,
   type GrowthRatioRow,
 } from "../lib/growth-ratios";
-import { allKnownLeagues, CURRENT_LEAGUE } from "../lib/league-recency";
 import { itemPriceKey } from "../lib/poe-ninja";
 import { buildFeatureMatrix, FEATURE_NAMES, N_FEATURES, type PredictionInput } from "../lib/prediction-features";
 import { historyNowAtDay, loadLeagueDailyMatrix, valueNearest, type HistoryNow } from "../lib/history-now";
+import { TRAINING_LEAGUES } from "../lib/training-leagues";
 
 // League days and horizons the model is trained on. Dense early (where currency roughly doubles and the
 // dispersion between items is widest), sparser late. Rows whose horizon runs past the league's end are skipped.
@@ -57,12 +58,18 @@ function hash(s: string): number {
 
 async function exportRun(target: string, excluded: string[], label: string) {
   const metaPath = path.join(OUT_DIR, `${label}.json`);
+  // A run's features depend on which other leagues are in the DB, so rows exported for a different
+  // training set are stale even though the file exists.
   if (fs.existsSync(metaPath) && !process.env.FORCE) {
-    console.log(`${label}: exists, skipping`);
-    return;
+    const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    if (JSON.stringify(meta.trainingLeagues) === JSON.stringify(TRAINING_LEAGUES)) {
+      console.log(`${label}: exists, skipping`);
+      return;
+    }
+    console.log(`${label}: exported for a different training set, recomputing`);
   }
   const t0 = Date.now();
-  const minRef = excluded.length === 1 ? MIN_LEAGUES_WITH_DATA : 2; // production gate for 4-ref rows; 3-ref validation rows need 2
+  const minRef = excluded.length === 1 ? MIN_LEAGUES_WITH_DATA : 2; // production gate for full rows; nested validation rows (one fewer ref) need 2
   const matrix = await loadLeagueDailyMatrix(target, 0, MAX_DAY);
   const nowByDay = new Map<number, ReturnType<typeof historyNowAtDay>>();
   const nowAt = (day: number) => {
@@ -127,18 +134,21 @@ async function exportRun(target: string, excluded: string[], label: string) {
     process.stdout.write(`  ${label}: scenarios ${Math.min(start + CHUNK, SCENARIOS.length)}/${SCENARIOS.length}, ${rows.toLocaleString()} rows\r`);
   }
   fs.closeSync(fd);
-  fs.writeFileSync(metaPath, JSON.stringify({ label, target, excluded, columns: COLUMNS, rows, minRef, itemKeep: ITEM_KEEP }));
+  fs.writeFileSync(metaPath, JSON.stringify({ label, target, excluded, columns: COLUMNS, rows, minRef, itemKeep: ITEM_KEEP, trainingLeagues: TRAINING_LEAGUES }));
   console.log(`\n${label}: ${rows.toLocaleString()} rows in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
 
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const leagues = allKnownLeagues().filter((l) => l !== CURRENT_LEAGUE);
+  const leagues = [...TRAINING_LEAGUES];
   const holdouts = (process.env.HOLDOUTS ?? "Mirage,Keepers").split(",").map((s) => s.trim()).filter(Boolean);
   // final-model / holdout-test rows: every league as a target, features from all the others
   for (const t of leagues) await exportRun(t, [t], `full__${t}`);
   // validation training rows: for each holdout H, every other league as a target, with H ALSO excluded
   for (const h of holdouts) for (const t of leagues.filter((l) => l !== h)) await exportRun(t, [t, h], `nested__${t}__x${h}`);
+  // Tells ml/fit_production.py which runs belong to this export, so leftovers from an older training
+  // set in the same folder are ignored.
+  fs.writeFileSync(path.join(OUT_DIR, "manifest.json"), JSON.stringify({ leagues, holdouts }));
 }
 
 main()

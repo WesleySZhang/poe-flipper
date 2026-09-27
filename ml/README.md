@@ -45,7 +45,8 @@ to league. The question the app answers is:
 | poe.ninja live API | Today's price and a 7-day sparkline | Live predictions |
 | Daily price snapshots (`data` branch) | The current league's own daily history | The chart; the current league isn't trained on |
 
-The training leagues are **Settlers, Mercenaries, Keepers, Phrecia 2.0 and Mirage**. Days with
+The training leagues are listed in `lib/training-leagues.ts`; the results below were measured on
+**Settlers, Mercenaries, Keepers, Phrecia 2.0 and Mirage**. Days with
 low-confidence prices, and one-day spikes that snap back, are cleaned at ingest
 (`scripts/ingest-history.ts`).
 
@@ -273,15 +274,29 @@ quantile objective can't be exported faithfully (section 6).
 
 ### Retraining the shipped model
 
+The **Retrain model** GitHub workflow (`.github/workflows/retrain-model.yml`) runs all of this on
+CPU and opens a pull request; see the main README. By hand:
+
 ```bash
+npx tsx scripts/retrain-leagues.ts --add <League>   # edits lib/training-leagues.ts, prints holdouts
+npx tsx scripts/download-league-history.ts          # poe.ninja exports into POE_DATA_DIR
+npm run db:ingest                                   # rebuilds db/history.duckdb
 npm run ml:export-features          # ~30 min: training rows from the app's own code
 python ml/fit_production.py all     # validation report, writes lib/models/predictor.json
 npm run ml:parity                   # TypeScript matches Python
 npm run ml:backtest                 # replay Mirage through the app
 ```
 
-Commit `lib/models/predictor.json`. Training uses an NVIDIA GPU; set `XGB_DEVICE=cpu` without one.
-Hardware used: XGBoost 3.2 and PyTorch 2.11 on an RTX 5080.
+- **Holdouts** default to Mirage and Keepers (`HOLDOUTS=...` overrides). The workflow uses the
+  newest training league, as a forward-in-time test, plus Mirage for the backtest.
+- The export writes `manifest.json`, so runs cached for an older league set are ignored and
+  recomputed.
+- `fit_production.py` stores the headline validation scores in `predictor.json` as `validation`;
+  `scripts/retrain-report.ts` compares the next run against them.
+
+Commit `lib/training-leagues.ts`, `db/history.duckdb` and `lib/models/predictor.json`. Training uses
+an NVIDIA GPU; set `XGB_DEVICE=cpu` without one (the workflow does). Hardware used: XGBoost 3.2 and
+PyTorch 2.11 on an RTX 5080.
 
 ### Re-running the studies
 

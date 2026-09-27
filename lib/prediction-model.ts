@@ -55,6 +55,25 @@ export interface PredictorModel {
   /** Forecast-precision quantile heads (see ml/test_quantile_xgb.py) - p10/p90 of the CHAOS log-return, same
    *  feature set as xgb.chaos. Optional: an older model file simply has no forecast-precision signal. */
   quantiles?: { chaos?: { p10?: PackedForest; p90?: PackedForest } };
+  /** Leave-one-league-out scores from the run that produced this file, per holdout league (ml/fit_production.py).
+   *  Not used for predicting - scripts/retrain-report.ts compares a new model's scores against these. */
+  validation?: Record<string, HoldoutValidation>;
+}
+
+export interface ValidationScore {
+  /** Mean per-scenario Spearman between predicted and actual change. */
+  rho: number;
+  /** Share of the top 10% of predictions that actually gained. */
+  hit: number;
+  /** Their mean log-return. */
+  top10: number;
+}
+
+export interface HoldoutValidation {
+  trainLeagues: number;
+  testRows: { chaos?: number; divine?: number };
+  chaos?: Record<string, ValidationScore>;
+  divine?: Record<string, ValidationScore>;
 }
 
 function unpack<T extends Int16Array | Int32Array | Float32Array | Uint8Array>(

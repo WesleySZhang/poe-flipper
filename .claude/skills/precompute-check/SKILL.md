@@ -6,13 +6,21 @@ description: Use to check or trigger the daily precompute job - whether the data
 # Check the precompute job
 
 The workflow (`.github/workflows/precompute-predictions.yml`) runs at 00:10 UTC, on manual
-dispatch, and on pushes to prediction-algorithm files. It force-pushes an orphan `data` branch with
-`predictions.json`, `prices.json`, `history/`, and `vercel.json`.
+dispatch, and on pushes to prediction-algorithm files, `db/history.duckdb` or `lib/league-recency.ts`
+(a merged league swap). It force-pushes an orphan `data` branch with `predictions.json`,
+`prices.json`, `history/`, and `vercel.json`.
+
+The scripts only produce the current league's current month, so the publish step first copies the
+branch's existing `history/` (`git archive`) and overlays today's files. Before that fix (2026-09-26)
+each 1st of the month dropped earlier months and a league swap dropped the old league's folder;
+collection only began 2026-09-21, so Allflame has nothing before that.
 
 1. **Freshness.** `git fetch origin data`, then:
    - `git log origin/data -1 --format=%cd` - last publish time.
    - `git ls-tree -r --name-only origin/data` - expect `predictions.json`, `prices.json`,
-     `vercel.json`, and `history/<League>/*.csv` (there must be no `history/history/`).
+     `vercel.json`, and `history/<League>/*.csv` with **one pair per month since collection began**
+     (plus ended leagues' folders). A missing earlier month means the carry-forward failed; the
+     run log lists "Publishing history files". There must be no `history/history/`.
    - `git show origin/data:prices.json | head -c 200` - check `league` and `fetchedAt` (< 36h old,
      or the app ignores it).
 2. **Recent runs.** `gh run list --workflow precompute-predictions.yml -L 5`; `gh run view <id> --log-failed`.
