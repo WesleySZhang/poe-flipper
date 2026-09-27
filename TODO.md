@@ -116,6 +116,9 @@ forecast days (see Done), but:
   (`.github/workflows/check-new-items.yml`) adds new poe.ninja categories (read from poe.ninja's own
   site config), new Currency Exchange names and regenerated divination cards, and opens a PR listing
   what needs a human.
+- **Divination Card Flips' Divine mode buys the cards with divines.** Each card at its own Divine
+  market price (hour midpoint) instead of its chaos price converted; cards with no Divine market that
+  hour are hidden in Divine mode. The reward stays at its chaos price, converted.
 - **A missed day of price history is rebuilt automatically.** Before writing today's row, the daily
   job reads the last two weeks of files and rebuilds any of the last 6 days with no rows from
   poe.ninja's sparkline (Confidence=Medium). Older holes can't be rebuilt and show as a warning in

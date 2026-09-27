@@ -2,7 +2,7 @@ import "server-only";
 import { DIVINATION_CARDS, type DivinationRewardKind } from "./divination-cards";
 import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey } from "./poe-ninja";
 import { getActiveTypes } from "./price-snapshot";
-import { getFaustusSpreads, isFaustusTradeable, type FaustusSpread } from "./faustus";
+import { getExchangeQuotes, isFaustusTradeable, marketMid, type ItemMarket } from "./faustus";
 import { liquidityTier, type LiquidityTier } from "./liquidity";
 
 /**
@@ -17,6 +17,11 @@ import { liquidityTier, type LiquidityTier } from "./liquidity";
  * the reward - so confidence is the WEAKER of the two legs' liquidity, using the same
  * lib/liquidity.ts tiering the Currency Exchange Flip page already uses for exactly this "is this
  * spread real or just rounding noise on a barely-traded item" question.
+ *
+ * Divine mode buys the cards with divines, not a conversion: each card at its own Divine market price
+ * on GGG's exchange (the hour's midpoint). A card with no Divine market that hour has no Divine
+ * figures at all, and the table hides it. The reward is still valued at its chaos price (poe.ninja's),
+ * converted to divines at poe.ninja's Divine rate - the owner's call, since that's what it sells for.
  */
 export interface DivinationFlip {
   name: string;
@@ -25,9 +30,12 @@ export interface DivinationFlip {
    *  Currency Exchange, but poe.ninja's stash-scrape price is what's shown by default; see
    *  buyMin/MaxChaosValue below for the Currency Exchange's own historical range). */
   cardChaosValue: number;
+  /** The card's own Divine market price (hour midpoint) - undefined when it had no Divine market
+   *  this hour, which leaves every Divine figure below undefined and hides the row in Divine mode. */
   cardDivineValue?: number;
-  /** GGG's Currency Exchange (Faustus) hour-range low/high for the card itself - undefined when no
-   *  Faustus market exists for this card right now (see faustusTradeable). */
+  /** The card's hour-range low/high on GGG's Currency Exchange: chaos from its Chaos market (or its
+   *  Divine market converted, for a card only traded for divines), divine from its Divine market.
+   *  Undefined when there's no such market right now (see faustusTradeable). */
   buyMinChaosValue?: number;
   buyMaxChaosValue?: number;
   buyMinDivineValue?: number;
@@ -50,6 +58,9 @@ export interface DivinationFlip {
   /** rewardChaosValue / stackCostChaosValue - 1. */
   profitPercent: number;
   confidence: LiquidityTier;
+  /** The same for Divine mode, with the card leg measured on its Divine market. Undefined with
+   *  cardDivineValue. */
+  confidenceDivine?: LiquidityTier;
 }
 
 // Seller-count tiering for a unique-item reward leg, which poe.ninja exposes no volume figure for
@@ -111,69 +122,80 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
   // non-empty category buckets lets the live fetch skip the ones with no listings at all - same
   // prices, ~a quarter fewer requests. See lib/price-snapshot.ts's getActiveTypes.
   const activeTypes = await getActiveTypes(league);
-  const [currencyPrices, itemPrices, faustusSpreads] = await Promise.all([
+  const [currencyPrices, itemPrices, quotes] = await Promise.all([
     getAllCurrentCurrencyPrices(league, activeTypes.currency),
     getAllCurrentItemPrices(league, activeTypes.item),
-    getFaustusSpreads(league),
+    getExchangeQuotes(league),
   ]);
-  const spreadByName = new Map<string, FaustusSpread>(faustusSpreads.map((s) => [s.name, s]));
+  // poe.ninja's Divine rate, for the reward's value in Divine mode (see the module doc).
+  const ninjaDivineRate = currencyPrices.get("Divine Orb")?.chaosValue;
+  const exchangeTier = (m: ItemMarket | undefined): LiquidityTier => (m ? liquidityTier(m.volumeChaos) : "low");
+  const toChaos = (m: ItemMarket, v: number) => (m.currency === "chaos" ? v : v * (quotes.divineChaosRate ?? 0));
 
   const flips: DivinationFlip[] = [];
   for (const def of DIVINATION_CARDS) {
     const cardPrice = currencyPrices.get(def.name);
     if (!cardPrice || !(cardPrice.chaosValue > 0)) continue; // poe.ninja isn't pricing this card right now
 
+    const rewardMarkets = def.rewardKind === "unique" ? undefined : quotes.markets.get(def.rewardName);
     let rewardChaosPerUnit: number | undefined;
     let rewardConfidence: LiquidityTier;
     if (def.rewardKind === "unique") {
       const item = itemPrices.get(itemPriceKey(def.rewardName));
       rewardChaosPerUnit = item?.chaosValue;
       rewardConfidence = sellerCountTier(item?.sellerCount);
+    } else if (def.rewardName === "Chaos Orb") {
+      // The pivot currency: worth exactly its count, and the most liquid thing there is.
+      rewardChaosPerUnit = 1;
+      rewardConfidence = "high";
     } else {
       // "currency" and "card" rewards both live in the same currency price map - a divination
       // card's own price (DivinationCard type) is fetched from the same getAllCurrentCurrencyPrices
       // call this app already uses for currency, so a card-to-card reward needs no separate lookup.
-      const priced = currencyPrices.get(def.rewardName);
-      rewardChaosPerUnit = priced?.chaosValue;
-      const rewardSpread = spreadByName.get(def.rewardName);
-      rewardConfidence = rewardSpread ? liquidityTier(rewardSpread.volumeChaos) : "low";
+      rewardChaosPerUnit = currencyPrices.get(def.rewardName)?.chaosValue;
+      rewardConfidence = exchangeTier(rewardMarkets?.chaos ?? rewardMarkets?.divine);
     }
     if (rewardChaosPerUnit === undefined || !(rewardChaosPerUnit > 0)) continue; // reward not (yet) priceable
 
-    const cardSpread = spreadByName.get(def.name);
-    const cardConfidence: LiquidityTier = cardSpread ? liquidityTier(cardSpread.volumeChaos) : "low";
+    // Chaos mode: the card's Chaos market (or, for a card only traded for divines, that market).
+    const cardMarkets = quotes.markets.get(def.name);
+    const rangeMarket = cardMarkets?.chaos ?? cardMarkets?.divine;
+    const cardConfidence = exchangeTier(rangeMarket);
 
     const rewardChaosValue = rewardChaosPerUnit * def.rewardQuantity;
     const stackCostChaosValue = cardPrice.chaosValue * def.stackSize;
     const profitChaosValue = rewardChaosValue - stackCostChaosValue;
 
-    // Divine-denominated figures need a live Divine Orb rate - falls back to undefined (not a
-    // fabricated 0) if it's missing, same "graceful when a secondary source is missing" pattern
-    // FlipSuggestion.currentDivineValue already uses.
-    const divineRate = currencyPrices.get("Divine Orb")?.chaosValue;
-    const toDivine = (chaos: number) => (divineRate ? chaos / divineRate : undefined);
+    // Divine mode: the cards bought on their own Divine market, or not at all; the reward at its
+    // chaos value converted.
+    const cardDivineMarket = cardMarkets?.divine;
+    const cardDivineValue = cardDivineMarket ? marketMid(cardDivineMarket) : undefined;
+    const stackCostDivineValue = cardDivineValue !== undefined ? cardDivineValue * def.stackSize : undefined;
+    const rewardDivineValue = ninjaDivineRate ? rewardChaosValue / ninjaDivineRate : undefined;
+    const divinePriced = stackCostDivineValue !== undefined && rewardDivineValue !== undefined;
 
     flips.push({
       name: def.name,
       stackSize: def.stackSize,
       cardChaosValue: cardPrice.chaosValue,
-      cardDivineValue: toDivine(cardPrice.chaosValue),
-      buyMinChaosValue: cardSpread?.buyChaosValue,
-      buyMaxChaosValue: cardSpread?.sellChaosValue,
-      buyMinDivineValue: cardSpread?.buyDivineValue,
-      buyMaxDivineValue: cardSpread?.sellDivineValue,
+      cardDivineValue,
+      buyMinChaosValue: rangeMarket ? toChaos(rangeMarket, rangeMarket.low) : undefined,
+      buyMaxChaosValue: rangeMarket ? toChaos(rangeMarket, rangeMarket.high) : undefined,
+      buyMinDivineValue: cardDivineMarket?.low,
+      buyMaxDivineValue: cardDivineMarket?.high,
       faustusTradeable: isFaustusTradeable(def.name),
       rewardName: def.rewardName,
       rewardKind: def.rewardKind,
       rewardQuantity: def.rewardQuantity,
       rewardChaosValue,
-      rewardDivineValue: toDivine(rewardChaosValue),
+      rewardDivineValue,
       stackCostChaosValue,
-      stackCostDivineValue: toDivine(stackCostChaosValue),
+      stackCostDivineValue: divinePriced ? stackCostDivineValue : undefined,
       profitChaosValue,
-      profitDivineValue: toDivine(profitChaosValue),
+      profitDivineValue: divinePriced ? rewardDivineValue - stackCostDivineValue : undefined,
       profitPercent: (rewardChaosValue / stackCostChaosValue - 1) * 100,
       confidence: weakerTier(cardConfidence, rewardConfidence),
+      confidenceDivine: divinePriced ? weakerTier(exchangeTier(cardDivineMarket), rewardConfidence) : undefined,
     });
   }
 

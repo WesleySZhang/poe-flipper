@@ -33,6 +33,11 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 - Prices stay live for flips; poe.ninja files cards under `DivinationCard`, and history stores
   them as category "item" (see `poe-item-categories`).
 - Table and detail page: `components/divination-flips-panel.tsx`, `components/item-detail-panel.tsx`.
+- Divine mode buys the cards on their own Divine market (hour midpoint), not a chaos price
+  converted; the reward stays at its chaos price, converted (the owner's call). Few cards have a
+  Divine market in a given hour - 11 of 76 priceable cards on 2026-09-27, mostly expensive ones
+  (The Doctor, The Soul, History, House of Mirrors) - so Divine mode shows a short list.
+  `[verified]` (`lib/divination-flips.ts`)
 
 ## Sources
 

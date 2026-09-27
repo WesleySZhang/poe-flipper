@@ -77,8 +77,10 @@ export function DivinationFlipsPanel() {
           f.rewardDivineValue !== undefined && f.stackCostDivineValue !== undefined && f.stackCostDivineValue > 0
             ? f.rewardDivineValue / f.stackCostDivineValue
             : undefined,
+        // Divine mode buys the cards on their Divine market, so its liquidity is that market's.
+        shownConfidence: priceUnit === "divine" ? (f.confidenceDivine ?? f.confidence) : f.confidence,
       })),
-    [flips]
+    [flips, priceUnit]
   );
 
   const sorted = useMemo(
@@ -103,8 +105,10 @@ export function DivinationFlipsPanel() {
     const costActive = activePrice(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit);
     return (
       (f.name.toLowerCase().includes(normalizedSearch) || f.rewardName.toLowerCase().includes(normalizedSearch)) &&
-      (costActive === undefined || isWithinRange(costActive, costRange)) &&
-      !hiddenConfidenceTiers.has(f.confidence)
+      // No Divine cost means the card had no Divine market this hour: not buyable with divines.
+      costActive !== undefined &&
+      isWithinRange(costActive, costRange) &&
+      !hiddenConfidenceTiers.has(f.shownConfidence)
     );
   });
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
@@ -165,6 +169,14 @@ export function DivinationFlipsPanel() {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {priceUnit === "divine" && (
+          <p
+            className="text-xs text-muted-foreground"
+            title="Cards at their own Divine market price on the Currency Exchange; rewards at their chaos price, converted"
+          >
+            Only cards traded for divines this hour
+          </p>
+        )}
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search cards or rewards..." />
           <NumericRangeFilter
@@ -215,10 +227,10 @@ export function DivinationFlipsPanel() {
                     label: "Confidence",
                     value: (
                       <Badge
-                        variant={LIQUIDITY_VARIANT[f.confidence]}
+                        variant={LIQUIDITY_VARIANT[f.shownConfidence]}
                         title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
                       >
-                        {LIQUIDITY_LABEL[f.confidence]}
+                        {LIQUIDITY_LABEL[f.shownConfidence]}
                       </Badge>
                     ),
                     emphasized: true,
@@ -321,10 +333,10 @@ export function DivinationFlipsPanel() {
                   <TableCell>
                     <div className="flex justify-center">
                       <Badge
-                        variant={LIQUIDITY_VARIANT[f.confidence]}
+                        variant={LIQUIDITY_VARIANT[f.shownConfidence]}
                         title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
                       >
-                        {LIQUIDITY_LABEL[f.confidence]}
+                        {LIQUIDITY_LABEL[f.shownConfidence]}
                       </Badge>
                     </div>
                   </TableCell>

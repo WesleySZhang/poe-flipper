@@ -60,6 +60,11 @@ one is ignored as an odd trade.
 
 Cost of a full stack (card price × stack size) versus the value of its reward, at today's prices.
 
+- **Chaos mode:** cards at poe.ninja's price, the reward at its chaos price.
+- **Divine mode:** cards bought with divines, at their own Divine market price on the Currency
+  Exchange, not a conversion. A card with no Divine market that hour is hidden. The reward is still
+  valued at its chaos price, converted to divines.
+
 Only cards with a single, fixed, priceable reward are included: a specific unique, a set amount of
 currency, another card, or a specific plain item. Excluded:
 

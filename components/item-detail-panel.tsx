@@ -242,6 +242,9 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   const profitPer1000Gold =
     faustus?.goldCost && faustus.goldCost.perItem > 0 ? (faustus.spreadChaosValue / faustus.goldCost.perItem) * 1000 : undefined;
 
+  const divinationConfidence =
+    priceUnit === "divine" ? (divinationFlip?.confidenceDivine ?? divinationFlip?.confidence ?? "low") : (divinationFlip?.confidence ?? "low");
+
   // Divine-denominated profit ratio, same pattern as divination-flips-panel.tsx's own `enriched`.
   const divinationProfitRatioDivine =
     divinationFlip?.rewardDivineValue !== undefined &&
@@ -459,6 +462,11 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                 {divinationFlip.faustusTradeable && <FaustusPriceButton name={historyName} priceUnit={priceUnit} />}
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
+                {/* Divine mode buys the cards on their own Divine market (see lib/divination-flips.ts):
+                    with none this hour there's nothing to show in divines. */}
+                {priceUnit === "divine" && divinationFlip.stackCostDivineValue === undefined ? (
+                  <p className="text-sm text-muted-foreground">Not traded for divines this hour</p>
+                ) : (
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
                   <Stat label="Stack size" value={`x${divinationFlip.stackSize}`} />
                   <Stat
@@ -494,14 +502,15 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   <div className="flex flex-col">
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Confidence</span>
                     <Badge
-                      variant={LIQUIDITY_VARIANT[divinationFlip.confidence]}
+                      variant={LIQUIDITY_VARIANT[divinationConfidence]}
                       className="w-fit"
                       title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
                     >
-                      {LIQUIDITY_LABEL[divinationFlip.confidence]}
+                      {LIQUIDITY_LABEL[divinationConfidence]}
                     </Badge>
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
           )}
