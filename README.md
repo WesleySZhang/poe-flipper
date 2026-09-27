@@ -64,6 +64,9 @@ Cost of a full stack (card price × stack size) versus the value of its reward, 
 - **Divine mode:** cards bought with divines, at their own Divine market price on the Currency
   Exchange, not a conversion. A card with no Divine market that hour is hidden. The reward is still
   valued at its chaos price, converted to divines.
+- **Instant cost / profit:** the stack bought off other players' sell orders instead of with a buy
+  order: the top of the card's hour trade range on the exchange × stack size. Blank for a card with
+  no exchange market.
 
 Only cards with a single, fixed, priceable reward are included: a specific unique, a set amount of
 currency, another card, or a specific plain item. Excluded:

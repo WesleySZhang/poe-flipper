@@ -22,6 +22,10 @@ import { liquidityTier, type LiquidityTier } from "./liquidity";
  * on GGG's exchange (the hour's midpoint). A card with no Divine market that hour has no Divine
  * figures at all, and the table hides it. The reward is still valued at its chaos price (poe.ninja's),
  * converted to divines at poe.ninja's Divine rate - the owner's call, since that's what it sells for.
+ *
+ * The stack cost is what a buy order pays. The instant-buy cost (taking someone else's sell order)
+ * is the top of the card's hour trade range on the exchange, the same "buy at low, sell at high"
+ * reading the Currency Exchange Flip page uses; undefined when the card has no exchange market.
  */
 export interface DivinationFlip {
   name: string;
@@ -55,6 +59,12 @@ export interface DivinationFlip {
   /** rewardChaosValue - stackCostChaosValue. */
   profitChaosValue: number;
   profitDivineValue?: number;
+  /** buyMax*Value * stackSize: the stack bought instantly, off other players' sell orders. */
+  instantCostChaosValue?: number;
+  instantCostDivineValue?: number;
+  /** rewardChaosValue - instantCostChaosValue (and the same in divines). */
+  instantProfitChaosValue?: number;
+  instantProfitDivineValue?: number;
   /** rewardChaosValue / stackCostChaosValue - 1. */
   profitPercent: number;
   confidence: LiquidityTier;
@@ -174,13 +184,18 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
     const rewardDivineValue = ninjaDivineRate ? rewardChaosValue / ninjaDivineRate : undefined;
     const divinePriced = stackCostDivineValue !== undefined && rewardDivineValue !== undefined;
 
+    // Instant buy: the top of the card's hour trade range, per stack.
+    const buyMaxChaosValue = rangeMarket ? toChaos(rangeMarket, rangeMarket.high) : undefined;
+    const instantCostChaosValue = buyMaxChaosValue !== undefined ? buyMaxChaosValue * def.stackSize : undefined;
+    const instantCostDivineValue = divinePriced && cardDivineMarket ? cardDivineMarket.high * def.stackSize : undefined;
+
     flips.push({
       name: def.name,
       stackSize: def.stackSize,
       cardChaosValue: cardPrice.chaosValue,
       cardDivineValue,
       buyMinChaosValue: rangeMarket ? toChaos(rangeMarket, rangeMarket.low) : undefined,
-      buyMaxChaosValue: rangeMarket ? toChaos(rangeMarket, rangeMarket.high) : undefined,
+      buyMaxChaosValue,
       buyMinDivineValue: cardDivineMarket?.low,
       buyMaxDivineValue: cardDivineMarket?.high,
       faustusTradeable: isFaustusTradeable(def.name),
@@ -193,6 +208,11 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
       stackCostDivineValue: divinePriced ? stackCostDivineValue : undefined,
       profitChaosValue,
       profitDivineValue: divinePriced ? rewardDivineValue - stackCostDivineValue : undefined,
+      instantCostChaosValue,
+      instantCostDivineValue,
+      instantProfitChaosValue: instantCostChaosValue !== undefined ? rewardChaosValue - instantCostChaosValue : undefined,
+      instantProfitDivineValue:
+        instantCostDivineValue !== undefined && rewardDivineValue !== undefined ? rewardDivineValue - instantCostDivineValue : undefined,
       profitPercent: (rewardChaosValue / stackCostChaosValue - 1) * 100,
       confidence: weakerTier(cardConfidence, rewardConfidence),
       confidenceDivine: divinePriced ? weakerTier(exchangeTier(cardDivineMarket), rewardConfidence) : undefined,

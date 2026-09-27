@@ -472,7 +472,15 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   <Stat
                     label={`Cost (${priceUnitLabel(priceUnit)})`}
                     value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
+                    hint="Stack cost with a buy order"
                   />
+                  {divinationFlip.instantCostChaosValue !== undefined && (
+                    <Stat
+                      label={`Instant cost (${priceUnitLabel(priceUnit)})`}
+                      value={formatPriceValue(divinationFlip.instantCostChaosValue, divinationFlip.instantCostDivineValue, priceUnit)}
+                      hint="Stack cost buying other players' sell orders: the top of the card's hour range on the Currency Exchange"
+                    />
+                  )}
                   <Stat
                     label="Reward"
                     value={
@@ -499,6 +507,12 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                     label={`Profit (${priceUnitLabel(priceUnit)})`}
                     value={formatPriceValue(divinationFlip.profitChaosValue, divinationFlip.profitDivineValue, priceUnit)}
                   />
+                  {divinationFlip.instantProfitChaosValue !== undefined && (
+                    <Stat
+                      label={`Instant profit (${priceUnitLabel(priceUnit)})`}
+                      value={formatPriceValue(divinationFlip.instantProfitChaosValue, divinationFlip.instantProfitDivineValue, priceUnit)}
+                    />
+                  )}
                   <div className="flex flex-col">
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Confidence</span>
                     <Badge

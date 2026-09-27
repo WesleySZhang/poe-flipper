@@ -25,12 +25,20 @@ import { activePrice, activeRatio, formatPercentChange, formatPriceValue, priceU
 
 const PAGE_SIZE = 25;
 
-type SortKey = "cost" | "reward" | "profitPercent" | "profitAbs";
+type SortKey = "cost" | "instantCost" | "reward" | "profitPercent" | "profitAbs" | "instantProfit";
 
 // Same variant-as-state vocabulary as ConfidenceBadge/the Currency Exchange Flip page - no
 // green/amber, red stays reserved for warnings.
 const LIQUIDITY_VARIANT = { high: "default", medium: "secondary", low: "outline" } as const;
 const LIQUIDITY_LABEL = { high: "High", medium: "Medium", low: "Low" } as const;
+
+const COST_TITLE = "Stack cost with a buy order";
+const INSTANT_TITLE = "Stack cost buying other players' sell orders: the top of the card's hour range on the Currency Exchange";
+
+// Instant-buy figures are undefined for a card with no exchange market.
+function formatOptionalPrice(chaosValue: number | undefined, divineValue: number | undefined, unit: PriceUnit): string {
+  return chaosValue === undefined ? "—" : formatPriceValue(chaosValue, divineValue, unit);
+}
 
 async function fetchDivinationFlips(): Promise<DivinationFlip[]> {
   const res = await fetch("/api/divination-flips");
@@ -89,12 +97,16 @@ export function DivinationFlipsPanel() {
         switch (key) {
           case "cost":
             return activePrice(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit);
+          case "instantCost":
+            return priceUnit === "chaos" ? f.instantCostChaosValue : f.instantCostDivineValue;
           case "reward":
             return activePrice(f.rewardChaosValue, f.rewardDivineValue, priceUnit);
           case "profitPercent":
             return activeRatio(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit);
           case "profitAbs":
             return activePrice(f.profitChaosValue, f.profitDivineValue, priceUnit);
+          case "instantProfit":
+            return priceUnit === "chaos" ? f.instantProfitChaosValue : f.instantProfitDivineValue;
         }
       }),
     [enriched, sort, priceUnit]
@@ -199,9 +211,11 @@ export function DivinationFlipsPanel() {
           <MobileSortControl
             options={[
               { key: "cost", label: `Cost (${priceUnitLabel(priceUnit)})` },
+              { key: "instantCost", label: `Instant cost (${priceUnitLabel(priceUnit)})` },
               { key: "reward", label: `Sell (${priceUnitLabel(priceUnit)})` },
               { key: "profitPercent", label: "Profit %" },
               { key: "profitAbs", label: `Profit (${priceUnitLabel(priceUnit)})` },
+              { key: "instantProfit", label: `Instant profit (${priceUnitLabel(priceUnit)})` },
             ]}
             sort={sort}
             onSort={handleSort}
@@ -252,6 +266,14 @@ export function DivinationFlipsPanel() {
                       ),
                   },
                   { label: `Profit (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.profitChaosValue, f.profitDivineValue, priceUnit) },
+                  {
+                    label: `Instant cost (${priceUnitLabel(priceUnit)})`,
+                    value: formatOptionalPrice(f.instantCostChaosValue, f.instantCostDivineValue, priceUnit),
+                  },
+                  {
+                    label: `Instant profit (${priceUnitLabel(priceUnit)})`,
+                    value: formatOptionalPrice(f.instantProfitChaosValue, f.instantProfitDivineValue, priceUnit),
+                  },
                 ]}
                 rightFields={[
                   { label: `Cost (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit) },
@@ -266,12 +288,27 @@ export function DivinationFlipsPanel() {
           // Keyed on flips.length, not paged.length - the header (and the Confidence column's tier
           // filter it carries) must stay visible even when every row is currently filtered out, same
           // reasoning as the flip-suggestions table's Confidence column.
-          <Table className="hidden sm:table">
+          // Tighter cell padding than the default: ten columns have to fit at 1280px.
+          <Table className="hidden sm:table [&_td]:px-1.5 [&_th]:px-1.5">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[140px] sm:w-[180px]">Card</TableHead>
-                <TableHead className="text-right">Stack</TableHead>
-                <SortableHeader label={`Cost (${priceUnitLabel(priceUnit)})`} sortKey="cost" sort={sort} onSort={handleSort} />
+                <TableHead className="w-[140px] sm:w-[150px]">Card</TableHead>
+                <SortableHeader
+                  label={<span title={COST_TITLE}>Cost ({priceUnitLabel(priceUnit)})</span>}
+                  sortKey="cost"
+                  sort={sort}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label={
+                    <span title={INSTANT_TITLE} className="text-right leading-tight">
+                      Instant<br />cost ({priceUnitLabel(priceUnit)})
+                    </span>
+                  }
+                  sortKey="instantCost"
+                  sort={sort}
+                  onSort={handleSort}
+                />
                 <TableHead className="text-right">Min/Max</TableHead>
                 <TableHead>Reward</TableHead>
                 <SortableHeader label={`Sell (${priceUnitLabel(priceUnit)})`} sortKey="reward" sort={sort} onSort={handleSort} />
@@ -279,6 +316,16 @@ export function DivinationFlipsPanel() {
                 <SortableHeader
                   label={`Profit (${priceUnitLabel(priceUnit)})`}
                   sortKey="profitAbs"
+                  sort={sort}
+                  onSort={handleSort}
+                />
+                <SortableHeader
+                  label={
+                    <span title={INSTANT_TITLE} className="text-right leading-tight">
+                      Instant<br />profit ({priceUnitLabel(priceUnit)})
+                    </span>
+                  }
+                  sortKey="instantProfit"
                   sort={sort}
                   onSort={handleSort}
                 />
@@ -299,17 +346,20 @@ export function DivinationFlipsPanel() {
                   historyName={f.name}
                   currentDay={currentDay}
                   priceUnit={priceUnit}
-                  colSpan={9}
+                  colSpan={10}
                   expandable={false}
+                  nameSuffix={<span title="Stack size">x{f.stackSize}</span>}
                 >
-                  <TableCell className="text-right text-muted-foreground">x{f.stackSize}</TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatOptionalPrice(f.instantCostChaosValue, f.instantCostDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-2">
                       {f.buyMinChaosValue !== undefined && f.buyMaxChaosValue !== undefined ? (
-                        <span className="text-right text-muted-foreground">
+                        <span className="text-right text-xs text-muted-foreground">
                           {formatPriceValue(f.buyMinChaosValue, f.buyMinDivineValue, priceUnit)} &ndash;{" "}
                           {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
                         </span>
@@ -320,7 +370,7 @@ export function DivinationFlipsPanel() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-[160px] truncate" title={f.rewardName}>
+                  <TableCell className="max-w-[120px] truncate" title={f.rewardName}>
                     {f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName}
                   </TableCell>
                   <TableCell className="text-right">{formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit)}</TableCell>
@@ -329,6 +379,9 @@ export function DivinationFlipsPanel() {
                   </TableCell>
                   <TableCell className="text-right">
                     {formatPriceValue(f.profitChaosValue, f.profitDivineValue, priceUnit)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {formatOptionalPrice(f.instantProfitChaosValue, f.instantProfitDivineValue, priceUnit)}
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-center">
