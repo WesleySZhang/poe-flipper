@@ -11,10 +11,9 @@ ordered by importance.
 | 2 | [New items and categories: manual follow-ups](#2-new-items-and-categories-manual-follow-ups) | Open (small) |
 | 3 | [A missed day of price history is lost for good](#3-a-missed-day-of-price-history-is-lost-for-good) | Open |
 | 4 | [Cache the predictions file at the CDN](#4-cache-the-predictions-file-at-the-cdn) | Open |
-| 5 | [Predict further than 30 days ahead?](#5-predict-further-than-30-days-ahead) | Undecided |
-| 6 | [Live price vs history for items with several poe.ninja lines](#6-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
-| 7 | [Holes in past-league history](#7-holes-in-past-league-history) | Open |
-| 8 | [Small follow-ups](#8-small-follow-ups) | Open |
+| 5 | [Live price vs history for items with several poe.ninja lines](#5-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
+| 6 | [Holes in past-league history](#6-holes-in-past-league-history) | Open |
+| 7 | [Small follow-ups](#7-small-follow-ups) | Open |
 | – | [Done](#done) | – |
 
 ---
@@ -65,25 +64,10 @@ day.
 
 - Add `Cache-Control: public, s-maxage=120, stale-while-revalidate=...` so Vercel's CDN serves
   repeats without invoking the function. Available on the free plan.
-- Vercel won't cache a response over **10 MB**; today's is about 5.4 MB gzipped (see item 5).
+- Vercel won't cache a response over **10 MB**; today's is about 5.4 MB gzipped - see the Done note on predicting further than 30 days.
 - This saves server work, not visitor download size.
 
-## 5. Predict further than 30 days ahead?
-
-Raising `CURVE_MAX_DURATION_DAYS` would extend the instant slider range and the detailed forecast
-line. Measured on the real file:
-
-| Days ahead | Raw size | Gzipped | Job time |
-| --- | --- | --- | --- |
-| 30 (today) | 20.6 MB | 5.4 MB | ~31 s |
-| 60 | ~39 MB | ~10 MB | ~60 s |
-| 90 | ~57 MB | ~15 MB | ~90 s |
-
-The job time is free. The cost is that every visitor downloads the whole file: 60 days sits at the
-CDN's 10 MB limit, 90 is over it, and a bigger file hurts on mobile. If this goes ahead, ship only
-the days actually needed instead of the whole file.
-
-## 6. Live price vs history for items with several poe.ninja lines
+## 5. Live price vs history for items with several poe.ninja lines
 
 Base types (e.g. Dragonscale Doublet) have one poe.ninja line per item level or influence, all under
 one name. The live price takes the **first** line (1.8c); past-league and current-league history
@@ -93,7 +77,7 @@ prices, and the model predicts from a price that doesn't match what it was train
 **Option:** average the lines for the live price too. That would change the starting price, and so
 the forecast and ranking, for every affected item (mostly base types). Needs a decision.
 
-## 7. Holes in past-league history
+## 6. Holes in past-league history
 
 Some items have gaps in a past league's data. The Last One Standing has no Keepers prices on days
 78–93, and its Mirage history stops at day 34. The daily job now fills the resulting missing
@@ -106,7 +90,7 @@ forecast days (see Done), but:
 
 **Option:** interpolate short gaps (say up to 20 days) within a league at ingest time.
 
-## 8. Small follow-ups
+## 7. Small follow-ups
 
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
@@ -137,6 +121,10 @@ forecast days (see Done), but:
   (`.github/workflows/check-new-items.yml`) adds new poe.ninja categories (read from poe.ninja's own
   site config), new Currency Exchange names and regenerated divination cards, and opens a PR listing
   what needs a human.
+- **Predict further than 30 days ahead: decided against, for now.** Raising it would sit right at
+  or over the CDN's 10 MB response-cache limit (60 days ~10 MB gzipped, 90 days ~15 MB), and the
+  model is only trained/validated up to a 30-day horizon anyway. Revisit only alongside shipping
+  just the needed days instead of the whole file.
 - **Retraining runs from a workflow.** After choosing a finished league to train on, run "Retrain
   model" (`.github/workflows/retrain-model.yml`): it downloads the history, rebuilds the DB,
   retrains, checks parity and the Mirage backtest, and opens a PR comparing validation scores with
