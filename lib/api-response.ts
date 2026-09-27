@@ -61,7 +61,13 @@ export async function cachedJsonResponse(
   key: string,
   ttlMs: number,
   request: Request,
-  compute: () => Promise<unknown>
+  compute: () => Promise<unknown>,
+  options: {
+    /** Sent as Cache-Control, e.g. "public, s-maxage=120" to let Vercel's CDN serve repeats without
+     *  invoking the function. Adds `Vary: Accept-Encoding`, since the body is gzipped only for
+     *  clients that accept it and a cached gzip body must never reach one that doesn't. */
+    cacheControl?: string;
+  } = {}
 ): Promise<Response> {
   const acceptsGzip = (request.headers.get("accept-encoding") ?? "").includes("gzip");
   const now = Date.now();
@@ -77,6 +83,9 @@ export async function cachedJsonResponse(
     serializedCache.set(key, entry);
   }
   const { plainBody, gzipBody } = entry;
+  const cacheHeaders: Record<string, string> = options.cacheControl
+    ? { "Cache-Control": options.cacheControl, Vary: "Accept-Encoding" }
+    : {};
   if (acceptsGzip && gzipBody) {
     // Wrapped in a plain Uint8Array - passing the cached Buffer directly hits a bizarre TS
     // BodyInit-overload resolution error (Buffer structurally satisfies BodyInit, and the identical
@@ -84,8 +93,8 @@ export async function cachedJsonResponse(
     // only reproduces for the interface-stored, destructured Buffer here, not a fully inline one -
     // a Uint8Array view sidesteps it outright rather than chasing the inference quirk further.
     return new Response(new Uint8Array(gzipBody), {
-      headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" },
+      headers: { "Content-Type": "application/json", "Content-Encoding": "gzip", ...cacheHeaders },
     });
   }
-  return new Response(plainBody, { headers: { "Content-Type": "application/json" } });
+  return new Response(plainBody, { headers: { "Content-Type": "application/json", ...cacheHeaders } });
 }
