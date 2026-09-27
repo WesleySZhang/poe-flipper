@@ -28,6 +28,10 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   reading's noise: a thin exchange market's live price can jump day to day (Timeless Templar
   Splinter read 22c, 3c, 0.3c, 0.02c, 20c on consecutive days) while the sparkline is steadier.
   `[verified]` (tested 2026-09-27; `lib/spark-backfill.ts`)
+- GGG's Currency Exchange `lowest_stock` / `highest_stock` are each side's lowest and highest
+  listed stock during the hour, not stock at the low or high price: the API has no order-book depth
+  and no split of stock by price. A pair can trade with 0 of the item listed at both extremes (orders
+  filled as soon as they were placed). `[verified]` (2026-09-27; `stockRange` in `lib/faustus.ts`)
 - poe.ninja has **no API listing its categories**. Its site sidebar is built from a config object
   compiled into one of its JavaScript chunks (`{availableViews:[...], title, type, url}` per
   category); chunk names change every deploy, so find it by walking the imports from the page's

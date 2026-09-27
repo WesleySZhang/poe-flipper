@@ -39,6 +39,26 @@ export function otherCurrencyTitle(chaosValue: number, divineValue: number | und
 
 const TIER_RANK: Record<LiquidityTier, number> = { low: 0, medium: 1, high: 2 };
 
+/** Stock listed on one exchange market during the hour, lowest to highest per side. */
+export interface MarketStockRange {
+  cards: [number, number];
+  currency: [number, number];
+  currencyIn: "chaos" | "divine";
+}
+
+/** Hover text for a card's Min/Max range. GGG's data has no split of stock by price - only each
+ *  side's lowest and highest stock that hour - so that's what this shows. */
+export function stockRangeTitle(stock: MarketStockRange | undefined): string | undefined {
+  if (!stock) return undefined;
+  const range = ([low, high]: [number, number], suffix: string) =>
+    low === high ? `${low.toLocaleString()}${suffix}` : `${low.toLocaleString()}–${high.toLocaleString()}${suffix}`;
+  return [
+    "Stock listed this hour:",
+    `${range(stock.cards, "")} cards for sale`,
+    `${range(stock.currency, stock.currencyIn === "chaos" ? "c" : "d")} in buy orders`,
+  ].join("\n");
+}
+
 export function weakerTier(a: LiquidityTier, b: LiquidityTier): LiquidityTier {
   return TIER_RANK[a] <= TIER_RANK[b] ? a : b;
 }

@@ -116,9 +116,9 @@ forecast days (see Done), but:
   (`.github/workflows/check-new-items.yml`) adds new poe.ninja categories (read from poe.ninja's own
   site config), new Currency Exchange names and regenerated divination cards, and opens a PR listing
   what needs a human.
-- **Divination Card Flips show the instant-buy cost and profit.** The stack bought off sell orders:
-  the top of the card's hour range on the exchange × stack size, in both price modes, on the table
-  and the item page. The Stack column moved next to the card name so the table still fits at 1280px.
+- **Divination Card Flips have an Instant buy button.** Off by default; on, Cost/Profit %/Profit use
+  the stack bought off sell orders (the top of the card's hour range on the exchange × stack size),
+  in both price modes, on the table and the item page. Min/Max's hover shows the hour's listed stock.
 - **Divination Card Flips' Divine mode buys the cards with divines.** Each card at its own Divine
   market price (hour midpoint) instead of its chaos price converted; cards with no Divine market that
   hour are hidden in Divine mode. The reward stays at its chaos price, converted.

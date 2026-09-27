@@ -38,8 +38,8 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   Divine market in a given hour - 11 of 76 priceable cards on 2026-09-27, mostly expensive ones
   (The Doctor, The Soul, History, House of Mirrors) - so Divine mode shows a short list.
   `[verified]` (`lib/divination-flips.ts`)
-- Instant-buy cost (taking other players' sell orders) = the top of the card's hour trade range on
-  the exchange × stack size; the plain Cost is a buy order. poe.ninja's card price isn't always
+- Instant-buy cost (taking other players' sell orders; the table's Instant buy button) = the top of
+  the card's hour trade range on the exchange × stack size; the plain Cost is a buy order. poe.ninja's card price isn't always
   inside the exchange range: on 2026-09-27, 7 of 31 cards with an exchange market had poe.ninja's
   price above the hour's high (The Doctor: 460c vs 401c), so instant cost can read lower than Cost.
   Divine ratios are coarse, so in Divine mode instant cost often equals Cost. `[verified]`

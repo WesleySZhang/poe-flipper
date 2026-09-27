@@ -136,8 +136,6 @@ interface ItemHistoryRowProps {
    *  row is just a static summary: no click-to-expand chart, no chevron, no cursor-pointer/hover
    *  affordance. The name link and poewiki link are unaffected either way. */
   expandable?: boolean;
-  /** Short muted text after the name and wiki link, e.g. a divination card's stack size. */
-  nameSuffix?: React.ReactNode;
 }
 
 /**
@@ -161,7 +159,6 @@ export function ItemHistoryRow({
   colSpan,
   children,
   expandable = true,
-  nameSuffix,
 }: ItemHistoryRowProps) {
   const { expanded, hasExpandedOnce, state, predictedCurve, toggle } = useItemHistoryExpand({
     category,
@@ -209,7 +206,6 @@ export function ItemHistoryRow({
         >
           <ExternalLink className="size-3" />
         </a>
-        {nameSuffix !== undefined && <span className="shrink-0 text-muted-foreground">{nameSuffix}</span>}
       </div>
     </TableCell>
   );

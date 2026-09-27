@@ -3,6 +3,7 @@ import { DIVINATION_CARDS, type DivinationRewardKind } from "./divination-cards"
 import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey } from "./poe-ninja";
 import { getActiveTypes } from "./price-snapshot";
 import { getExchangeQuotes, isFaustusTradeable, marketMid, type ItemMarket } from "./faustus";
+import type { MarketStockRange } from "./exchange-route";
 import { liquidityTier, type LiquidityTier } from "./liquidity";
 
 /**
@@ -44,6 +45,9 @@ export interface DivinationFlip {
   buyMaxChaosValue?: number;
   buyMinDivineValue?: number;
   buyMaxDivineValue?: number;
+  /** Stock behind the Min/Max range: the chaos-mode market's, and the Divine market's. */
+  buyStock?: MarketStockRange;
+  buyStockDivine?: MarketStockRange;
   /** Whether GGG's Currency Exchange covers this exact card at all - drives the on-demand
    *  "Exchange Price" button (components/faustus-price-button.tsx), same as the main dashboard. */
   faustusTradeable: boolean;
@@ -141,6 +145,8 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
   const ninjaDivineRate = currencyPrices.get("Divine Orb")?.chaosValue;
   const exchangeTier = (m: ItemMarket | undefined): LiquidityTier => (m ? liquidityTier(m.volumeChaos) : "low");
   const toChaos = (m: ItemMarket, v: number) => (m.currency === "chaos" ? v : v * (quotes.divineChaosRate ?? 0));
+  const stockOf = (m: ItemMarket | undefined): MarketStockRange | undefined =>
+    m ? { cards: m.stockRange.item, currency: m.stockRange.currency, currencyIn: m.currency } : undefined;
 
   const flips: DivinationFlip[] = [];
   for (const def of DIVINATION_CARDS) {
@@ -198,6 +204,8 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
       buyMaxChaosValue,
       buyMinDivineValue: cardDivineMarket?.low,
       buyMaxDivineValue: cardDivineMarket?.high,
+      buyStock: stockOf(rangeMarket),
+      buyStockDivine: stockOf(cardDivineMarket),
       faustusTradeable: isFaustusTradeable(def.name),
       rewardName: def.rewardName,
       rewardKind: def.rewardKind,
