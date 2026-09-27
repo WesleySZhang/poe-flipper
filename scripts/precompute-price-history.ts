@@ -51,13 +51,30 @@
  * exact same DuckDB read_csv_auto() call scripts/ingest-history.ts uses, structurally (columns,
  * types, row counts), which is safe to run against a throwaway in-memory database.
  *
+ * MISSED DAYS: before writing, it reads the last two weeks of files and rebuilds any day in the last
+ * 6 with no rows (a missed or failed run) from each line's 7-point poe.ninja sparkline, anchored on
+ * today's price (lib/spark-backfill.ts), tagged Confidence=Medium. A day older than the sparkline
+ * can't be rebuilt; it's reported as a warning for a week after it drops out of reach. Checked
+ * against real stored days (2026-09-27): stash items came back with a median error of 0.0%;
+ * exchange-priced types (currency, scarabs, cards, ...) differed from the job's own readings by a
+ * median ~8-17%, mostly because a thin market's single live reading jumps day to day while poe.ninja's
+ * sparkline is its steadier daily value. (This replaced a one-time backfill script.)
+ *
  * Run: npx tsx scripts/precompute-price-history.ts
  */
 import fs from "node:fs";
 import path from "node:path";
-import { getAllCurrentCurrencyPrices, getItemOverview, correctedItemType, linksBucketLabel, ITEM_OVERVIEW_TYPES } from "../lib/poe-ninja";
+import {
+  getAllCurrentCurrencyPrices,
+  getItemOverview,
+  correctedItemType,
+  linksBucketLabel,
+  ITEM_OVERVIEW_TYPES,
+  sparkPointsFrom,
+} from "../lib/poe-ninja";
 import { installRawResponseCache } from "./raw-response-cache";
-import { CURRENT_LEAGUE } from "../lib/league-recency";
+import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "../lib/league-recency";
+import { isoDaysAgo, LOST_LOOKBACK_DAYS, planBackfill, SPARK_WINDOW_DAYS, valueFromSpark } from "../lib/spark-backfill";
 
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
 const HISTORY_DIR = path.join(__dirname, "..", "history");
@@ -98,17 +115,37 @@ function dropExistingDay(csvText: string | undefined, dateColumnIndex: number, d
   return [header, ...kept];
 }
 
+/** Every "YYYY-MM" month touched by the last `days` days up to today. */
+function recentMonths(today: Date, days: number): string[] {
+  return [...new Set(Array.from({ length: days + 1 }, (_, i) => isoDaysAgo(today, i).slice(0, 7)))].sort();
+}
+
+/** One of today's prices, able to write its row for today or for a rebuilt earlier day. */
+interface SnapshotRow {
+  kind: "currency" | "items";
+  chaosValue: number;
+  /** poe.ninja's 7-point sparkline for this line, for rebuilding missed days (see lib/spark-backfill.ts). */
+  spark?: Array<number | null>;
+  row: (date: string, value: number, confidence: "High" | "Medium") => string;
+}
+
+const HEADERS = {
+  currency: "League;Date;Get;Pay;Value;Confidence",
+  items: "League;Date;Id;Type;Name;BaseType;Variant;Links;Value;Confidence",
+} as const;
+
+/** Writes a GitHub Actions annotation when running there, a plain log line otherwise. */
+function annotate(level: "notice" | "warning", message: string) {
+  console.log(process.env.GITHUB_ACTIONS ? `::${level}::${message}` : `${level}: ${message}`);
+}
+
 async function main() {
   installRawResponseCache(); // share poe.ninja responses with the other daily-job scripts - see raw-response-cache.ts
-  const today = new Date().toISOString().slice(0, 10); // UTC calendar day, matching poe.ninja's own daily-snapshot convention
-  const month = today.slice(0, 7); // YYYY-MM - see the module doc above for why files are chunked by month
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10); // UTC calendar day, matching poe.ninja's own daily-snapshot convention
   fs.mkdirSync(path.join(HISTORY_DIR, CURRENT_LEAGUE), { recursive: true });
 
-  const currencyPath = `${CURRENT_LEAGUE}/${CURRENT_LEAGUE}.currency.${month}.csv`;
-  const itemsPath = `${CURRENT_LEAGUE}/${CURRENT_LEAGUE}.items.${month}.csv`;
-
-  const currencyRows: string[] = [];
-  const itemRows: string[] = [];
+  const snapshot: SnapshotRow[] = [];
   let nextId = 1;
 
   // Currency-overview types (see CURRENCY_OVERVIEW_TYPES's own comment in lib/poe-ninja.ts): only
@@ -119,9 +156,20 @@ async function main() {
   for (const [name, price] of currencyPrices) {
     if (name === "Chaos Orb" || !(price.chaosValue > 0)) continue;
     if (price.type === "Currency" || price.type === "Fragment") {
-      currencyRows.push([CURRENT_LEAGUE, today, name, "Chaos Orb", price.chaosValue, "High"].map(csvField).join(";"));
+      snapshot.push({
+        kind: "currency",
+        chaosValue: price.chaosValue,
+        spark: price.spark,
+        row: (date, value, confidence) => [CURRENT_LEAGUE, date, name, "Chaos Orb", value, confidence].map(csvField).join(";"),
+      });
     } else {
-      itemRows.push([CURRENT_LEAGUE, today, nextId++, price.type, name, "", "", "", price.chaosValue, "High"].map(csvField).join(";"));
+      snapshot.push({
+        kind: "items",
+        chaosValue: price.chaosValue,
+        spark: price.spark,
+        row: (date, value, confidence) =>
+          [CURRENT_LEAGUE, date, nextId++, price.type, name, "", "", "", value, confidence].map(csvField).join(";"),
+      });
     }
   }
 
@@ -131,55 +179,85 @@ async function main() {
     for (const line of lines) {
       if (!(line.chaosValue > 0)) continue;
       const links = typeof line.links === "number" ? linksBucketLabel(line.links) : "";
-      itemRows.push(
-        [
-          CURRENT_LEAGUE,
-          today,
-          nextId++,
-          correctedItemType(type, line.baseType),
-          line.name,
-          line.baseType ?? "",
-          line.variant?.trim() ?? "",
-          links,
-          line.chaosValue,
-          "High",
-        ]
-          .map(csvField)
-          .join(";")
+      const itemType = correctedItemType(type, line.baseType);
+      snapshot.push({
+        kind: "items",
+        chaosValue: line.chaosValue,
+        spark: sparkPointsFrom(line.sparkLine),
+        row: (date, value, confidence) =>
+          [CURRENT_LEAGUE, date, nextId++, itemType, line.name, line.baseType ?? "", line.variant?.trim() ?? "", links, value, confidence]
+            .map(csvField)
+            .join(";"),
+      });
+    }
+  }
+
+  const todayCounts = { currency: 0, items: 0 };
+  for (const s of snapshot) todayCounts[s.kind]++;
+  if (todayCounts.currency === 0 || todayCounts.items === 0) {
+    throw new Error(`Suspiciously empty snapshot (${todayCounts.currency} currency rows, ${todayCounts.items} item rows) - refusing to publish.`);
+  }
+
+  // The last LOST_LOOKBACK_DAYS of files: enough to see every day the sparkline can still rebuild,
+  // and the days that just became unrecoverable. Files are per calendar month, so one or two of each.
+  const months = recentMonths(now, LOST_LOOKBACK_DAYS);
+  for (const kind of ["currency", "items"] as const) {
+    const fileFor = (month: string) => `${CURRENT_LEAGUE}/${CURRENT_LEAGUE}.${kind}.${month}.csv`;
+    const existing = new Map<string, string | undefined>();
+    for (const month of months) existing.set(month, await fetchExisting(fileFor(month)));
+
+    const presentDates = new Set<string>();
+    for (const text of existing.values()) {
+      for (const line of (text ?? "").split(/\r?\n/).slice(1)) {
+        const date = line.split(";")[1];
+        if (date) presentDates.add(date);
+      }
+    }
+
+    // New rows per month: today's snapshot, plus any missed day the sparkline still reaches.
+    const newRows = new Map<string, string[]>();
+    const add = (date: string, row: string) => {
+      const month = date.slice(0, 7);
+      const list = newRows.get(month);
+      if (list) list.push(row);
+      else newRows.set(month, [row]);
+    };
+    const rows = snapshot.filter((s) => s.kind === kind);
+    for (const s of rows) add(today, s.row(today, s.chaosValue, "High"));
+
+    const plan = planBackfill(presentDates, now, CURRENT_LEAGUE_START_DATE);
+    for (const { date, daysAgo } of plan.recoverable) {
+      let rebuilt = 0;
+      for (const s of rows) {
+        const value = s.spark ? valueFromSpark(s.spark, s.chaosValue, daysAgo) : undefined;
+        if (value === undefined) continue;
+        add(date, s.row(date, value, "Medium"));
+        rebuilt++;
+      }
+      annotate("notice", `${kind}: ${date} was missing - rebuilt ${rebuilt} rows from poe.ninja's sparkline (Confidence=Medium).`);
+    }
+    if (plan.unrecoverable.length > 0) {
+      annotate(
+        "warning",
+        `${kind}: no rows for ${plan.unrecoverable.join(", ")} - older than the ${SPARK_WINDOW_DAYS}-day sparkline, so these days can't be rebuilt.`
       );
     }
-  }
 
-  if (currencyRows.length === 0 || itemRows.length === 0) {
-    throw new Error(`Suspiciously empty snapshot (${currencyRows.length} currency rows, ${itemRows.length} item rows) - refusing to publish.`);
-  }
-
-  const currencyHeader = "League;Date;Get;Pay;Value;Confidence";
-  const itemsHeader = "League;Date;Id;Type;Name;BaseType;Variant;Links;Value;Confidence";
-
-  const existingCurrency = await fetchExisting(currencyPath);
-  const existingItems = await fetchExisting(itemsPath);
-  // dateColumnIndex=1 for both schemas (Date is the second column in each).
-  const currencyLines = dropExistingDay(existingCurrency, 1, today);
-  const itemLines = dropExistingDay(existingItems, 1, today);
-
-  const finalCurrency = (currencyLines.length > 0 ? currencyLines : [currencyHeader]).concat(currencyRows).join("\n") + "\n";
-  const finalItems = (itemLines.length > 0 ? itemLines : [itemsHeader]).concat(itemRows).join("\n") + "\n";
-
-  const currencyOut = path.join(HISTORY_DIR, currencyPath);
-  const itemsOut = path.join(HISTORY_DIR, itemsPath);
-  fs.writeFileSync(currencyOut, finalCurrency);
-  fs.writeFileSync(itemsOut, finalItems);
-
-  for (const [label, file] of [["currency", currencyOut], ["items", itemsOut]] as const) {
-    const { size } = fs.statSync(file);
-    console.log(`${label}.csv: ${(size / 1024 / 1024).toFixed(2)} MB`);
-    if (size > MAX_SAFE_FILE_BYTES) {
-      throw new Error(`${file} is ${(size / 1024 / 1024).toFixed(1)} MB, over the ${MAX_SAFE_FILE_BYTES / 1024 / 1024} MB safety threshold - GitHub rejects a push over 100MB without Git LFS. This shouldn't happen given monthly chunking (see the module doc) unless something changed a lot (e.g. a huge new item category) - stop and address it (Git LFS, a finer chunk than a month, ...) before it publishes a broken day.`);
+    for (const [month, rowsForMonth] of newRows) {
+      // Today's rows replace any earlier run's for today, so re-running on the same day is safe.
+      const lines = dropExistingDay(existing.get(month), 1, today);
+      const final = (lines.length > 0 ? lines : [HEADERS[kind]]).concat(rowsForMonth).join("\n") + "\n";
+      const out = path.join(HISTORY_DIR, fileFor(month));
+      fs.writeFileSync(out, final);
+      const { size } = fs.statSync(out);
+      console.log(`${fileFor(month)}: ${(size / 1024 / 1024).toFixed(2)} MB (+${rowsForMonth.length} rows)`);
+      if (size > MAX_SAFE_FILE_BYTES) {
+        throw new Error(`${out} is ${(size / 1024 / 1024).toFixed(1)} MB, over the ${MAX_SAFE_FILE_BYTES / 1024 / 1024} MB safety threshold - GitHub rejects a push over 100MB without Git LFS. This shouldn't happen given monthly chunking (see the module doc) unless something changed a lot (e.g. a huge new item category) - stop and address it (Git LFS, a finer chunk than a month, ...) before it publishes a broken day.`);
+      }
     }
   }
 
-  console.log(`Wrote ${currencyRows.length} new currency rows, ${itemRows.length} new item rows for ${CURRENT_LEAGUE} on ${today}.`);
+  console.log(`Wrote ${todayCounts.currency} currency rows, ${todayCounts.items} item rows for ${CURRENT_LEAGUE} on ${today}.`);
 }
 
 main().catch((err) => {
