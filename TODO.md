@@ -9,11 +9,10 @@ ordered by importance.
 | --- | --- | --- |
 | 1 | [League tester has no mobile layout](#1-league-tester-has-no-mobile-layout) | Open |
 | 2 | [New items and categories: manual follow-ups](#2-new-items-and-categories-manual-follow-ups) | Open (small) |
-| 3 | [A missed day of price history is lost for good](#3-a-missed-day-of-price-history-is-lost-for-good) | Open |
-| 4 | [Cache the predictions file at the CDN](#4-cache-the-predictions-file-at-the-cdn) | Open |
-| 5 | [Live price vs history for items with several poe.ninja lines](#5-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
-| 6 | [Holes in past-league history](#6-holes-in-past-league-history) | Open |
-| 7 | [Small follow-ups](#7-small-follow-ups) | Open |
+| 3 | [Disenchanting page: most Thaumaturgic Dust per chaos](#3-disenchanting-page-most-thaumaturgic-dust-per-chaos) | Open |
+| 4 | [Live price vs history for items with several poe.ninja lines](#4-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
+| 5 | [Holes in past-league history](#5-holes-in-past-league-history) | Open |
+| 6 | [Small follow-ups](#6-small-follow-ups) | Open |
 | – | [Done](#done) | – |
 
 ---
@@ -41,33 +40,29 @@ and 75 exchange names. What it can't do, and is still open from that run:
   Kalguuran Rune, Coffin) are still requested. Harmless, since empty categories are skipped after the
   first daily snapshot, but they could be removed once no past-league history needs them.
 
-## 3. A missed day of price history is lost for good
+## 3. Disenchanting page: most Thaumaturgic Dust per chaos
 
-`scripts/precompute-price-history.ts` only writes today's row. If a run is missed (an outage, a
-poe.ninja failure), that day is simply absent from the current league's CSVs.
+A new page ranking unique items by how much Thaumaturgic Dust they give when disenchanted in
+Kingsmarch, for what they cost to buy - "which cheap unique should I buy to disenchant?"
 
-**Fix:**
+- **Dust per unique:** poedb's Kingsmarch page, Disenchant tab
+  (https://poedb.tw/us/Kingsmarch#Disenchant), lists 1,511 uniques with a base value and the formula
+  `dust = value × 100 × (20 − (84 − clamp(ilvl, 65, 84))) × (1 + quality/100)`. Generate it into a
+  static file the way `scripts/generate-divination-cards.ts` does RePoE data, and check whether
+  RePoE carries the same number (a game-file source would be steadier than scraping a site).
+- **Price:** poe.ninja's unique item prices (already fetched for the other pages).
+- **Rank by** dust per chaos, with the dust itself and the price shown.
+- **Open questions:**
+  - Item level scales dust ×1 at ilvl 65 up to ×20 at 84+, but poe.ninja prices don't say what
+    ilvl a listing is. Assume a typical ilvl, show ilvl 84 as "up to", or let the user pick.
+  - Quality: poedb's formula is +1% per quality, the in-game description says +2%. Check which
+    is right before relying on it.
+  - Each corrupted implicit or influence adds 50%; poe.ninja variants may cover some of this.
+  - Uniques with several variants (poe.ninja lists them separately) and replicas need matching.
+  - Low seller counts make a "cheap" price unreliable; reuse the seller-count guard.
+- Follow the other flip pages: shared table/card components, mobile layout, liquidity/confidence filter.
 
-1. **Detect:** before writing today's row, check whether the previous days are present.
-2. **Backfill:** rebuild any missed day still within poe.ninja's 7-day sparkline, the same way
-   `scripts/backfill-current-league-history.ts` does, tagged `Confidence=Medium`. Log anything older
-   as unrecoverable.
-
-Scheduled runs are routinely hours late, but they have landed every day so far; the app already
-copes with the delay (see Done).
-
-## 4. Cache the predictions file at the CDN
-
-`/api/flip-suggestions/precomputed` caches its gzipped response in memory, but sends no
-`Cache-Control` header, so every cold server instance still does the work. The file changes once a
-day.
-
-- Add `Cache-Control: public, s-maxage=120, stale-while-revalidate=...` so Vercel's CDN serves
-  repeats without invoking the function. Available on the free plan.
-- Vercel won't cache a response over **10 MB**; today's is about 5.4 MB gzipped - see the Done note on predicting further than 30 days.
-- This saves server work, not visitor download size.
-
-## 5. Live price vs history for items with several poe.ninja lines
+## 4. Live price vs history for items with several poe.ninja lines
 
 Base types (e.g. Dragonscale Doublet) have one poe.ninja line per item level or influence, all under
 one name. The live price takes the **first** line (1.8c); past-league and current-league history
@@ -77,7 +72,7 @@ prices, and the model predicts from a price that doesn't match what it was train
 **Option:** average the lines for the live price too. That would change the starting price, and so
 the forecast and ranking, for every affected item (mostly base types). Needs a decision.
 
-## 6. Holes in past-league history
+## 5. Holes in past-league history
 
 Some items have gaps in a past league's data. The Last One Standing has no Keepers prices on days
 78–93, and its Mirage history stops at day 34. The daily job now fills the resulting missing
@@ -90,7 +85,7 @@ forecast days (see Done), but:
 
 **Option:** interpolate short gaps (say up to 20 days) within a league at ingest time.
 
-## 7. Small follow-ups
+## 6. Small follow-ups
 
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
@@ -121,6 +116,22 @@ forecast days (see Done), but:
   (`.github/workflows/check-new-items.yml`) adds new poe.ninja categories (read from poe.ninja's own
   site config), new Currency Exchange names and regenerated divination cards, and opens a PR listing
   what needs a human.
+- **Divination Card Flips have an Instant buy button.** Off by default; on, Cost/Profit %/Profit use
+  the stack bought off sell orders (the top of the card's hour range on the exchange × stack size),
+  in both price modes, on the table and the item page. Cards that never had a full stack listed that
+  hour are hidden while it's on. Min/Max's hover shows the hour's listed stock.
+- **Divination Card Flips' Divine mode buys the cards with divines.** Each card at its own Divine
+  market price (hour midpoint) instead of its chaos price converted; cards with no Divine market that
+  hour are hidden in Divine mode. The reward stays at its chaos price, converted.
+- **A missed day of price history is rebuilt automatically.** Before writing today's row, the daily
+  job reads the last two weeks of files and rebuilds any of the last 6 days with no rows from
+  poe.ninja's sparkline (Confidence=Medium). Older holes can't be rebuilt and show as a warning in
+  the Actions run for a week. Tested on real days: stash items came back exact (median error 0.0%);
+  exchange-priced types within a median ~8-17% of the job's own noisier single readings.
+- **The predictions file is cached at Vercel's CDN.** `/api/flip-suggestions/precomputed` sends
+  `Cache-Control: public, s-maxage=120, stale-while-revalidate=600` (and `Vary: Accept-Encoding`),
+  so repeats don't invoke the function. It's ~5.4 MB gzipped, under the 10 MB cache limit, and the
+  site password still applies (Vercel runs proxy.ts before its cache).
 - **Predict further than 30 days ahead: decided against, for now.** Raising it would sit right at
   or over the CDN's 10 MB response-cache limit (60 days ~10 MB gzipped, 90 days ~15 MB), and the
   model is only trained/validated up to a 30-day horizon anyway. Revisit only alongside shipping

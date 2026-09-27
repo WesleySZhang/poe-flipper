@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
-import { LEG_LABEL, otherCurrencyTitle, profitUnit } from "@/lib/exchange-route";
+import { LEG_LABEL, fullStackListed, otherCurrencyTitle, profitUnit, stockRangeTitle } from "@/lib/exchange-route";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
@@ -126,6 +127,9 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   const [durationDays, setDurationDays] = useState(7);
   const [dragValue, setDragValue] = useState<number | undefined>(undefined);
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
+  // Divination Card Flip section: buy the stack off sell orders instead of with a buy order, same
+  // toggle as the Divination Card Flips table.
+  const [instantBuy, setInstantBuy] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [detail, setDetail] = useState<ItemDetail | null | undefined>(undefined);
   // undefined = still loading/not applicable (never fetched for category "item"); null = fetched
@@ -242,13 +246,37 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   const profitPer1000Gold =
     faustus?.goldCost && faustus.goldCost.perItem > 0 ? (faustus.spreadChaosValue / faustus.goldCost.perItem) * 1000 : undefined;
 
-  // Divine-denominated profit ratio, same pattern as divination-flips-panel.tsx's own `enriched`.
-  const divinationProfitRatioDivine =
-    divinationFlip?.rewardDivineValue !== undefined &&
-    divinationFlip?.stackCostDivineValue !== undefined &&
-    divinationFlip.stackCostDivineValue > 0
-      ? divinationFlip.rewardDivineValue / divinationFlip.stackCostDivineValue
-      : undefined;
+  const divinationConfidence =
+    priceUnit === "divine" ? (divinationFlip?.confidenceDivine ?? divinationFlip?.confidence ?? "low") : (divinationFlip?.confidence ?? "low");
+
+  // The card flip's figures for the active price unit and buy mode, same as
+  // divination-flips-panel.tsx's `enriched`. Undefined cost = can't be bought that way this hour.
+  const cardDivine = priceUnit === "divine";
+  const cardStock = cardDivine ? divinationFlip?.buyStockDivine : divinationFlip?.buyStock;
+  // An instant buy also needs a full stack listed that hour.
+  const cardInstantBuyable = divinationFlip ? fullStackListed(cardStock, divinationFlip.stackSize) : false;
+  const cardCost = divinationFlip
+    ? instantBuy
+      ? cardInstantBuyable
+        ? cardDivine
+          ? divinationFlip.instantCostDivineValue
+          : divinationFlip.instantCostChaosValue
+        : undefined
+      : cardDivine
+        ? divinationFlip.stackCostDivineValue
+        : divinationFlip.stackCostChaosValue
+    : undefined;
+  const cardProfit = divinationFlip
+    ? instantBuy
+      ? cardDivine
+        ? divinationFlip.instantProfitDivineValue
+        : divinationFlip.instantProfitChaosValue
+      : cardDivine
+        ? divinationFlip.profitDivineValue
+        : divinationFlip.profitChaosValue
+    : undefined;
+  const cardReward = cardDivine ? divinationFlip?.rewardDivineValue : divinationFlip?.rewardChaosValue;
+  const cardRatio = cardCost !== undefined && cardCost > 0 && cardReward !== undefined ? cardReward / cardCost : undefined;
 
   return (
     <div className="flex flex-col gap-4">
@@ -456,14 +484,43 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Divination Card Flip</CardTitle>
-                {divinationFlip.faustusTradeable && <FaustusPriceButton name={historyName} priceUnit={priceUnit} />}
+                <div className="flex items-center gap-2">
+                  {divinationFlip.faustusTradeable && <FaustusPriceButton name={historyName} priceUnit={priceUnit} />}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={instantBuy ? "default" : "outline"}
+                    aria-pressed={instantBuy}
+                    onClick={() => setInstantBuy(!instantBuy)}
+                    title="Buy the stack off other players' sell orders instead of with a buy order"
+                  >
+                    Instant buy
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
+                {/* Divine mode buys the cards on their own Divine market, and an instant buy needs an
+                    exchange market (see lib/divination-flips.ts): with none this hour there's
+                    nothing to show. */}
+                {cardCost === undefined ? (
+                  <p className="text-sm text-muted-foreground">
+                    {cardDivine && divinationFlip.stackCostDivineValue === undefined
+                      ? "Not traded for divines this hour"
+                      : cardStock === undefined
+                        ? "Not on the Currency Exchange this hour"
+                        : "Fewer listed than a stack this hour"}
+                  </p>
+                ) : (
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
                   <Stat label="Stack size" value={`x${divinationFlip.stackSize}`} />
                   <Stat
                     label={`Cost (${priceUnitLabel(priceUnit)})`}
-                    value={formatPriceValue(divinationFlip.stackCostChaosValue, divinationFlip.stackCostDivineValue, priceUnit)}
+                    value={formatPriceValue(cardCost, cardCost, priceUnit)}
+                    hint={
+                      instantBuy
+                        ? "Bought off sell orders: the top of the card's hour range on the Currency Exchange"
+                        : "Bought with a buy order"
+                    }
                   />
                   <Stat
                     label="Reward"
@@ -481,27 +538,26 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                     <Stat
                       label={`Min/Max (${priceUnitLabel(priceUnit)})`}
                       value={`${formatPriceValue(divinationFlip.buyMinChaosValue, divinationFlip.buyMinDivineValue, priceUnit)} – ${formatPriceValue(divinationFlip.buyMaxChaosValue, divinationFlip.buyMaxDivineValue, priceUnit)}`}
+                      hint={stockRangeTitle(priceUnit === "divine" ? divinationFlip.buyStockDivine : divinationFlip.buyStock)}
                     />
                   )}
-                  <Stat
-                    label="Profit %"
-                    value={formatPercentChange(divinationFlip.profitPercent / 100 + 1, divinationProfitRatioDivine, priceUnit)}
-                  />
+                  <Stat label="Profit %" value={cardRatio === undefined ? "—" : `${Math.round((cardRatio - 1) * 100)}%`} />
                   <Stat
                     label={`Profit (${priceUnitLabel(priceUnit)})`}
-                    value={formatPriceValue(divinationFlip.profitChaosValue, divinationFlip.profitDivineValue, priceUnit)}
+                    value={cardProfit === undefined ? "—" : formatPriceValue(cardProfit, cardProfit, priceUnit)}
                   />
                   <div className="flex flex-col">
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Confidence</span>
                     <Badge
-                      variant={LIQUIDITY_VARIANT[divinationFlip.confidence]}
+                      variant={LIQUIDITY_VARIANT[divinationConfidence]}
                       className="w-fit"
                       title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
                     >
-                      {LIQUIDITY_LABEL[divinationFlip.confidence]}
+                      {LIQUIDITY_LABEL[divinationConfidence]}
                     </Badge>
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
           )}

@@ -27,8 +27,12 @@ collection only began 2026-09-21, so Allflame has nothing before that.
 3. **Predictions.** `predictions.json` items may carry an `e` array marking filled horizons (1 =
    interpolated, 2 = held); the job logs "Filled N horizon gaps across M items". Every item with any
    prediction should have all 30 horizons. See `lib/horizon-fill.ts`.
-4. **History rows.** `git show origin/data:history/<League>/<League>.items.<YYYY-MM>.csv | cut -d';' -f2 | sort | uniq -c`
-   - one block per day; today's date present after the run.
+4. **History rows.** `git show origin/data:history/<League>/<League>.items.<YYYY-MM>.csv | cut -d';' -f2,10 | sort | uniq -c`
+   - one block per day; today's date present after the run. `High` = the job's own reading, `Medium` =
+     rebuilt from poe.ninja's sparkline for a day the job missed (`lib/spark-backfill.ts`).
+   - A missed run is repaired by the next one if it's within 6 days: look for `::notice::` lines
+     ("was missing - rebuilt ...") in the run log. Older holes show as `::warning::` and can't be
+     recovered; the league's poe.ninja export fills them once it ends.
 5. **Trigger a run.** `gh workflow run precompute-predictions.yml` (or GitHub -> Actions -> Run workflow).
    Needed after: first deploy of new snapshot code, a fix to the scripts, or a missed daily run.
    Pushing to master alone won't trigger it unless a watched algorithm file changed.
@@ -39,6 +43,9 @@ collection only began 2026-09-21, so Allflame has nothing before that.
    slider release. Compare `currentDay` in the published file with `currentLeagueDay()`.
    Scheduled runs start hours after the 00:10 UTC cron; that alone is expected, not a failure.
 7. **App picks it up** within ~30 min (`prices.json` cache) / ~2 min (history and predictions). If the
-   page still looks stale after that, suspect raw.githubusercontent.com's CDN cache (up to ~5 min).
+   page still looks stale after that, suspect raw.githubusercontent.com's CDN cache (up to ~5 min), and
+   Vercel's CDN copy of `/api/flip-suggestions/precomputed` (`s-maxage=120`,
+   `stale-while-revalidate=600`: up to ~12 min). `curl -sI` that endpoint (with the login cookie) and
+   read `x-vercel-cache` (HIT/MISS/STALE).
 
 Report what you verified and what you could only infer.

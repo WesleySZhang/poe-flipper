@@ -33,6 +33,21 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 - Prices stay live for flips; poe.ninja files cards under `DivinationCard`, and history stores
   them as category "item" (see `poe-item-categories`).
 - Table and detail page: `components/divination-flips-panel.tsx`, `components/item-detail-panel.tsx`.
+- Divine mode buys the cards on their own Divine market (hour midpoint), not a chaos price
+  converted; the reward stays at its chaos price, converted (the owner's call). Few cards have a
+  Divine market in a given hour - 11 of 76 priceable cards on 2026-09-27, mostly expensive ones
+  (The Doctor, The Soul, History, House of Mirrors) - so Divine mode shows a short list.
+  `[verified]` (`lib/divination-flips.ts`)
+- Instant-buy cost (taking other players' sell orders; the table's Instant buy button) = the top of
+  the card's hour trade range on the exchange × stack size; the plain Cost is a buy order. poe.ninja's card price isn't always
+  inside the exchange range: on 2026-09-27, 7 of 31 cards with an exchange market had poe.ninja's
+  price above the hour's high (The Doctor: 460c vs 401c), so instant cost can read lower than Cost.
+  Divine ratios are coarse, so in Divine mode instant cost often equals Cost. `[verified]`
+- Nothing says a full stack can be bought at the Min/Max price: the exchange API has no stock per
+  price. The one quantity check is the hour's highest listed card stock vs the stack size - on
+  2026-09-27, 8 of 34 exchange-traded cards never had a full stack listed (The Soul 0-5 for a stack
+  of 9, Outfoxed 0, Mawr Blaidd 7-12 for 16), some rated Medium. Instant buy hides those
+  (`fullStackListed` in `lib/exchange-route.ts`). `[verified]`
 
 ## Sources
 

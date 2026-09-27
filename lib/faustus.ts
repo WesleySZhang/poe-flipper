@@ -859,6 +859,9 @@ export interface ItemMarket {
   itemStock: number;
   /** Currency listed on the other side, in chaos - offers to sell into. */
   currencyStockChaos: number;
+  /** Lowest and highest stock listed during the hour: the item's units (for sale) and `currency`
+   *  (buy orders). The API has no split by price - only these hour extremes per side. */
+  stockRange: { item: [number, number]; currency: [number, number] };
 }
 
 export interface ItemMarkets {
@@ -925,6 +928,10 @@ function itemMarket(
         volumeItem: m.volume_traded[id] ?? 0,
         itemStock: m.highest_stock[id] ?? 0,
         currencyStockChaos: (m.highest_stock[currencyId] ?? 0) * toChaos,
+        stockRange: {
+          item: [m.lowest_stock[id] ?? 0, m.highest_stock[id] ?? 0],
+          currency: [m.lowest_stock[currencyId] ?? 0, m.highest_stock[currencyId] ?? 0],
+        },
       };
     }
   }

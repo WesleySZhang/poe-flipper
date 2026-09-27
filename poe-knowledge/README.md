@@ -53,6 +53,7 @@ the same file.
 | `poe-divination-cards` | Stacks, rewards, which cards are priceable, card flips |
 | `poe-league-lifecycle` | How prices move across a league; what this app's history covers; the 3-league minimum |
 | `poe-item-categories` | poe.ninja/GGG categories, names, variants, the migrated-category trap, duplicate lines |
+| `poe-disenchanting` | Kingsmarch disenchanting: Thaumaturgic Dust per item, the formula, best uniques to disenchant |
 
 ## Ideas for next skills
 

@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
@@ -18,10 +19,11 @@ import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { DivinationFlip } from "@/lib/divination-flips";
 import type { LiquidityTier } from "@/lib/liquidity";
+import { fullStackListed, stockRangeTitle } from "@/lib/exchange-route";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
-import { activePrice, activeRatio, formatPercentChange, formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
+import { formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
 
@@ -31,6 +33,16 @@ type SortKey = "cost" | "reward" | "profitPercent" | "profitAbs";
 // green/amber, red stays reserved for warnings.
 const LIQUIDITY_VARIANT = { high: "default", medium: "secondary", low: "outline" } as const;
 const LIQUIDITY_LABEL = { high: "High", medium: "Medium", low: "Low" } as const;
+
+// Instant-buy figures are undefined for a card with no exchange market; such rows are filtered out
+// before rendering, but the types can't know that.
+function formatOptionalPrice(chaosValue: number | undefined, divineValue: number | undefined, unit: PriceUnit): string {
+  return chaosValue === undefined ? "—" : formatPriceValue(chaosValue, divineValue, unit);
+}
+
+function formatOptionalPercent(ratio: number | undefined): string {
+  return ratio === undefined ? "—" : `${Math.round((ratio - 1) * 100)}%`;
+}
 
 async function fetchDivinationFlips(): Promise<DivinationFlip[]> {
   const res = await fetch("/api/divination-flips");
@@ -50,6 +62,9 @@ export function DivinationFlipsPanel() {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "profitPercent", direction: "desc" });
   const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
+  // Instant buy: the stack bought off other players' sell orders (see lib/divination-flips.ts)
+  // instead of with a buy order. Cost, Profit % and Profit switch to those figures.
+  const [instant, setInstant] = useState(false);
   // Low hidden by default, same "curated by default" convention as the flip-suggestions table's
   // confidence filter and the Currency Exchange Flip page's own liquidity filter - a Low-confidence
   // row here means one of the two legs (buying the card, selling the reward) is thinly traded, so
@@ -65,20 +80,43 @@ export function DivinationFlipsPanel() {
     });
   }, []);
 
-  // Divine-denominated profit ratio derived once per fetch, same pattern as
-  // currency-exchange-flip-panel.tsx's `enriched` - DivinationFlip itself only carries the chaos
-  // profitPercent, since the divine figures (rewardDivineValue/stackCostDivineValue) are already
-  // enough to derive it without a duplicate field on the API type.
+  // The figures the table shows for the active price unit and buy mode, derived once per change so
+  // sorting, filtering and rendering all read the same values. Undefined cost means the card can't
+  // be bought that way right now (no Divine market, or no exchange market for an instant buy).
   const enriched = useMemo(
     () =>
-      flips.map((f) => ({
-        ...f,
-        profitRatioDivine:
-          f.rewardDivineValue !== undefined && f.stackCostDivineValue !== undefined && f.stackCostDivineValue > 0
-            ? f.rewardDivineValue / f.stackCostDivineValue
-            : undefined,
-      })),
-    [flips]
+      flips.map((f) => {
+        const divine = priceUnit === "divine";
+        // An instant buy also needs a full stack listed that hour; without one the card is hidden.
+        const instantBuyable = fullStackListed(divine ? f.buyStockDivine : f.buyStock, f.stackSize);
+        const cost = instant
+          ? instantBuyable
+            ? divine
+              ? f.instantCostDivineValue
+              : f.instantCostChaosValue
+            : undefined
+          : divine
+            ? f.stackCostDivineValue
+            : f.stackCostChaosValue;
+        const profit = instant
+          ? divine
+            ? f.instantProfitDivineValue
+            : f.instantProfitChaosValue
+          : divine
+            ? f.profitDivineValue
+            : f.profitChaosValue;
+        const reward = divine ? f.rewardDivineValue : f.rewardChaosValue;
+        return {
+          ...f,
+          shownCost: cost,
+          shownReward: reward,
+          shownProfit: profit,
+          shownRatio: cost !== undefined && cost > 0 && reward !== undefined ? reward / cost : undefined,
+          // Divine mode buys the cards on their Divine market, so its liquidity is that market's.
+          shownConfidence: divine ? (f.confidenceDivine ?? f.confidence) : f.confidence,
+        };
+      }),
+    [flips, priceUnit, instant]
   );
 
   const sorted = useMemo(
@@ -86,25 +124,27 @@ export function DivinationFlipsPanel() {
       sortByKey(enriched, sort, (f, key) => {
         switch (key) {
           case "cost":
-            return activePrice(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit);
+            return f.shownCost;
           case "reward":
-            return activePrice(f.rewardChaosValue, f.rewardDivineValue, priceUnit);
+            return f.shownReward;
           case "profitPercent":
-            return activeRatio(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit);
+            return f.shownRatio;
           case "profitAbs":
-            return activePrice(f.profitChaosValue, f.profitDivineValue, priceUnit);
+            return f.shownProfit;
         }
       }),
-    [enriched, sort, priceUnit]
+    [enriched, sort]
   );
 
   const normalizedSearch = searchText.trim().toLowerCase();
   const visible = sorted.filter((f) => {
-    const costActive = activePrice(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit);
     return (
       (f.name.toLowerCase().includes(normalizedSearch) || f.rewardName.toLowerCase().includes(normalizedSearch)) &&
-      (costActive === undefined || isWithinRange(costActive, costRange)) &&
-      !hiddenConfidenceTiers.has(f.confidence)
+      // No cost means the card can't be bought that way this hour (no Divine market, or no
+      // exchange market for an instant buy).
+      f.shownCost !== undefined &&
+      isWithinRange(f.shownCost, costRange) &&
+      !hiddenConfidenceTiers.has(f.shownConfidence)
     );
   });
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
@@ -124,6 +164,11 @@ export function DivinationFlipsPanel() {
   function changePriceUnit(unit: PriceUnit) {
     setPriceUnit(unit);
     setCostRange(unit === "divine" ? { min: 1 } : {});
+    setPage(0);
+  }
+
+  function changeInstant(value: boolean) {
+    setInstant(value);
     setPage(0);
   }
 
@@ -165,6 +210,14 @@ export function DivinationFlipsPanel() {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {priceUnit === "divine" && (
+          <p
+            className="text-xs text-muted-foreground"
+            title="Cards at their own Divine market price on the Currency Exchange; rewards at their chaos price, converted"
+          >
+            Only cards traded for divines this hour
+          </p>
+        )}
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search cards or rewards..." />
           <NumericRangeFilter
@@ -173,6 +226,15 @@ export function DivinationFlipsPanel() {
             onChange={changeCostRange}
             initialMin={priceUnit === "divine" ? 1 : undefined}
           />
+          <Button
+            type="button"
+            variant={instant ? "default" : "outline"}
+            aria-pressed={instant}
+            onClick={() => changeInstant(!instant)}
+            title="Buy the stack off other players' sell orders instead of with a buy order"
+          >
+            Instant buy
+          </Button>
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -215,10 +277,10 @@ export function DivinationFlipsPanel() {
                     label: "Confidence",
                     value: (
                       <Badge
-                        variant={LIQUIDITY_VARIANT[f.confidence]}
+                        variant={LIQUIDITY_VARIANT[f.shownConfidence]}
                         title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
                       >
-                        {LIQUIDITY_LABEL[f.confidence]}
+                        {LIQUIDITY_LABEL[f.shownConfidence]}
                       </Badge>
                     ),
                     emphasized: true,
@@ -229,22 +291,22 @@ export function DivinationFlipsPanel() {
                     label: "Min/Max",
                     value:
                       f.buyMinChaosValue !== undefined && f.buyMaxChaosValue !== undefined ? (
-                        <>
+                        <span title={stockRangeTitle(priceUnit === "divine" ? f.buyStockDivine : f.buyStock)}>
                           {formatPriceValue(f.buyMinChaosValue, f.buyMinDivineValue, priceUnit)} &ndash;{" "}
                           {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
-                        </>
+                        </span>
                       ) : f.faustusTradeable ? (
                         <FaustusPriceButton name={f.name} priceUnit={priceUnit} />
                       ) : (
                         "—"
                       ),
                   },
-                  { label: `Profit (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.profitChaosValue, f.profitDivineValue, priceUnit) },
+                  { label: `Profit (${priceUnitLabel(priceUnit)})`, value: formatOptionalPrice(f.shownProfit, f.shownProfit, priceUnit) },
                 ]}
                 rightFields={[
-                  { label: `Cost (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit) },
+                  { label: `Cost (${priceUnitLabel(priceUnit)})`, value: formatOptionalPrice(f.shownCost, f.shownCost, priceUnit) },
                   { label: `Sell (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit) },
-                  { label: "Profit %", value: formatPercentChange(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit), emphasized: true },
+                  { label: "Profit %", value: formatOptionalPercent(f.shownRatio), emphasized: true },
                 ]}
               />
             ))}
@@ -291,13 +353,14 @@ export function DivinationFlipsPanel() {
                   expandable={false}
                 >
                   <TableCell className="text-right text-muted-foreground">x{f.stackSize}</TableCell>
-                  <TableCell className="text-right">
-                    {formatPriceValue(f.stackCostChaosValue, f.stackCostDivineValue, priceUnit)}
-                  </TableCell>
+                  <TableCell className="text-right">{formatOptionalPrice(f.shownCost, f.shownCost, priceUnit)}</TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-2">
                       {f.buyMinChaosValue !== undefined && f.buyMaxChaosValue !== undefined ? (
-                        <span className="text-right text-muted-foreground">
+                        <span
+                          className="cursor-help text-right text-muted-foreground"
+                          title={stockRangeTitle(priceUnit === "divine" ? f.buyStockDivine : f.buyStock)}
+                        >
                           {formatPriceValue(f.buyMinChaosValue, f.buyMinDivineValue, priceUnit)} &ndash;{" "}
                           {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
                         </span>
@@ -312,19 +375,15 @@ export function DivinationFlipsPanel() {
                     {f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName}
                   </TableCell>
                   <TableCell className="text-right">{formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit)}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatPercentChange(f.profitPercent / 100 + 1, f.profitRatioDivine, priceUnit)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatPriceValue(f.profitChaosValue, f.profitDivineValue, priceUnit)}
-                  </TableCell>
+                  <TableCell className="text-right font-medium">{formatOptionalPercent(f.shownRatio)}</TableCell>
+                  <TableCell className="text-right">{formatOptionalPrice(f.shownProfit, f.shownProfit, priceUnit)}</TableCell>
                   <TableCell>
                     <div className="flex justify-center">
                       <Badge
-                        variant={LIQUIDITY_VARIANT[f.confidence]}
+                        variant={LIQUIDITY_VARIANT[f.shownConfidence]}
                         title="Weaker of the two legs' liquidity: buying the card, selling the reward. Not the item-growth confidence score used elsewhere in this app - a card's reward is fixed, not a forecast."
                       >
-                        {LIQUIDITY_LABEL[f.confidence]}
+                        {LIQUIDITY_LABEL[f.shownConfidence]}
                       </Badge>
                     </div>
                   </TableCell>

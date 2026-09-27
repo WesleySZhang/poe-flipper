@@ -18,9 +18,27 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 | GGG leagues API (`api.pathofexile.com/leagues?type=main&realm=pc`) | Every league's `startAt` / `endAt` | Public, no login needed (checked 2026-09-26). `endAt` is null while a league has no set end. `[verified]` (`scripts/sync-current-league.ts`) |
 | RePoE (repoe-fork) | Game-file dump: item names, ids, divination card stack sizes and reward text | Unofficial community mirror; the source for the name map and card data. `[verified]` |
 | poewiki.net | Item/mechanic pages | Not Fandom; the app links to it per item. `[verified]` |
+| poedb.tw | Game-data tables, e.g. per-unique Thaumaturgic Dust values (Kingsmarch page, Disenchant tab) | A site, not an API: scrape the HTML tables. See `poe-disenchanting`. `[verified]` |
 
 - poe.ninja's sparkline points are the % change vs a fixed base 6-7 days earlier, oldest first, `null`
-  on a day with no price. `[verified]` (`lib/poe-ninja.ts`)
+  on a day with no price; the last point is today. `[verified]` (`lib/poe-ninja.ts`)
+- Rebuilding a past day from the sparkline (anchored on today's price) matches stored daily prices
+  exactly for stash items (median error 0.0%). For exchange-priced types (currency, scarabs, cards,
+  essences, ...) it's within a median ~8-17% of a single live reading, and the gap is mostly the
+  reading's noise: a thin exchange market's live price can jump day to day (Timeless Templar
+  Splinter read 22c, 3c, 0.3c, 0.02c, 20c on consecutive days) while the sparkline is steadier.
+  `[verified]` (tested 2026-09-27; `lib/spark-backfill.ts`)
+- GGG's Currency Exchange `lowest_stock` / `highest_stock` are each side's lowest and highest
+  listed stock during the hour, not stock at the low or high price: the API has no order-book depth
+  and no split of stock by price. A pair can trade with 0 of the item listed at both extremes (orders
+  filled as soon as they were placed). `[verified]` (2026-09-27; `stockRange` in `lib/faustus.ts`)
+  The in-game exchange's order book (stock at each price) is only visible in game.
+- The trade site's bulk exchange (`POST https://www.pathofexile.com/api/trade/exchange/<League>`,
+  body `{"query":{"status":{"option":"online"|"any"},"have":["chaos"],"want":["the-doctor"]},"sort":{"have":"asc"}}`,
+  ids from `/api/trade/data/static`) does give price + stock per listing and needs no login, but it's
+  a different, mostly dead market since the in-game exchange: on 2026-09-27 The Doctor had 0 online
+  chaos listings, and "any" returned weeks-old offline 1c-per-Doctor listings (bait). Rate limit per
+  IP: 5/15s, 10/90s, 30/300s (`X-Rate-Limit-Ip`). Not a stand-in for exchange depth. `[verified]`
 - poe.ninja has **no API listing its categories**. Its site sidebar is built from a config object
   compiled into one of its JavaScript chunks (`{availableViews:[...], title, type, url}` per
   category); chunk names change every deploy, so find it by walking the imports from the page's
