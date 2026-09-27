@@ -10,13 +10,19 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 
 ## Facts
 
-- poe.ninja splits prices into "currency-style" types (stackables): Currency, Fragment,
-  DivinationCard, Scarab, Prophecy, Essence, Fossil, Oil, DeliriumOrb, Omen, Resonator, Runegraft,
-  Artifact, Seed, DjinnCoin, HelmetEnchant, Watchstone, Tattoo, AllflameEmber. `[verified]`
-- "Item-style" types: Unique* (Weapon, Armour, Accessory, Flask, Jewel, Map, Relic, Idol,
-  Tincture), SkillGem, ImbuedGem, ClusterJewel, Map, BlightedMap, BlightRavagedMap, ValdoMap,
-  Incubator, Vial, Invitation, Memory, ShrineBelt, Wombgift, KalguuranRune, Beast, Coffin,
-  IncursionTemple, BaseType. `[verified]`
+- poe.ninja lists 46 categories (2026-09-27), each served by the **exchange** overview (stackables
+  priced from GGG's Currency Exchange) or the **stash** overview (listed items). `[verified]`
+  - Exchange: Currency, Fragment, Runegraft, AllflameEmber, Tattoo, Omen, DjinnCoin, Ducat,
+    EnshroudingCrystal, DivinationCard, Artifact, Oil, DeliriumOrb, Scarab, Astrolabe, Fossil,
+    Resonator, Essence (Currency and Fragment also have stash data).
+  - Stash: Wombgift, Corpse, Incubator, Unique* (Weapon, Armour, Accessory, Flask, Jewel, Tincture,
+    Relic, Map), ForbiddenJewel, ShrineBelt, SkillGem, ImbuedGem, ClusterJewel, Map, BlightedMap,
+    BlightRavagedMap, ValdoMap, Invitation, Memory, IncursionTemple, ScryingOrb, BaseType, Flask,
+    Beast, Vial.
+- The authoritative list is poe.ninja's own site config, which `scripts/check-new-items.ts` reads
+  daily; don't trust a hand-copied list (this one included) over it. The app still requests a few
+  types poe.ninja no longer lists (Prophecy, Seed, HelmetEnchant, Watchstone, UniqueIdol,
+  KalguuranRune, Coffin). `[verified]`
 - **Migration trap:** poe.ninja moved several types (divination cards, scarabs, essences, fossils,
   oils, omens, and others) onto the currency endpoint. History was ingested when they were "item",
   so live price says category "currency" while history says "item". Any exact-category lookup can

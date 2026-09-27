@@ -15,11 +15,13 @@ description: Use when a new Path of Exile challenge league launches or the curre
    `scripts/export-*.ts` scripts, fit with the Python in `ml/`, update `lib/models/predictor.json`).
    Run `scripts/backtest-predictor.ts` to confirm it did not regress. This is manual today - see
    `TODO.md` item 6.
-4. **Regenerate name maps** for new tradeable items: `scripts/generate-faustus-mapping.ts`,
-   `scripts/generate-faustus-doc.ts`, `scripts/generate-divination-cards.ts`.
-5. **New poe.ninja categories.** Compare `CURRENCY_OVERVIEW_TYPES` / `ITEM_OVERVIEW_TYPES` in
-   `lib/poe-ninja.ts` with poe.ninja's current type names; add new ones. Watch for categories that
-   moved between the currency and item endpoints (see the `poe-item-categories` skill).
+4. **New items and categories.** Run the "Check for new items" workflow (or
+   `npx tsx scripts/check-new-items.ts`) instead of waiting for its daily run. It adds new poe.ninja
+   categories, Currency Exchange names and divination cards, and its report lists the manual follow-ups:
+   gold costs (`lib/faustus-gold.ts`) and category filter placement (`lib/category-reliability.ts`).
+   RePoE can lag a patch by a few days; rerun it once RePoE updates.
+5. **Categories that moved** between the currency and item endpoints need a look beyond what the check
+   does (see the `poe-item-categories` skill): history lookups by exact category can miss.
 6. **Update knowledge skills** in `poe-knowledge/` (league list, new mechanics) and the README.
 7. **Rerun the workflow** (see the `precompute-check` skill) and confirm the data branch and app
    pick up the new league. The current league has no daily history until the daily job has run for

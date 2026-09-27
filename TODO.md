@@ -8,7 +8,7 @@ ordered by importance.
 | # | Item | Status |
 | --- | --- | --- |
 | 1 | [League tester has no mobile layout](#1-league-tester-has-no-mobile-layout) | Open |
-| 2 | [New items and categories aren't picked up automatically](#2-new-items-and-categories-arent-picked-up-automatically) | Open |
+| 2 | [New items and categories: manual follow-ups](#2-new-items-and-categories-manual-follow-ups) | Open (small) |
 | 3 | [A missed day of price history is lost for good](#3-a-missed-day-of-price-history-is-lost-for-good) | Open |
 | 4 | [Automate retraining when a new league starts](#4-automate-retraining-when-a-new-league-starts) | Open |
 | 5 | [Cache the predictions file at the CDN](#5-cache-the-predictions-file-at-the-cdn) | Open |
@@ -30,31 +30,19 @@ table that scrolls sideways.
 **Fix:** give it its own `fields` / `rightFields` for `ItemHistoryCard`, the way the other panels do.
 The shared card and expand logic should need no changes.
 
-## 2. New items and categories aren't picked up automatically
+## 2. New items and categories: manual follow-ups
 
-Several lists are generated or typed in once and don't notice when a league adds new items. Nothing
-breaks, but a new item gets worse treatment until someone regenerates the list.
+A daily job now picks up new poe.ninja categories, Currency Exchange names and divination cards, and
+opens a PR (see Done, and the README's "New items and categories"). Its first run added 7 categories
+and 75 exchange names. What it can't do, and is still open from that run:
 
-| List | What a new item misses | How it's updated today |
-| --- | --- | --- |
-| `CURRENCY_OVERVIEW_TYPES` / `ITEM_OVERVIEW_TYPES` (`lib/poe-ninja.ts`) | A whole new poe.ninja category is never fetched | By hand |
-| `FAUSTUS_NAME_TO_ID` (`lib/faustus.ts`) | Invisible to Currency Exchange Flip and card-flip confidence | `scripts/generate-faustus-mapping.ts` |
-| `DIVINATION_CARDS` (`lib/divination-cards.ts`) | New cards don't appear in Divination Card Flips | `scripts/generate-divination-cards.ts` |
-| `lib/faustus-gold.ts` | No gold cost | By hand, from community sources |
-| Category display order (`lib/category-reliability.ts`) | Lands in "Etc." in the filter (cosmetic) | By hand |
-| `lib/ninja-link.ts` category slugs | No poe.ninja link on the detail page | By hand |
-
-The model itself can't predict a brand-new item at all until past leagues have data for it; that's
-expected, not a bug. The poewiki link needs no upkeep (it's built from the name).
-
-**Suggested fix:** a scheduled GitHub Action, following the league-swap job's pattern (detect, then
-open a pull request for a human to merge):
-
-1. A `scripts/check-new-items.ts` pulls RePoE's `base_items.json` and lists tradeable items missing
-   from the exchange map and card list, plus any poe.ninja category the app doesn't know.
-2. On a finding, the job reruns the generators and opens a PR with the result.
-3. Gold costs, display order and link slugs can't be derived from RePoE, so the PR lists them as
-   manual follow-ups.
+- **Place the new categories in the category filter** (`lib/category-reliability.ts`). Corpse, Ducat,
+  Enshrouding Crystal, Forbidden Jewel, Astrolabe, Scrying Orb and Flask currently sit in "Etc.",
+  hidden by default.
+- **Gold cost for Scrap Metal** in `lib/faustus-gold.ts`.
+- **Categories poe.ninja no longer lists** (Prophecy, Seed, Helmet Enchant, Watchstone, Unique Idol,
+  Kalguuran Rune, Coffin) are still requested. Harmless, since empty categories are skipped after the
+  first daily snapshot, but they could be removed once no past-league history needs them.
 
 ## 3. A missed day of price history is lost for good
 
@@ -140,8 +128,6 @@ forecast days (see Done), but:
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
   table on the previous value until release, then waits for a live calculation.
-- **poe.ninja links** aren't shown for Prophecy, Seed, Helmet Enchant, Watchstone, Unique Idol,
-  Kalguuran Rune and Coffin, since no matching poe.ninja page was found.
 
 ---
 
@@ -164,5 +150,9 @@ forecast days (see Done), but:
 - **Late daily runs no longer degrade the app.** GitHub starts the scheduled job hours late; the app
   used to reject the day-old file until then, losing the detailed forecast line and the instant
   slider. It now shifts a file up to 2 days old to today (`alignPrecomputedToDay`).
+- **New items and categories are picked up automatically.** A daily job
+  (`.github/workflows/check-new-items.yml`) adds new poe.ninja categories (read from poe.ninja's own
+  site config), new Currency Exchange names and regenerated divination cards, and opens a PR listing
+  what needs a human.
 - **Current-league history** for migrated types (cards, scarabs, ...) now shows on the chart, and
   same-day duplicate rows are averaged like past leagues.

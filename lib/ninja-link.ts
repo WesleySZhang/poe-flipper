@@ -3,15 +3,16 @@
  * https://poe.ninja/poe1/economy/allflame/divination-cards/the-nurse. Pure (no server-only), so both
  * the snapshot builder and any component can use it.
  *
- * Two things the URL needs: the site's category slug (a fixed map from the API's type name, read off
- * poe.ninja's own nav 2026-09-24) and the item's `detailsId`. For stash-scraped items poe.ninja returns
+ * Two things the URL needs: the site's category slug (a map from the API's type name, taken from
+ * poe.ninja's own category config) and the item's `detailsId`. For stash-scraped items poe.ninja returns
  * `detailsId` on each line (it folds in variant + base type, e.g. "mageblood-5-flasks-heavy-belt") and
  * it's stored in the price snapshot; for currency-style types it's simply the slugified name.
  */
+import { CURRENCY_OVERVIEW_TYPES } from "./poe-ninja";
 
-// Types with no entry here (Prophecy, Seed, HelmetEnchant, Watchstone, UniqueIdol, KalguuranRune,
-// Coffin) have no matching poe.ninja page that was found - no link is shown for those.
-const CATEGORY_SLUGS: Record<string, string> = {
+// A type with no entry here gets no link. New categories are appended by scripts/check-new-items.ts
+// from poe.ninja's own category config.
+export const CATEGORY_SLUGS: Record<string, string> = {
   Currency: "currency",
   Fragment: "fragments",
   DivinationCard: "divination-cards",
@@ -51,12 +52,17 @@ const CATEGORY_SLUGS: Record<string, string> = {
   Beast: "beasts",
   IncursionTemple: "temples",
   BaseType: "base-types",
+  Corpse: "corpses",
+  Ducat: "ducats",
+  EnshroudingCrystal: "enshrouding-crystals",
+  ForbiddenJewel: "forbidden-jewels",
+  Astrolabe: "astrolabes",
+  ScryingOrb: "scrying-orbs",
+  Flask: "flasks",
 };
 
-const CURRENCY_STYLE_TYPES = new Set([
-  "Currency", "Fragment", "DivinationCard", "Scarab", "Essence", "Fossil", "Oil", "DeliriumOrb", "Omen",
-  "Resonator", "Runegraft", "Artifact", "DjinnCoin", "Tattoo", "AllflameEmber",
-]);
+// Currency-style (exchange-priced) types, whose detailsId is just the slugified name.
+const CURRENCY_STYLE_TYPES = new Set<string>(CURRENCY_OVERVIEW_TYPES);
 
 /** "Atziri's Arsenal" -> "atziris-arsenal" - poe.ninja's detailsId for currency-style names. */
 export function ninjaSlug(name: string): string {

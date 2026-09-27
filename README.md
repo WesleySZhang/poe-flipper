@@ -201,13 +201,30 @@ npm run ml:backtest                 # replays Mirage through the app, per predic
 Then commit `lib/models/predictor.json`. The full new-league checklist (config, ingest, retrain,
 regenerating name maps, new poe.ninja categories) is in `.claude/skills/new-league/SKILL.md`.
 
-### Regenerating generated files
+### New items and categories
+
+A daily GitHub Action (`.github/workflows/check-new-items.yml`, running `scripts/check-new-items.ts`)
+keeps the app's item lists current and opens a pull request when something changed:
+
+- **poe.ninja categories** the app doesn't request yet are added to `lib/poe-ninja.ts` (exchange- or
+  stash-priced, as poe.ninja itself says) with their page slug in `lib/ninja-link.ts`. poe.ninja has no
+  category API, so the list is read from the config compiled into its site's JavaScript.
+- **Currency Exchange names** are added to `lib/faustus.ts` (never removed, since markets open and
+  close hour to hour), and `docs/faustus-mapping.md` is regenerated.
+- **Divination cards** are regenerated from RePoE in `lib/divination-cards.ts`.
+
+The PR description lists what needs a human: gold costs for new exchange items
+(`lib/faustus-gold.ts`) and where new categories go in the category filter
+(`lib/category-reliability.ts`). After merging, rerun the daily data job so the price snapshot picks
+up new categories. Run it locally with `npx tsx scripts/check-new-items.ts` (`--dry-run` to only report).
+
+To regenerate one list by hand (prints by default; `--write` writes the file):
 
 | Command | Regenerates |
 | --- | --- |
-| `npx tsx scripts/generate-faustus-mapping.ts` | Currency Exchange name ↔ id map in `lib/faustus.ts` |
+| `npx tsx scripts/generate-faustus-mapping.ts --write` | Currency Exchange name ↔ id map in `lib/faustus.ts` (replaces it with what's traded this hour) |
 | `npx tsx scripts/generate-faustus-doc.ts` | `docs/faustus-mapping.md` |
-| `npx tsx scripts/generate-divination-cards.ts` | `lib/divination-cards.ts` (stack sizes, rewards) |
+| `npx tsx scripts/generate-divination-cards.ts --write` | `lib/divination-cards.ts` (stack sizes, rewards) |
 
 ### Running the daily job by hand
 
@@ -324,7 +341,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
 | `scripts/check-current-league.ts`, `sync-current-league.ts` | League-swap check and fix |
-| `scripts/generate-*.ts` | Regenerate the exchange map, its doc and card data from RePoE |
+| `scripts/check-new-items.ts` | Daily check for new items and poe.ninja categories (see [New items and categories](#new-items-and-categories)) |
+| `scripts/generate-*.ts`, `scripts/generated-data.ts` | Regenerate the exchange map, its doc and card data; shared fetch/parse/write helpers |
 | `scripts/export-training-features.ts`, `check-predictor-parity.ts`, `backtest-predictor.ts` | Model training export, parity check and backtest (`npm run ml:*`) |
 | `scripts/backtest-mirage.ts`, `discover-*.ts`, `backfill-current-league-history.ts` | One-off analyses and a one-time history backfill |
 | `ml/` | Offline Python for training and experiments; see `ml/README.md` |

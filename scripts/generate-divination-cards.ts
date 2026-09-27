@@ -46,113 +46,31 @@
  * doesn't). A card whose "specific" name doesn't actually match anything live just gets skipped
  * there, same as always - this generator only needs to get the CANDIDATE list right.
  *
- * Prints the generated array for review - paste into lib/divination-cards.ts by hand, same
- * "generated, do not hand-edit the target file" convention as generate-faustus-mapping.ts.
+ * The parsing lives in scripts/generated-data.ts (shared with the daily scripts/check-new-items.ts
+ * job, which runs this automatically).
  *
- *   npx tsx scripts/generate-divination-cards.ts
+ *   npx tsx scripts/generate-divination-cards.ts           # print the generated array
+ *   npx tsx scripts/generate-divination-cards.ts --write   # write it into lib/divination-cards.ts
  */
-const REPOE_BASE_ITEMS_URL = "https://repoe-fork.github.io/base_items.json";
-const DIVINATION_CARD_PREFIX = "Metadata/Items/DivinationCards/";
-const ABSTRACT_DIVINATION_CARD_ID = `${DIVINATION_CARD_PREFIX}AbstractDivinationCard`;
+import { buildDivinationCards, fetchRePoEBaseItems, formatCardLines, writeDivinationCards } from "./generated-data";
 
-interface RePoEEntry {
-  name: string;
-  item_class: string;
-  properties?: {
-    stack_size?: number;
-    description?: string;
-  };
-}
+async function main() {
+  const write = process.argv.includes("--write");
+  const r = buildDivinationCards(await fetchRePoEBaseItems());
+  console.log(`${r.total} divination card entries in RePoE's base_items.json.`);
+  console.log(`${r.noStackSize} entries had no stack_size (skipped).`);
+  console.log(`${r.noSingleTag} entries had a multi-tag or plain-text description (randomized outcome, skipped).`);
+  console.log(`${r.unknownTag} entries had a reward tag this generator doesn't recognize yet (skipped) - review manually if > 0.`);
+  const byKind = { unique: 0, currency: 0, card: 0 };
+  for (const c of r.cards) byKind[c.rewardKind]++;
+  console.log(`\nResolved ${r.cards.length} deterministic-reward cards (unique: ${byKind.unique}, currency: ${byKind.currency}, card: ${byKind.card}).`);
 
-type RewardKind = "unique" | "currency" | "card";
-
-interface DivinationCardDef {
-  name: string;
-  stackSize: number;
-  rewardKind: RewardKind;
-  rewardName: string;
-  rewardQuantity: number;
-}
-
-const REWARD_TAG_TO_KIND: Record<string, RewardKind> = {
-  uniqueitem: "unique",
-  currencyitem: "currency",
-  divination: "card",
-  // All three priced as a plain base-type/currency lookup, same mechanism as currencyitem - see
-  // this file's module doc for why magicitem/rareitem are folded in here despite carrying random
-  // affixes in-game (deliberately priced AS the base type, not as the true randomized item).
-  whiteitem: "currency",
-  magicitem: "currency",
-  rareitem: "currency",
-};
-
-// Matches "3x Chaos Orb" -> qty 3, name "Chaos Orb"; "1,500x Vivid Crystallised Lifeforce" -> qty
-// 1500 (thousands separator stripped before parsing); a bare "Chaos Orb" (no "Nx " prefix) -> qty 1.
-const QUANTITY_PREFIX = /^([\d,]+)x (.+)$/;
-
-function parseReward(description: string): { tag: string; text: string }[] {
-  return [...description.matchAll(/<(\w+)>\{([^}]*)\}/g)].map((m) => ({ tag: m[1], text: m[2] }));
-}
-
-function main() {
-  return fetch(REPOE_BASE_ITEMS_URL, { headers: { "User-Agent": "Mozilla/5.0" } }).then(async (res) => {
-    if (!res.ok) throw new Error(`RePoE fetch failed: ${res.status}`);
-    const repoe = (await res.json()) as Record<string, RePoEEntry>;
-
-    const cardEntries = Object.entries(repoe).filter(
-      ([id, entry]) => id.startsWith(DIVINATION_CARD_PREFIX) && id !== ABSTRACT_DIVINATION_CARD_ID && entry.item_class === "DivinationCard"
-    );
-    console.log(`${cardEntries.length} divination card entries in RePoE's base_items.json.`);
-
-    const cards: DivinationCardDef[] = [];
-    let noStackSize = 0;
-    let noSingleTag = 0;
-    let unknownTag = 0;
-
-    for (const [, entry] of cardEntries) {
-      const stackSize = entry.properties?.stack_size;
-      if (!stackSize || stackSize < 1) {
-        noStackSize++;
-        continue;
-      }
-      const description = entry.properties?.description ?? "";
-      const parts = parseReward(description);
-      // Multi-tag (randomized outcome, including a guaranteed-corrupted unique - see this file's
-      // module doc for why that one stays excluded) and zero-tag (plain text / disabled)
-      // descriptions are both out of scope - only a single, unambiguous <tag>{text} segment is a
-      // deterministic reward.
-      if (parts.length !== 1) {
-        noSingleTag++;
-        continue;
-      }
-      const rewardPart = parts[0];
-      const rewardKind = REWARD_TAG_TO_KIND[rewardPart.tag];
-      if (!rewardKind) {
-        unknownTag++;
-        continue;
-      }
-      const quantityMatch = rewardPart.text.match(QUANTITY_PREFIX);
-      const rewardQuantity = quantityMatch ? Number(quantityMatch[1].replace(/,/g, "")) : 1;
-      const rewardName = quantityMatch ? quantityMatch[2] : rewardPart.text;
-      cards.push({ name: entry.name, stackSize, rewardKind, rewardName, rewardQuantity });
-    }
-
-    console.log(`${noStackSize} entries had no stack_size (skipped).`);
-    console.log(`${noSingleTag} entries had a multi-tag or plain-text description (randomized outcome, skipped).`);
-    console.log(`${unknownTag} entries had a reward tag this generator doesn't recognize yet (skipped) - review manually if > 0.`);
-    console.log(`\nResolved ${cards.length} deterministic-reward cards.`);
-    const byKind = { unique: 0, currency: 0, card: 0 };
-    for (const c of cards) byKind[c.rewardKind]++;
-    console.log(`  unique: ${byKind.unique}, currency: ${byKind.currency}, card: ${byKind.card}`);
-
-    const sorted = cards.sort((a, b) => a.name.localeCompare(b.name));
-    const lines = sorted.map(
-      (c) =>
-        `  { name: ${JSON.stringify(c.name)}, stackSize: ${c.stackSize}, rewardKind: ${JSON.stringify(c.rewardKind)}, rewardName: ${JSON.stringify(c.rewardName)}, rewardQuantity: ${c.rewardQuantity} },`
-    );
-    console.log(`\n=== Generated array (${sorted.length} entries) - review, then paste into lib/divination-cards.ts ===`);
-    console.log(lines.join("\n"));
-  });
+  if (write) {
+    console.log(writeDivinationCards(r.cards) ? "Wrote lib/divination-cards.ts." : "lib/divination-cards.ts already up to date.");
+  } else {
+    console.log(`\n=== Generated array (${r.cards.length} entries) - pass --write to write it into lib/divination-cards.ts ===`);
+    console.log(formatCardLines(r.cards));
+  }
 }
 
 main().catch((err) => {
