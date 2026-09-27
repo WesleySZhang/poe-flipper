@@ -5,10 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
-import { LegPrice } from "@/components/leg-price";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
 import { MobileSortControl } from "@/components/mobile-sort-control";
@@ -17,12 +14,12 @@ import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { FaustusSpread } from "@/lib/faustus";
-import { LEG_LABEL } from "@/lib/exchange-route";
+import { LEG_LABEL, otherCurrencyTitle, profitUnit } from "@/lib/exchange-route";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { liquidityTier, type LiquidityTier } from "@/lib/liquidity";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
-import { activePrice, activeRatio, formatPercentChange, formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
+import { formatPercentChange, formatPriceValue } from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
 
@@ -58,8 +55,9 @@ async function fetchFaustusSpreads(): Promise<FaustusSpread[]> {
  * the two apart.
  *
  * Each row buys and sells on whichever of the item's markets (against Chaos or against Divine) gives
- * the best route - see lib/faustus.ts's getFaustusSpreads - and shows which under the Buy and Sell
- * prices.
+ * the best route - see lib/faustus.ts's getFaustusSpreads. Buy and Sell are shown in the currency
+ * their market trades in ("6.0c", "0.0189d"); Profit is in divines only when both legs are.
+ * Sorting and the buy-price filter use chaos values, so rows in either currency compare fairly.
  */
 export function CurrencyExchangeFlipPanel() {
   const [spreads, setSpreads] = useState<FaustusSpread[]>([]);
@@ -67,7 +65,6 @@ export function CurrencyExchangeFlipPanel() {
   const [buyRange, setBuyRange] = useState<NumericRange>({});
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "profitPercent", direction: "desc" });
-  const [priceUnit, setPriceUnit] = useState<PriceUnit>("chaos");
   // Low hidden by default, same "curated by default" philosophy as the flip-suggestions table's
   // confidence filter - a Low-liquidity row's profit % is usually a couple of trades' worth of
   // ratio-rounding noise, not a real opportunity, so it's not worth showing until asked for.
@@ -92,21 +89,24 @@ export function CurrencyExchangeFlipPanel() {
     () =>
       spreads.map((s) => {
         const chaosRatio = s.sellChaosValue / s.buyChaosValue;
-        const divineRatio =
-          s.buyDivineValue !== undefined && s.sellDivineValue !== undefined
-            ? s.sellDivineValue / s.buyDivineValue
-            : undefined;
         const spreadDivineValue =
           s.buyDivineValue !== undefined && s.sellDivineValue !== undefined
             ? s.sellDivineValue - s.buyDivineValue
             : undefined;
         // Gold is charged on the BUY side per unit (see lib/faustus-gold.ts), so this is the chaos
         // profit a flip nets back per 1000 gold spent acquiring the item - the number that actually
-        // matters once gold, not chaos, caps how much you can flip in a day. Always chaos, even in
-        // divine display mode - gold has no divine-denominated equivalent to convert to.
+        // matters once gold, not chaos, caps how much you can flip in a day. Always chaos - gold has
+        // no divine-denominated equivalent to convert to.
         const profitPer1000Gold =
           s.goldCost && s.goldCost.perItem > 0 ? (s.spreadChaosValue / s.goldCost.perItem) * 1000 : undefined;
-        return { ...s, chaosRatio, divineRatio, spreadDivineValue, profitPer1000Gold, liquidity: liquidityTier(s.volumeChaos) };
+        return {
+          ...s,
+          chaosRatio,
+          spreadDivineValue,
+          profitIn: profitUnit(s.buyIn, s.sellIn),
+          profitPer1000Gold,
+          liquidity: liquidityTier(s.volumeChaos),
+        };
       }),
     [spreads]
   );
@@ -116,29 +116,27 @@ export function CurrencyExchangeFlipPanel() {
       sortByKey(enriched, sort, (s, key) => {
         switch (key) {
           case "buy":
-            return activePrice(s.buyChaosValue, s.buyDivineValue, priceUnit);
+            return s.buyChaosValue;
           case "sell":
-            return activePrice(s.sellChaosValue, s.sellDivineValue, priceUnit);
+            return s.sellChaosValue;
           case "profitPercent":
-            return activeRatio(s.chaosRatio, s.divineRatio, priceUnit);
+            return s.chaosRatio;
           case "profitAbs":
-            return activePrice(s.spreadChaosValue, s.spreadDivineValue, priceUnit);
+            return s.spreadChaosValue;
           case "profitPerGold":
             return s.profitPer1000Gold;
         }
       }),
-    [enriched, sort, priceUnit]
+    [enriched, sort]
   );
 
   const normalizedSearch = searchText.trim().toLowerCase();
-  const visible = sorted.filter((s) => {
-    const buyActive = activePrice(s.buyChaosValue, s.buyDivineValue, priceUnit);
-    return (
+  const visible = sorted.filter(
+    (s) =>
       s.name.toLowerCase().includes(normalizedSearch) &&
-      (buyActive === undefined || isWithinRange(buyActive, buyRange)) &&
+      isWithinRange(s.buyChaosValue, buyRange) &&
       !hiddenLiquidityTiers.has(s.liquidity)
-    );
-  });
+  );
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
   const paged = visible.slice(pageStart, pageStart + PAGE_SIZE);
@@ -150,12 +148,6 @@ export function CurrencyExchangeFlipPanel() {
 
   function changeBuyRange(range: NumericRange) {
     setBuyRange(range);
-    setPage(0);
-  }
-
-  function changePriceUnit(unit: PriceUnit) {
-    setPriceUnit(unit);
-    setBuyRange(unit === "divine" ? { min: 1 } : {});
     setPage(0);
   }
 
@@ -176,7 +168,7 @@ export function CurrencyExchangeFlipPanel() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
+      <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Currency Exchange Flip
           {isPending && (
@@ -186,15 +178,6 @@ export function CurrencyExchangeFlipPanel() {
             </span>
           )}
         </CardTitle>
-        <div className="flex flex-col gap-1.5">
-          <Label>Prices in</Label>
-          <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
-            <TabsList>
-              <TabsTrigger value="chaos">Chaos</TabsTrigger>
-              <TabsTrigger value="divine">Divine</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {isStaleLeagueDay && (
@@ -204,12 +187,7 @@ export function CurrencyExchangeFlipPanel() {
         )}
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search items..." />
-          <NumericRangeFilter
-            key={priceUnit}
-            label={`buy price (${priceUnitLabel(priceUnit)})`}
-            onChange={changeBuyRange}
-            initialMin={priceUnit === "divine" ? 1 : undefined}
-          />
+          <NumericRangeFilter label="buy price (c)" onChange={changeBuyRange} />
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -223,10 +201,10 @@ export function CurrencyExchangeFlipPanel() {
         {!isPending && spreads.length > 0 && (
           <MobileSortControl
             options={[
-              { key: "buy", label: `Buy (${priceUnitLabel(priceUnit)})` },
-              { key: "sell", label: `Sell (${priceUnitLabel(priceUnit)})` },
+              { key: "buy", label: "Buy" },
+              { key: "sell", label: "Sell" },
               { key: "profitPercent", label: "Profit %" },
-              { key: "profitAbs", label: `Profit (${priceUnitLabel(priceUnit)})` },
+              { key: "profitAbs", label: "Profit" },
               { key: "profitPerGold", label: "Profit / 1k gold" },
             ]}
             sort={sort}
@@ -246,7 +224,7 @@ export function CurrencyExchangeFlipPanel() {
                 category="currency"
                 historyName={s.name}
                 currentDay={currentDay}
-                priceUnit={priceUnit}
+                priceUnit="chaos"
                 expandable={false}
                 fields={[
                   {
@@ -261,7 +239,14 @@ export function CurrencyExchangeFlipPanel() {
                     ),
                     emphasized: true,
                   },
-                  { label: `Profit (${priceUnitLabel(priceUnit)})`, value: formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, priceUnit) },
+                  {
+                    label: "Profit",
+                    value: (
+                      <span title={otherCurrencyTitle(s.spreadChaosValue, s.spreadDivineValue, s.profitIn)}>
+                        {formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, s.profitIn)}
+                      </span>
+                    ),
+                  },
                   {
                     label: "Profit / 1k gold",
                     value:
@@ -272,14 +257,22 @@ export function CurrencyExchangeFlipPanel() {
                 ]}
                 rightFields={[
                   {
-                    label: `Buy (${priceUnitLabel(priceUnit)})`,
-                    value: <LegPrice value={formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit)} source={s.buyIn} divineChaosRate={s.divineChaosRate} />,
+                    label: "Buy",
+                    value: (
+                      <span title={otherCurrencyTitle(s.buyChaosValue, s.buyDivineValue, s.buyIn)}>
+                        {formatPriceValue(s.buyChaosValue, s.buyDivineValue, s.buyIn)}
+                      </span>
+                    ),
                   },
                   {
-                    label: `Sell (${priceUnitLabel(priceUnit)})`,
-                    value: <LegPrice value={formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit)} source={s.sellIn} divineChaosRate={s.divineChaosRate} />,
+                    label: "Sell",
+                    value: (
+                      <span title={otherCurrencyTitle(s.sellChaosValue, s.sellDivineValue, s.sellIn)}>
+                        {formatPriceValue(s.sellChaosValue, s.sellDivineValue, s.sellIn)}
+                      </span>
+                    ),
                   },
-                  { label: "Profit %", value: formatPercentChange(s.chaosRatio, s.divineRatio, priceUnit), emphasized: true },
+                  { label: "Profit %", value: formatPercentChange(s.chaosRatio, undefined, "chaos"), emphasized: true },
                 ]}
               />
             ))}
@@ -293,15 +286,10 @@ export function CurrencyExchangeFlipPanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[140px] sm:w-[200px] lg:w-[240px]">Item</TableHead>
-                <SortableHeader label={`Buy (${priceUnitLabel(priceUnit)})`} sortKey="buy" sort={sort} onSort={handleSort} />
-                <SortableHeader label={`Sell (${priceUnitLabel(priceUnit)})`} sortKey="sell" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Buy" sortKey="buy" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Sell" sortKey="sell" sort={sort} onSort={handleSort} />
                 <SortableHeader label="Profit %" sortKey="profitPercent" sort={sort} onSort={handleSort} />
-                <SortableHeader
-                  label={`Profit (${priceUnitLabel(priceUnit)})`}
-                  sortKey="profitAbs"
-                  sort={sort}
-                  onSort={handleSort}
-                />
+                <SortableHeader label="Profit" sortKey="profitAbs" sort={sort} onSort={handleSort} />
                 <SortableHeader
                   label="Profit / 1k gold"
                   sortKey="profitPerGold"
@@ -325,21 +313,19 @@ export function CurrencyExchangeFlipPanel() {
                   category="currency"
                   historyName={s.name}
                   currentDay={currentDay}
-                  priceUnit={priceUnit}
+                  priceUnit="chaos"
                   colSpan={7}
                   expandable={false}
                 >
-                  <TableCell className="text-right">
-                    <LegPrice value={formatPriceValue(s.buyChaosValue, s.buyDivineValue, priceUnit)} source={s.buyIn} divineChaosRate={s.divineChaosRate} />
+                  <TableCell className="text-right" title={otherCurrencyTitle(s.buyChaosValue, s.buyDivineValue, s.buyIn)}>
+                    {formatPriceValue(s.buyChaosValue, s.buyDivineValue, s.buyIn)}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <LegPrice value={formatPriceValue(s.sellChaosValue, s.sellDivineValue, priceUnit)} source={s.sellIn} divineChaosRate={s.divineChaosRate} />
+                  <TableCell className="text-right" title={otherCurrencyTitle(s.sellChaosValue, s.sellDivineValue, s.sellIn)}>
+                    {formatPriceValue(s.sellChaosValue, s.sellDivineValue, s.sellIn)}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatPercentChange(s.chaosRatio, s.divineRatio, priceUnit)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, priceUnit)}
+                  <TableCell className="text-right font-medium">{formatPercentChange(s.chaosRatio, undefined, "chaos")}</TableCell>
+                  <TableCell className="text-right" title={otherCurrencyTitle(s.spreadChaosValue, s.spreadDivineValue, s.profitIn)}>
+                    {formatPriceValue(s.spreadChaosValue, s.spreadDivineValue, s.profitIn)}
                   </TableCell>
                   <TableCell className="max-w-[90px] text-right">
                     {s.profitPer1000Gold !== undefined ? (

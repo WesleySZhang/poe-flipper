@@ -50,9 +50,11 @@ cost per trade. GGG's API is historical (about 2 hours old) and has no gold-cost
 costs are transcribed from community sources (`lib/faustus-gold.ts`).
 
 An item can trade against Chaos and against Divine on separate markets that don't always agree, so
-each row takes the best of four routes: buy with either currency, sell for either. The market
-under each Buy and Sell price says which. Divine legs are valued at the hour's Divine rate. A
-market more than 2× away from the item's other one is ignored as an odd trade.
+each row takes the best of four routes: buy with either currency, sell for either. Buy and Sell
+are shown in the currency their market trades in (`c` or `d`; hover for the other). Profit is in
+divines only when both legs are. There's no Chaos/Divine toggle on this page. Divine legs are valued
+at the hour's Divine rate for sorting and profit. A market more than 2× away from the item's other
+one is ignored as an odd trade.
 
 ### Divination Card Flips
 
@@ -347,7 +349,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/poe-ninja.ts` | poe.ninja client, item keys, display names, poewiki links |
 | `lib/price-snapshot.ts` | Reads/builds `prices.json` |
 | `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client (Chaos and Divine markets per item) and gold costs |
-| `lib/exchange-route.ts`, `components/leg-price.tsx` | Picking a flip's buy/sell markets, and showing them under each price |
+| `lib/exchange-route.ts` | Picking a flip's buy/sell markets, and which currency to show profit in |
 | `lib/liquidity.ts` | Liquidity tiers |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |

@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
-import { LegPrice } from "@/components/leg-price";
+import { otherCurrencyTitle, profitUnit } from "@/lib/exchange-route";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
@@ -234,10 +234,11 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
   // means the same thing in both places.
   const faustus = detail?.faustus;
   const faustusChaosRatio = faustus ? faustus.sellChaosValue / faustus.buyChaosValue : undefined;
-  const faustusDivineRatio =
+  const faustusSpreadDivine =
     faustus?.buyDivineValue !== undefined && faustus?.sellDivineValue !== undefined
-      ? faustus.sellDivineValue / faustus.buyDivineValue
+      ? faustus.sellDivineValue - faustus.buyDivineValue
       : undefined;
+  const faustusProfitIn = faustus ? profitUnit(faustus.buyIn, faustus.sellIn) : undefined;
   const profitPer1000Gold =
     faustus?.goldCost && faustus.goldCost.perItem > 0 ? (faustus.spreadChaosValue / faustus.goldCost.perItem) * 1000 : undefined;
 
@@ -392,35 +393,27 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
                   Prices are roughly 2 hours stale
                 </p>
                 <div className="flex flex-wrap gap-x-8 gap-y-3">
+                  {/* Buy/Sell in the currency each leg's market trades in, and Profit in divines only
+                      when both legs are - the same as the Currency Exchange Flip table, regardless of
+                      this page's Chaos/Divine toggle. */}
                   <Stat
-                    label={`Buy (${priceUnitLabel(priceUnit)})`}
-                    value={
-                      <LegPrice
-                        value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, priceUnit)}
-                        source={detail.faustus.buyIn}
-                        divineChaosRate={detail.faustus.divineChaosRate}
-                        align="start"
-                      />
-                    }
+                    label="Buy"
+                    value={formatPriceValue(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, detail.faustus.buyIn)}
+                    hint={otherCurrencyTitle(detail.faustus.buyChaosValue, detail.faustus.buyDivineValue, detail.faustus.buyIn)}
                   />
                   <Stat
-                    label={`Sell (${priceUnitLabel(priceUnit)})`}
-                    value={
-                      <LegPrice
-                        value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, priceUnit)}
-                        source={detail.faustus.sellIn}
-                        divineChaosRate={detail.faustus.divineChaosRate}
-                        align="start"
-                      />
-                    }
+                    label="Sell"
+                    value={formatPriceValue(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, detail.faustus.sellIn)}
+                    hint={otherCurrencyTitle(detail.faustus.sellChaosValue, detail.faustus.sellDivineValue, detail.faustus.sellIn)}
                   />
                   {/* Same Profit %/Profit (abs)/Profit per 1k gold this card is ranked by on the
                       Currency Exchange Flip table (components/currency-exchange-flip-panel.tsx) - "today's
                       Currency Exchange flip" for this one item, not a separate metric invented for this page. */}
-                  <Stat label="Profit %" value={formatPercentChange(faustusChaosRatio ?? 1, faustusDivineRatio, priceUnit)} />
+                  <Stat label="Profit %" value={formatPercentChange(faustusChaosRatio ?? 1, undefined, "chaos")} />
                   <Stat
-                    label={`Profit (${priceUnitLabel(priceUnit)})`}
-                    value={formatPriceValue(detail.faustus.spreadChaosValue, detail.faustus.sellDivineValue !== undefined && detail.faustus.buyDivineValue !== undefined ? detail.faustus.sellDivineValue - detail.faustus.buyDivineValue : undefined, priceUnit)}
+                    label="Profit"
+                    value={formatPriceValue(detail.faustus.spreadChaosValue, faustusSpreadDivine, faustusProfitIn ?? "chaos")}
+                    hint={otherCurrencyTitle(detail.faustus.spreadChaosValue, faustusSpreadDivine, faustusProfitIn ?? "chaos")}
                   />
                   {profitPer1000Gold !== undefined && (
                     <Stat

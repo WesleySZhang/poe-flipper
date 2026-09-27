@@ -9,6 +9,7 @@
  * up holding divines instead of chaos is the only difference; the rate itself moves too.
  */
 import type { LiquidityTier } from "./liquidity";
+import { formatPriceValue, type PriceUnit } from "./price-unit";
 
 /** Which market a leg trades on. "ninja" = no exchange market, priced at poe.ninja. */
 export type LegSource = "chaos" | "divine" | "ninja";
@@ -23,6 +24,17 @@ export interface LegOption {
   divineValue?: number;
   /** How much real trade backs this leg - see lib/liquidity.ts. */
   tier: LiquidityTier;
+}
+
+/** The currency to state a flip's profit in: divines only when both legs trade in divines. */
+export function profitUnit(buyIn: LegSource, sellIn: LegSource): PriceUnit {
+  return buyIn === "divine" && sellIn === "divine" ? "divine" : "chaos";
+}
+
+/** Hover text for a price shown in `unit`: the same amount in the other currency. */
+export function otherCurrencyTitle(chaosValue: number, divineValue: number | undefined, unit: PriceUnit): string | undefined {
+  if (unit === "divine") return `≈ ${formatPriceValue(chaosValue, divineValue, "chaos")}`;
+  return divineValue === undefined ? undefined : `≈ ${formatPriceValue(chaosValue, divineValue, "divine")}`;
 }
 
 const TIER_RANK: Record<LiquidityTier, number> = { low: 0, medium: 1, high: 2 };

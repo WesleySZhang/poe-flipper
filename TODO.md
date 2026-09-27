@@ -142,8 +142,8 @@ forecast days (see Done), but:
   retrains, checks parity and the Mirage backtest, and opens a PR comparing validation scores with
   the previous model.
 - **Currency Exchange Flip can buy with one currency and sell for the other.** It considers an
-  item's Chaos and Divine markets separately and takes the best of the four routes, shown under
-  each price (e.g. Stacked Deck: buy for 6c on Chaos, sell for ~7.6c on Divine). This also replaced
+  item's Chaos and Divine markets separately and takes the best of the four routes, each price
+  shown in its market's currency (e.g. Stacked Deck: buy 6.0c, sell 0.019d). This also replaced
   converting every Divine price from chaos (the old item 6). Divination Card Flips doesn't pick a
   route per leg the same way - its buy/sell prices are unchanged.
 - **Current-league history** for migrated types (cards, scarabs, ...) now shows on the chart, and
