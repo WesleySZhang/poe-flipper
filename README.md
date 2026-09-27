@@ -133,7 +133,7 @@ never triggers a Vercel deploy. Each run replaces the branch with fresh files:
 | --- | --- | --- |
 | `prices.json` (~1.7 MB) | `scripts/precompute-price-snapshot.ts` | poe.ninja's whole price map (price, type, sparkline, seller count, poe.ninja id) plus which categories had listings. The detail page, search and Mirage simulator read this instead of calling poe.ninja. |
 | `predictions.json` (~20 MB, ~5 MB gzipped) | `scripts/precompute-predictions.ts` | Every item's prediction for every "Days ahead" from 1 to 30. |
-| `history/<League>/*.csv` | `scripts/precompute-price-history.ts` | The current league's daily prices, one CSV pair per month. Past leagues only exist in the database once they end. |
+| `history/<League>/*.csv` | `scripts/precompute-price-history.ts` | The current league's daily prices, one CSV pair per month. Earlier months and ended leagues' folders are kept (the job copies them forward). |
 
 How the app uses them:
 
