@@ -52,6 +52,7 @@ on:
       - "lib/prediction-features.ts"
       - "lib/models/predictor.json"
       - "lib/predicted-suggestion.ts"
+      - "db/history.duckdb" # past-league history feeds the growth ratios (e.g. after a retrain adds a league)
 
 permissions:
   contents: write

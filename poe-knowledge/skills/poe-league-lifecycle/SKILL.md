@@ -34,10 +34,10 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 
 - Dates and current league: `lib/league-recency.ts` (edited by hand each league).
 - League day math: `lib/league-day.ts`; predictions: `lib/flip-suggestions.ts`, `lib/growth-ratios.ts`.
-- Training set: `PRODUCTION_LEAGUES` in `scripts/ingest-history.ts`; model: `ml/`, `lib/models/predictor.json`.
-- **New league checklist:** update `CURRENT_LEAGUE` + release dates; add the finished league's CSVs
-  and re-ingest; retrain the model; regenerate the Faustus and divination card maps; check new
-  poe.ninja category types; rerun the precompute workflow.
+- Training set: `lib/training-leagues.ts`; model: `ml/`, `lib/models/predictor.json`.
+- **New league checklist:** update `CURRENT_LEAGUE` + release dates; run the "Retrain model"
+  workflow with the finished league; regenerate the Faustus and divination card maps; check new
+  poe.ninja category types; rerun the precompute workflow. Full list: the `new-league` skill.
 
 ## Sources
 

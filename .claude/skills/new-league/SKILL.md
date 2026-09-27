@@ -7,14 +7,19 @@ description: Use when a new Path of Exile challenge league launches or the curre
 
 1. **League config.** `lib/league-recency.ts`: add the new league's release date to
    `LEAGUE_RELEASE_DATES` and set `CURRENT_LEAGUE`. Update the "as of" date in its comment.
-2. **Finished league into history.** Get poe.ninja's history CSVs for the league that just ended,
-   add it to `PRODUCTION_LEAGUES` in `scripts/ingest-history.ts`, and re-run the ingest to rebuild
-   `db/history.duckdb` (it is Git LFS-tracked). Check the new league's data quality first - see
-   `scripts/discover-training-leagues.ts` and the exclusion notes in the ingest script.
-3. **Retrain the model** on the new league set (see `ml/README.md`; export features with the
-   `scripts/export-*.ts` scripts, fit with the Python in `ml/`, update `lib/models/predictor.json`).
-   Run `scripts/backtest-predictor.ts` to confirm it did not regress. This is manual today - see
-   `TODO.md` item 6.
+2. **Decide whether to train on the finished league** (the owner's call). Short event leagues and
+   leagues with broken data have been left out before; see `lib/training-leagues.ts` and
+   `scripts/discover-training-leagues.ts`. Prefer waiting for poe.ninja's export
+   (`https://poe.ninja/poe1/api/data/dumps` lists them; usually a day or two after the league ends).
+3. **Retrain:** GitHub -> Actions -> "Retrain model" with the league in `add_league` (optionally
+   `drop_league`). It edits `lib/training-leagues.ts`, downloads history, rebuilds
+   `db/history.duckdb`, exports features, trains on CPU, runs parity and the Mirage backtest, and
+   opens a PR (`auto/retrain-model`). Review the report before merging:
+   - every league's source should be "poe.ninja export"; "data branch" means the export wasn't out
+     yet and the league is missing days;
+   - any "worse than the previous model" line.
+   After merging, precompute reruns itself (the model file changed); run "Deploy to production".
+   The manual equivalent is in `ml/README.md` section 12.
 4. **New items and categories.** Run the "Check for new items" workflow (or
    `npx tsx scripts/check-new-items.ts`) instead of waiting for its daily run. It adds new poe.ninja
    categories, Currency Exchange names and divination cards, and its report lists the manual follow-ups:

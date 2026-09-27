@@ -13,7 +13,7 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 | Source | Gives | Quirks |
 | --- | --- | --- |
 | poe.ninja overview endpoints | Live prices, 7-day sparkline, seller count, by category type | Community service; be polite (cache, few requests). Categories migrate between endpoints. `[verified]` |
-| poe.ninja history export | Daily price CSVs per league, published after a league ends | Used to train the model; noisy days need filtering. `[verified]` |
+| poe.ninja history export | Daily price CSVs per league, published after a league ends | Used to train the model; noisy days need filtering. `GET /poe1/api/data/dumps` lists them (name, min/max date); `/poe1/api/data/dumps/dump?name=<League>` is a ~50 MB zip that also holds hardcore and standard files. Mirage's was up the day after it ended. `[verified]` (`scripts/download-league-history.ts`) |
 | GGG Currency Exchange API | Per-hour buy/sell range and volume, by GGG internal ids | Ids are game-file paths, not names; needs a name map. ~2h stale. `[verified]` |
 | RePoE (repoe-fork) | Game-file dump: item names, ids, divination card stack sizes and reward text | Unofficial community mirror; the source for the name map and card data. `[verified]` |
 | poewiki.net | Item/mechanic pages | Not Fandom; the app links to it per item. `[verified]` |

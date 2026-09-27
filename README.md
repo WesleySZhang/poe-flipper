@@ -171,16 +171,12 @@ How the app uses them:
 
 Past leagues' prices aren't in the repo; download them once per machine.
 
-1. Download each league's export from [poe.ninja/poe1/data](https://poe.ninja/poe1/data).
-2. Unzip into `<POE_DATA_DIR>/<League>/<League>.currency.csv` and `<League>.items.csv`, one folder
-   per league, named exactly as poe.ninja names it.
-3. You need the five training leagues in `scripts/ingest-history.ts`'s `PRODUCTION_LEAGUES`:
-   **Mirage, Keepers, Mercenaries, Settlers, Phrecia 2.0**. (`POE_INCLUDED_LEAGUES` overrides the
-   list for an experiment.)
-4. Run `npm run db:ingest`. It rebuilds `db/history.duckdb` from scratch each time.
-
-The **current league** needs no download: copy its folder from the `data` branch's `history/` into
-`POE_DATA_DIR` once it ends. The ingest handles the monthly chunks.
+1. Run `npx tsx scripts/download-league-history.ts`. It fetches every training league in
+   `lib/training-leagues.ts` from [poe.ninja's exports](https://poe.ninja/poe1/data) into
+   `<POE_DATA_DIR>/<League>/`. A league poe.ninja hasn't exported yet comes from the `data`
+   branch's `history/` instead, which is less complete.
+2. Run `npm run db:ingest`. It rebuilds `db/history.duckdb` from scratch each time.
+   (`POE_INCLUDED_LEAGUES` overrides the league list for an experiment.)
 
 ---
 
@@ -188,18 +184,33 @@ The **current league** needs no download: copy its folder from the `data` branch
 
 ### Retraining after a new league
 
-Needs Python 3.11+ with `ml/requirements.txt`. Training uses an NVIDIA GPU; set `XGB_DEVICE=cpu`
-without one.
+Once a league ends and you've decided to train on it, run GitHub → Actions → **Retrain model** with
+that league in "add_league" (`.github/workflows/retrain-model.yml`). It adds the league to
+`lib/training-leagues.ts`, downloads the history, rebuilds `db/history.duckdb`, retrains on CPU,
+runs the parity check and Mirage backtest, and opens a pull request. The PR's report shows:
+
+- where each league's data came from and how many days it covers;
+- the new model's validation scores next to the previous model's (stored in `predictor.json`);
+- the check results.
+
+It takes 1-3 hours. "drop_league" removes a league; both empty retrains on the same leagues. After
+merging, the daily job reruns by itself; then run **Deploy to production**.
+
+To do the same by hand (Python 3.11+ with `ml/requirements.txt`; set `XGB_DEVICE=cpu` without an
+NVIDIA GPU):
 
 ```bash
+npx tsx scripts/retrain-leagues.ts --add <League>   # or edit lib/training-leagues.ts
+npx tsx scripts/download-league-history.ts && npm run db:ingest
 npm run ml:export-features          # ~30 min: builds training rows with the app's own code
 python ml/fit_production.py all     # validation report, writes lib/models/predictor.json
 npm run ml:parity                   # checks the TypeScript model matches Python's output
 npm run ml:backtest                 # replays Mirage through the app, per predictor
 ```
 
-Then commit `lib/models/predictor.json`. The full new-league checklist (config, ingest, retrain,
-regenerating name maps, new poe.ninja categories) is in `.claude/skills/new-league/SKILL.md`.
+Then commit `lib/training-leagues.ts`, `db/history.duckdb` and `lib/models/predictor.json`. The
+full new-league checklist (config, ingest, retrain, regenerating name maps, new poe.ninja
+categories) is in `.claude/skills/new-league/SKILL.md`.
 
 ### New items and categories
 
@@ -269,14 +280,14 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 - **poe.ninja's API is unofficial** and can change without notice. Categories have moved between
   its endpoints more than once (see the comments above `CURRENCY_OVERVIEW_TYPES` in
   `lib/poe-ninja.ts`).
-- **Predictions aren't trade advice.** The model learned from five past leagues and is measured on
+- **Predictions aren't trade advice.** The model learned from a handful of past leagues and is measured on
   how well it ranks items, not on spreads, fees or whether an item can actually be sold. Items
   under 1c use the plain historical average.
 - **Confidence describes history,** not the learned forecast, and varies with how many past
   leagues have data for an item.
 - **New leagues need a human.** The league-swap PR must be reviewed and merged (the repo needs
-  Settings → Actions → "Allow GitHub Actions to create and approve pull requests"). Ingesting a
-  finished league and retraining are manual.
+  Settings → Actions → "Allow GitHub Actions to create and approve pull requests"). Choosing to
+  train on a finished league means starting the Retrain model workflow and reviewing its PR.
 - **Currency Exchange data is about 2 hours old** and gold costs are hand-transcribed.
 - **One item, several poe.ninja lines.** Base types have one line per item level or influence.
   The live price uses the first line while history averages them, so the two can differ.
@@ -319,6 +330,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/predicted-suggestion.ts` | Rebuilds rows from that file (server and browser), and shifts a day-old file to today |
 | `lib/horizon-fill.ts` | Fills missing days in the precomputed file |
 | `lib/league-recency.ts`, `lib/league-day.ts` | Current league, release dates, league-day math |
+| `lib/training-leagues.ts` | The finished leagues the model trains on |
 
 ### Prices and history
 
@@ -344,5 +356,6 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `scripts/check-new-items.ts` | Daily check for new items and poe.ninja categories (see [New items and categories](#new-items-and-categories)) |
 | `scripts/generate-*.ts`, `scripts/generated-data.ts` | Regenerate the exchange map, its doc and card data; shared fetch/parse/write helpers |
 | `scripts/export-training-features.ts`, `check-predictor-parity.ts`, `backtest-predictor.ts` | Model training export, parity check and backtest (`npm run ml:*`) |
+| `scripts/retrain-leagues.ts`, `download-league-history.ts`, `retrain-report.ts` | The Retrain model workflow: edit the league list, fetch history, write the PR report |
 | `scripts/backtest-mirage.ts`, `discover-*.ts`, `backfill-current-league-history.ts` | One-off analyses and a one-time history backfill |
 | `ml/` | Offline Python for training and experiments; see `ml/README.md` |

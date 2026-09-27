@@ -9,6 +9,10 @@ app's own TypeScript code) and writes lib/models/predictor.json.
   3. HOLDOUT EXPORT - the holdout-H models as ml/cache/tsrows/model_holdout_H.json + predictions on the test rows,
      so scripts/check-predictor-parity.ts can prove the TypeScript runtime reproduces Python's numbers.
 
+Only the runs listed in ml/cache/tsrows/manifest.json (written by the export) are used, when it exists. The headline
+validation numbers are saved to validation.json and embedded in predictor.json as "validation", so the next retrain
+can be compared against this one (scripts/retrain-report.ts).
+
     python fit_production.py [validate|final|variants|all]   (default all)
 """
 import base64
@@ -106,6 +110,30 @@ def augment(df, seed=0, rate=MASK_RATE):
     for c in MOM_MASK:
         out.loc[m, c] = np.nan
     return out
+
+
+def manifest():
+    """{"leagues": [...], "holdouts": [...]} of the latest export, or None (then every run in ROWS is used)."""
+    path = os.path.join(ROWS, "manifest.json")
+    return json.load(open(path)) if os.path.exists(path) else None
+
+
+def full_labels():
+    m = manifest()
+    labels = sorted(os.path.basename(p)[:-5] for p in glob.glob(os.path.join(ROWS, "full__*.json")))
+    return [l for l in labels if m is None or l[len("full__"):] in m["leagues"]]
+
+
+def nested_parts(holdout):
+    m = manifest()
+    parts = sorted(glob.glob(os.path.join(ROWS, f"nested__*__x{holdout}.json")))
+    return [p for p in parts if m is None or os.path.basename(p)[len("nested__"):-len(f"__x{holdout}.json")] in m["leagues"]]
+
+
+def holdouts():
+    m = manifest()
+    found = sorted({os.path.basename(p).split("__x")[1][:-5] for p in glob.glob(os.path.join(ROWS, "nested__*__x*.json"))})
+    return [h for h in found if m is None or h in m["holdouts"]]
 
 
 def load(label):
@@ -217,7 +245,7 @@ def model_json(train, note):
 def variants(holdout="Mirage"):
     """Which momentum / helper features earn their place? Chaos XGBoost on the holdout, clean and with live-like
     missingness at test time (45% of rows without momentum)."""
-    parts = sorted(glob.glob(os.path.join(ROWS, f"nested__*__x{holdout}.json")))
+    parts = nested_parts(holdout)
     train = augment(tradeable(pd.concat([load(os.path.basename(p)[:-5]) for p in parts], ignore_index=True)))
     test = tradeable(load(f"full__{holdout}"))
     test = test[test.y.notna()].reset_index(drop=True)
@@ -274,11 +302,19 @@ def report(name, test, preds, ycol):
     pd.set_option("display.width", 250)
     print(f"\n=== {name} ===")
     print(pd.DataFrame(tab).T.round(3).to_string())
+    return tab
+
+
+def headline(tab):
+    """The numbers the retrain report compares run to run: per-scenario Spearman, top-10% hit rate and return."""
+    return {k: {"rho": round(float(v["ALL rho"]), 4), "hit": round(float(v["ALL hit%"]) / 100, 4),
+                "top10": round(float(v["ALL top10"]), 4)} for k, v in tab.items()}
 
 
 def validate(holdouts):
+    summary = {}
     for h in holdouts:
-        parts = sorted(glob.glob(os.path.join(ROWS, f"nested__*__x{h}.json")))
+        parts = nested_parts(h)
         if not parts or not os.path.exists(os.path.join(ROWS, f"full__{h}.json")):
             print(f"skip {h}: rows missing")
             continue
@@ -291,8 +327,10 @@ def validate(holdouts):
         for denom, ycol, base in (("chaos", "y", "shrunk_base"), ("divine", "yd", "shrunk_div")):
             te = test[test[ycol].notna() & test[base].notna()].reset_index(drop=True)
             preds = {"production": te[base].values, "formula": apply_formula(mj["formula"][denom], te),
-                     "xgb (200 trees)": xgb_predict(*rt[denom], te)}
-            report(f"{h} holdout, {denom}-denominated ({len(te):,} rows)", te, preds, ycol)
+                     "xgb": xgb_predict(*rt[denom], te)}
+            tab = report(f"{h} holdout, {denom}-denominated ({len(te):,} rows)", te, preds, ycol)
+            summary.setdefault(h, {"trainLeagues": len(parts), "testRows": {}})[denom] = headline(tab)
+            summary[h]["testRows"][denom] = int(len(te))
             for lo, hi, tag in ((0, 25, "EARLY t<=25"), (30, 9999, "LATE t>=30")):
                 m = ((te.t >= lo) & (te.t <= hi)).values
                 sub = te[m].reset_index(drop=True)
@@ -323,21 +361,26 @@ def validate(holdouts):
                    "xgb_chaos_p90": [None if not np.isfinite(v) else float(v) for v in xgb_predict(*rt["chaos_p90"], chk)]},
                   open(os.path.join(ROWS, f"parity_{h}.json"), "w"))
         print(f"({time.time()-t0:.0f}s)")
+    if summary:
+        json.dump(summary, open(os.path.join(ROWS, "validation.json"), "w"), indent=1)
 
 
 def final():
-    labels = sorted(os.path.basename(p)[:-5] for p in glob.glob(os.path.join(ROWS, "full__*.json")))
+    labels = full_labels()
     train = augment(tradeable(pd.concat([load(l) for l in labels], ignore_index=True)))
     print(f"final model: {len(train):,} rows from {labels}")
     mj, _ = model_json(train, "trained on " + ", ".join(l.replace("full__", "") for l in labels) +
-                       " (each league featurised from the other four)")
+                       " (each league featurised from the others)")
+    val_path = os.path.join(ROWS, "validation.json")
+    if os.path.exists(val_path):
+        mj["validation"] = json.load(open(val_path))
     json.dump(mj, open(MODEL_OUT, "w"), separators=(",", ":"))
     print(f"wrote {MODEL_OUT} ({os.path.getsize(MODEL_OUT)/1e6:.2f} MB)")
 
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "all"
-    holds = sorted({os.path.basename(p).split("__x")[1][:-5] for p in glob.glob(os.path.join(ROWS, "nested__*__x*.json"))})
+    holds = holdouts()
     if cmd == "variants":
         variants(holds[0] if holds else "Mirage")
     if cmd in ("validate", "all"):
