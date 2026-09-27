@@ -268,7 +268,7 @@ export function FlipSuggestionsPanel() {
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="flex flex-col gap-4">
           <CardTitle className="flex items-center gap-2">
-            Flip suggestions
+            Flip predictions
             {isPending && (
               <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />
@@ -374,7 +374,7 @@ export function FlipSuggestionsPanel() {
         {!hasData && isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="size-6 animate-spin" />
-            <p className="text-sm">Loading flip suggestions...</p>
+            <p className="text-sm">Loading flip predictions...</p>
           </div>
         )}
         {!hasData && !isPending && (

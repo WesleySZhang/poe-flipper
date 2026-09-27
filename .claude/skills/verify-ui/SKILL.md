@@ -15,7 +15,7 @@ AGENTS.md: a UI change isn't done until it works at 1280px **and** ~390px.
 3. **Drive it.** Write a scratch Playwright script (`.cjs`) in the scratchpad dir, or the repo root
    and delete it after. Repo eslint flags `require()` in `.js/.ts`, so never leave one in the repo.
    - Desktop viewport 1280x900, then phone 390x844 (use `hasTouch`/`isMobile` for gesture changes).
-   - Pages to hit for shared-row changes: `/` (Flip Suggestions), Mirage simulator, Currency
+   - Pages to hit for shared-row changes: `/` (Flip Predictions), Mirage simulator, Currency
      Exchange Flip, Divination Card Flips, and `/item/<category>/<Name_With_Underscores>`.
    - Interact for real: click/tap the thing you changed, expand a row, drag the slider.
 4. **Look at the screenshots.** Check for horizontal scroll, clipped text, misclicks, empty charts.

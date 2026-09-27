@@ -15,7 +15,7 @@ import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency"
 //
 // cachedJsonResponse (not plain jsonResponse) - this is the single biggest, most-repeated payload
 // in the app (every item at every precomputed duration), fetched fresh by EVERY page that has a
-// "Days ahead" control (Flip Suggestions, the item detail page, ...). getPrecomputedPredictionsFile
+// "Days ahead" control (Flip Predictions, the item detail page, ...). getPrecomputedPredictionsFile
 // already caches the parsed data, but without this, JSON.stringify + gzip of that multi-MB object
 // would still re-run on every single request regardless - a real, synchronous, main-thread-blocking
 // cost. Cached under one fixed key (today's file is a singleton, not parameterized) for the same TTL

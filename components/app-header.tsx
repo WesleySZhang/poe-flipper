@@ -19,7 +19,7 @@ import { GlobalSearch } from "@/components/global-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_LINKS = [
-  { href: "/", label: "Flip Suggestions" },
+  { href: "/", label: "Flip Predictions" },
   { href: "/currency_exchange_flip", label: "Currency Exchange Flip" },
   { href: "/divination-cards", label: "Divination Card Flips" },
 ];

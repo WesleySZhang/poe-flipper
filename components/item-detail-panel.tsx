@@ -69,7 +69,7 @@ async function fetchItemDetail(
 
 /** Tries the URL's own category first, then the other one - see lib/flip-suggestions.ts's own
  *  comment on the poe.ninja category migration (Scarabs/Essences/Fossils/Oils/Omens/Resonators/
- *  Tattoos/Delirium Orbs/Divination Cards) for the full story: a page reached via a Flip Suggestions
+ *  Tattoos/Delirium Orbs/Divination Cards) for the full story: a page reached via a Flip Predictions
  *  row link is category "item" for one of these (matching how it was historically ingested), but its
  *  LIVE price - and so this page's momentum/Currency Exchange sections - only ever exists under
  *  category "currency". Without this fallback, that route (.../item/item/The%20Sephirot, say) 404s

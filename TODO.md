@@ -150,7 +150,7 @@ forecast days (see Done), but:
 - **Per-item detail page** (`app/item/[category]/[key]/`). Linked from every item name and from
   search. Slider, big chart, overview, historical performance, momentum, Currency Exchange and card
   flip data, poewiki and poe.ninja links.
-- **Mobile support** for Flip Suggestions, Mirage simulator, Currency Exchange Flip and Divination
+- **Mobile support** for Flip Predictions, Mirage simulator, Currency Exchange Flip and Divination
   Card Flips: stacked cards, "Sort by" control, confidence/liquidity filter, larger chart text, and
   tap-to-show tooltips on the chart. (The league tester is item 1.)
 - **Slow chart loading and app-wide freezes.** Added caching and request sharing for the heavy

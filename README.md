@@ -25,14 +25,14 @@ See [`TODO.md`](TODO.md) for open ideas and known gaps.
 
 | Page | Path | What it's for |
 | --- | --- | --- |
-| **Flip Suggestions** | `/` | Items ranked by predicted growth over a chosen number of days (default 7). |
+| **Flip Predictions** | `/` | Items ranked by predicted growth over a chosen number of days (default 7). |
 | **Currency Exchange Flip** | `/currency_exchange_flip` | Live buy/sell spreads on GGG's Currency Exchange, for flipping today. |
 | **Divination Card Flips** | `/divination-cards` | Cards whose full stack costs less than the reward it turns into. |
 | **Item detail** | `/item/<category>/<Item_Name>` | Everything the app knows about one item. |
 | **Mirage league simulator** | `/mirage-simulator` | Replays a finished league to compare predictions with what happened. |
 | **League tester** | `/current-league-tester` | Applies an item's historical growth to a price you type in. |
 
-### Flip Suggestions
+### Flip Predictions
 
 Pick a "Days ahead" value with the slider (1–30, instant) or type any number (beyond 30 triggers a
 live calculation). Each row shows the current price, predicted price, change and a confidence tier.
@@ -272,7 +272,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 
 | Path | What it is |
 | --- | --- |
-| `app/page.tsx` | Flip Suggestions (renders `components/dashboard.tsx`) |
+| `app/page.tsx` | Flip Predictions (renders `components/dashboard.tsx`; code/routes still say "flip-suggestions") |
 | `app/item/[category]/[key]/` | Item detail page |
 | `app/currency_exchange_flip/`, `app/divination-cards/`, `app/mirage-simulator/`, `app/current-league-tester/` | Other pages |
 | `app/api/*/route.ts` | Read-only JSON endpoints (Route Handlers, not Server Actions) |

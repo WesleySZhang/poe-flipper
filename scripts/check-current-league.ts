@@ -65,7 +65,7 @@ async function main() {
   console.log(
     `\nOut of date - poe.ninja is serving "${live}", not "${CURRENT_LEAGUE}". A new league has ` +
       "likely launched. Update lib/league-recency.ts's LEAGUE_RELEASE_DATES (add the new league's " +
-      "release date) and CURRENT_LEAGUE before relying on flip suggestions or the Currency " +
+      "release date) and CURRENT_LEAGUE before relying on flip predictions or the Currency " +
       "Exchange Flip page - both key off CURRENT_LEAGUE directly."
   );
   process.exitCode = 1;

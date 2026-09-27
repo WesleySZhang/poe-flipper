@@ -11,7 +11,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## UI changes should apply everywhere they can
 
 This app has several pages that share the same row/table pattern (`components/item-history-row.tsx`
-for desktop, `components/item-history-card.tsx` for mobile - used by Flip Suggestions, the Mirage
+for desktop, `components/item-history-card.tsx` for mobile - used by Flip Predictions, the Mirage
 simulator, Currency Exchange Flip, and Divination Card Flips). When asked for a UI change - a fix,
 a new interaction, a link, an indicator - check whether it belongs in one of these shared components
 rather than one page's own panel. If it does, make the change there so every page that uses it picks

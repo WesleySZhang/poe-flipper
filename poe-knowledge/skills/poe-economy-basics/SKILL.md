@@ -30,7 +30,7 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 
 ## In this app
 
-- Flip Suggestions: predicted growth from poe.ninja history + a learned model (`lib/flip-suggestions.ts`).
+- Flip Predictions (page name; code/routes still say "flip-suggestions"): predicted growth from poe.ninja history + a learned model (`lib/flip-suggestions.ts`).
 - Currency Exchange Flip: buy/sell spread from Faustus, ranked with liquidity tiers
   (`components/currency-exchange-flip-panel.tsx`).
 - Divination Card Flips: card stack cost vs reward value (see `poe-divination-cards`).

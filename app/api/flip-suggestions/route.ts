@@ -13,7 +13,7 @@ const RESPONSE_CACHE_TTL_MS = 60 * 1000;
 // app/api/mirage-simulation/route.ts for why.
 //
 // cachedJsonResponse (not plain jsonResponse) for both branches below - this is every item/currency
-// in the app, at one specific duration, fetched repeatedly (the main Flip Suggestions table on every
+// in the app, at one specific duration, fetched repeatedly (the main Flip Predictions table on every
 // duration change, the item detail page's own live-fallback duration, ...). The underlying data is
 // already cached/coalesced (see getFlipSuggestions and getPrecomputedFlipSuggestions/
 // getPrecomputedPredictionsFile's own caches), but without this, JSON.stringify + gzip of that full
