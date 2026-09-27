@@ -39,8 +39,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      POE_DATA_DIR: ${{ runner.temp }}/poe-data
-      RETRAIN_OUT: ${{ runner.temp }}/retrain
       XGB_DEVICE: cpu
       # The ingest's spike-correction pass holds every item row in memory.
       NODE_OPTIONS: --max-old-space-size=12288
@@ -52,6 +50,15 @@ jobs:
         with:
           ref: master
           lfs: true # db/history.duckdb is Git LFS-tracked
+
+      # POE_DATA_DIR/RETRAIN_OUT need the runner context (runner.temp), which - unlike github/inputs -
+      # job-level env: can't reference (GitHub rejects the whole workflow file: "Unrecognized
+      # named-value: 'runner'"). A step's own env/run can, so this writes them to $GITHUB_ENV instead,
+      # the same way check-new-items.yml sets REPORT_PATH at the step level.
+      - name: Set working paths
+        run: |
+          echo "POE_DATA_DIR=${{ runner.temp }}/poe-data" >> "$GITHUB_ENV"
+          echo "RETRAIN_OUT=${{ runner.temp }}/retrain" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
