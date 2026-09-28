@@ -4,18 +4,25 @@ The trade site searches the sold listing tracker follows (`scripts/track-sold-li
 list item under **Searches** is one search: `[label](link)`, or a bare link.
 
 To add one, set up the search on the trade site, copy the address from the browser, and add it as
-a list item. Any filter works - item name, base type, mods. The tracker applies its own rules on
-top, whatever the link says:
+a list item. Any filter works - item name, base type, mods, a price range. The tracker applies its
+own rules on top, whatever the link says:
 
 - instant buyout only;
-- at least 100 divines (a higher divine minimum in the link wins);
 - listed in the last week (a shorter age filter in the link wins);
 - the current league, whatever league the link was made in.
 
-Keep each search narrow. Every listing a search finds is checked about once an hour, and the trade
-site's rate limit covers about 1,000 listings across all searches; past that, checks slow down. A
-search that gets more than 100 new listings between runs misses some; the Sold Listings page flags
-it.
+**Limits** (`lib/sold-tracker.ts`) - the trade site's rate limit covers about this many listings
+checked hourly:
+
+- at most **600 listings per search**;
+- at most **1,000 listings** across all searches;
+- at most **20 searches**.
+
+A PR that changes this file runs the "Check sold tracker searches" check: it counts each search's
+listings on the trade site today and fails if they're over the limits (`npm run sold:check` does the
+same locally). A price range is the usual way to bring a search down. While running, the tracker
+also pauses a search that has grown past 600, and stops taking new listings at 1,000 - both show on
+the Sold Listings page.
 
 ## Searches
 

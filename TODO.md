@@ -89,7 +89,8 @@ forecast days (see Done), but:
 
 **Built** (`scripts/track-sold-listings.ts`, the "Track sold listings" workflow, `/sold-listings`;
 see the README). Searches come from trade site links in `sold-tracker/searches.md`, starting with
-Watcher's Eye. Still open:
+Watcher's Eye. No price floor of its own; volume is capped at 600 listings per search, 1,000 in
+total and 20 searches, checked on every PR and enforced while running. Still open:
 
 - **First run from GitHub's runners.** Untested whether pathofexile.com lets their IPs through. If
   the workflow fails with a 403, run the tracker from an always-on machine instead.
@@ -99,8 +100,10 @@ Watcher's Eye. Still open:
   Price-sliced searches could backfill them.
 - **Withdrawn vs sold.** Measure from real data how often a "sale" is really a withdrawal, e.g. by
   how many sold listings come back as Relisted.
-- **A fresh league's volume** is unmeasured. Check each search's listing count in the first days and
-  narrow searches (or raise the price floor) if the total heads past ~1,000.
+- **A fresh league's volume** is unmeasured. The PR check counts today's market, so searches near
+  the limits may get paused at a league start. Check the page in the first days.
+- **Make the PR check required** on `master` (Settings > Branches > required status check
+  `check-searches`), so an over-limit search can't be merged.
 
 The research this was built on:
 

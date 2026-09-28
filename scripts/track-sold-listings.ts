@@ -8,10 +8,12 @@
  *
  * Each loop:
  *  1. Discovery, per search, every DISCOVERY_MINUTES (shorter when a search is busy): the newest
- *     listings first, with the tracker's rules applied (instant buyout, 100d+, last week - see
- *     applyTrackerRules). New ids are fetched for their item and price.
+ *     listings first, with the tracker's rules applied (instant buyout, last week - see
+ *     applyTrackerRules). New ids are fetched for their item and price - within the limits in
+ *     lib/sold-tracker.ts (admitNewListings): a search matching too many listings is paused, and
+ *     nothing new is taken in once MAX_TRACKED_LISTINGS listings are being followed.
  *  2. Checks: listed ids due a re-check are fetched by id, 10 per request. A fetch ignores the
- *     search's filters, so a listing repriced below 100d still comes back (a price change); an empty
+ *     search's filters, so a listing repriced out of its search still comes back (a price change); an empty
  *     result means it's gone (lib/sold-tracker.ts decides when gone counts as sold).
  * Requests go through lib/trade-api.ts's rate limiter. The state is saved every few minutes and on
  * exit, so a killed run loses little. A search only returns the newest 100, so on a first run only
@@ -21,12 +23,13 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "
 import path from "node:path";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
 import { TradeApiClient, TradeApiError } from "../lib/trade-api";
-import { applyTrackerRules, describeQuery, parseTradeSearchUrl, type TradeQuery } from "../lib/trade-query";
+import { SEARCHES_DOC, parseSearchesDoc, type TrackedSearch } from "../lib/sold-tracker-searches";
 import {
   DISCOVERY_MINUTES,
+  MAX_SEARCHES,
   MIN_DISCOVERY_MINUTES,
   SEARCH_RESULT_CAP,
-  SOLD_TRACKER_MIN_DIVINES,
+  admitNewListings,
   emptyTrackerFile,
   listingsDueForCheck,
   recordListing,
@@ -47,49 +50,15 @@ function arg(name: string, fallback: string): string {
 
 const minutes = Number(arg("minutes", "60"));
 const dir = arg("dir", ".sold-tracker");
-const searchesPath = arg("searches", "sold-tracker/searches.md");
+const searchesPath = arg("searches", SEARCHES_DOC);
 const filePath = path.join(dir, "sold-listings", `${CURRENT_LEAGUE}.json`);
 
-interface TrackedSearch {
-  label: string;
-  url: string;
-  query?: TradeQuery;
-  error?: string;
-}
-
-/**
- * The links under the "## Searches" heading of the searches document: one per list item, either
- * `[label](link)` or a bare link (labelled with the item it searches for).
- */
 function readSearches(): TrackedSearch[] {
-  const lines = readFileSync(searchesPath, "utf8").split(/\r?\n/);
-  const start = lines.findIndex((l) => /^##\s+Searches\s*$/i.test(l));
-  if (start === -1) throw new Error(`${searchesPath} has no "## Searches" heading`);
-  const out: TrackedSearch[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (/^#{1,2}\s/.test(line)) break;
-    const item = line.match(/^\s*[-*]\s+(.*)$/)?.[1];
-    if (!item) continue;
-    const md = item.match(/\[([^\]]+)\]\((\S+?)\)/);
-    const url = md?.[2] ?? item.match(/https?:\/\/\S+/)?.[0];
-    if (!url) continue;
-    let label = md?.[1]?.trim();
-    try {
-      const { query } = parseTradeSearchUrl(url);
-      label ||= describeQuery(query) ?? `Search ${out.length + 1}`;
-      out.push({ label, url, query: applyTrackerRules(query, { minDivines: SOLD_TRACKER_MIN_DIVINES }) });
-    } catch (e) {
-      out.push({ label: label || `Search ${out.length + 1}`, url, error: (e as Error).message });
-    }
-  }
-  // Labels key the listings to their searches, so they must be unique.
-  const seen = new Map<string, number>();
-  for (const s of out) {
-    const n = (seen.get(s.label) ?? 0) + 1;
-    seen.set(s.label, n);
-    if (n > 1) s.label = `${s.label} (${n})`;
-  }
-  return out;
+  const searches = parseSearchesDoc(readFileSync(searchesPath, "utf8"));
+  // Past MAX_SEARCHES, the rest are paused rather than dropped, so the page still lists them.
+  return searches.map((s, i) =>
+    i < MAX_SEARCHES || s.error ? s : { ...s, query: undefined, error: `Over the ${MAX_SEARCHES}-search limit` }
+  );
 }
 
 function loadFile(): SoldTrackerFile {
@@ -98,8 +67,15 @@ function loadFile(): SoldTrackerFile {
   return file.version === 1 && file.league === CURRENT_LEAGUE ? file : emptyTrackerFile(CURRENT_LEAGUE);
 }
 
-function saveFile(file: SoldTrackerFile, listings: Map<string, TrackedListing>, statuses: Map<string, TrackedSearchStatus>) {
+function saveFile(
+  file: SoldTrackerFile,
+  listings: Map<string, TrackedListing>,
+  statuses: Map<string, TrackedSearchStatus>,
+  atCapacity: boolean
+) {
   file.updatedAt = new Date().toISOString();
+  if (atCapacity) file.atCapacity = true;
+  else delete file.atCapacity;
   file.searches = [...statuses.values()];
   file.listings = [...listings.values()];
   mkdirSync(path.dirname(filePath), { recursive: true });
@@ -140,6 +116,13 @@ async function main() {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  let atCapacity = file.atCapacity ?? false;
+  const listedCount = () => {
+    let n = 0;
+    for (const t of listings.values()) if (t.status === "listed") n++;
+    return n;
+  };
+
   async function discover(search: TrackedSearch) {
     const status = statuses.get(search.label)!;
     const now = new Date().toISOString();
@@ -158,21 +141,33 @@ async function main() {
           if (!t.searches.includes(search.label)) t.searches.push(search.label);
         }
       }
-      const fetched = await client.fetchListings(fresh);
+      const { admit, paused, atCapacity: full } = admitNewListings(fresh, total, listedCount());
+      atCapacity = full;
+      const fetched = await client.fetchListings(admit);
       fetched.forEach((l) => l && recordListing(listings, l, now, search.label));
       const interval = status.intervalMinutes ?? DISCOVERY_MINUTES;
-      // Busy: over half a page of new listings since the last run - look sooner. Quiet: ease back.
+      // Busy: over half a page of new listings since the last run - look sooner. Quiet (or paused,
+      // taking nothing in): ease back.
       const nextInterval =
-        fresh.length > SEARCH_RESULT_CAP / 2 ? Math.max(MIN_DISCOVERY_MINUTES, interval / 2) : Math.min(DISCOVERY_MINUTES, interval * 2);
+        !paused && fresh.length > SEARCH_RESULT_CAP / 2
+          ? Math.max(MIN_DISCOVERY_MINUTES, interval / 2)
+          : Math.min(DISCOVERY_MINUTES, interval * 2);
       Object.assign(status, {
         lastRun: now,
         total,
-        newListings: fresh.length,
-        missedListings: fresh.length >= SEARCH_RESULT_CAP && status.lastRun !== undefined,
+        newListings: admit.length,
+        missedListings: !paused && fresh.length >= SEARCH_RESULT_CAP && status.lastRun !== undefined,
         intervalMinutes: nextInterval,
       });
       delete status.error;
-      log(`search "${search.label}": ${total} matching, ${fresh.length} new, next in ${nextInterval} min`);
+      if (paused) status.paused = paused;
+      else delete status.paused;
+      const skipped = fresh.length - admit.length;
+      log(
+        `search "${search.label}": ${total} matching, ${admit.length} new` +
+          (paused ? ` - PAUSED: ${paused}` : skipped > 0 ? ` - ${skipped} skipped, at the tracking limit` : "") +
+          `, next in ${nextInterval} min`
+      );
     } catch (e) {
       status.lastRun = now;
       status.error = (e as Error).message;
@@ -211,14 +206,14 @@ async function main() {
       }
       settleListings(listings.values(), new Date().toISOString());
       if (Date.now() - lastSave >= SAVE_EVERY_MS) {
-        saveFile(file, listings, statuses);
+        saveFile(file, listings, statuses, atCapacity);
         lastSave = Date.now();
       }
       if (!didWork) await new Promise((r) => setTimeout(r, Math.min(IDLE_SLEEP_MS, Math.max(0, deadline - Date.now()))));
     }
   } finally {
     settleListings(listings.values(), new Date().toISOString());
-    saveFile(file, listings, statuses);
+    saveFile(file, listings, statuses, atCapacity);
     const counts = { listed: 0, sold: 0, unsold: 0 };
     for (const t of listings.values()) counts[t.status]++;
     log(`saved ${filePath}: ${counts.listed} listed, ${counts.sold} sold, ${counts.unsold} unsold`);

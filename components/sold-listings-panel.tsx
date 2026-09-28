@@ -16,8 +16,10 @@ import { TradeSiteLink } from "@/components/trade-site-link";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
   LISTING_MAX_AGE_DAYS,
+  MAX_TRACKED_LISTINGS,
   SOLD_AFTER_MISSING_HOURS,
   currentPrice,
+  formatSearchTotal,
   listedDurationMs,
   type ListingPrice,
   type ListingStatus,
@@ -224,19 +226,26 @@ export function SoldListingsPanel() {
           <div className="flex flex-col gap-2">
             <p
               className="text-xs text-muted-foreground"
-              title={`Instant buyout, ${file.minDivines}d+, listed in the last week. Sold = gone ${SOLD_AFTER_MISSING_HOURS}h+. Unsold = still up after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
+              title={`Instant buyout, listed in the last week. Sold = gone ${SOLD_AFTER_MISSING_HOURS}h+. Unsold = still up after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
             >
-              Instant buyout, {file.minDivines}d+ · updated {formatDate(file.updatedAt)}
+              Instant buyout · updated {formatDate(file.updatedAt)}
             </p>
+            {file.atCapacity && (
+              <p className="flex items-center gap-1.5 text-xs text-destructive">
+                <AlertTriangle className="size-3.5 shrink-0" />
+                Tracking limit ({MAX_TRACKED_LISTINGS}) reached - new listings skipped
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               {file.searches.map((s) => (
                 <span
                   key={s.label}
                   className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs"
-                  title={s.error ?? (s.lastRun ? `Last run ${formatDate(s.lastRun)}` : "Not run yet")}
+                  title={s.error ?? s.paused ?? (s.lastRun ? `Last run ${formatDate(s.lastRun)}` : "Not run yet")}
                 >
                   {s.label}
-                  {s.total !== undefined && <span className="text-muted-foreground">· {s.total} listed</span>}
+                  {s.total !== undefined && <span className="text-muted-foreground">· {formatSearchTotal(s.total)} listed</span>}
+                  {s.paused && <span className="text-destructive">· paused</span>}
                   {(s.error || s.missedListings) && (
                     <AlertTriangle
                       className="size-3.5 text-destructive"

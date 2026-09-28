@@ -6,12 +6,24 @@ import type { TradeItem, TradeListing, TradeMod } from "./trade-api";
  * (lib/sold-listings.ts reads the published file). Pure, so components can import its types.
  *
  * A listing is followed by its item id, which the trade site uses as the listing id and keeps when
- * the price changes (tested 2026-09-28: 100d -> 50d kept the id). So a price drop - even below the
- * tracker's floor - is a price change, not a sale. A listing counts as sold only when fetching its id
+ * the price changes (tested 2026-09-28: 100d -> 50d kept the id). So a price drop - even out of the
+ * search's own price range - is a price change, not a sale. A listing counts as sold only when fetching its id
  * returns nothing for SOLD_AFTER_MISSING_HOURS; if it comes back after that (relisted), it's reopened.
  * The one false positive left: an item taken off the market for good looks the same as a sale.
  */
-export const SOLD_TRACKER_MIN_DIVINES = 100;
+/**
+ * Limits on how much the tracker takes in. The rate limit covers about MAX_TRACKED_LISTINGS listings
+ * checked hourly; past that, checks fall behind. Enforced twice, from these same numbers:
+ *  - before merge: scripts/check-sold-searches.ts (the "Check sold tracker searches" PR check) runs
+ *    every search and fails if one matches more than MAX_LISTINGS_PER_SEARCH, the searches together
+ *    more than MAX_TRACKED_LISTINGS, or there are more than MAX_SEARCHES;
+ *  - while running (the market can grow after a search was approved, e.g. at a league start):
+ *    admitNewListings below pauses an oversized search and stops taking new listings at capacity.
+ */
+export const MAX_TRACKED_LISTINGS = 1000;
+export const MAX_LISTINGS_PER_SEARCH = 600;
+/** Each search costs ~2 discovery searches an hour (up to 12 when busy), from a budget of ~70. */
+export const MAX_SEARCHES = 20;
 /** How long a listing must be gone before it counts as sold - long enough for a relist to show up. */
 export const SOLD_AFTER_MISSING_HOURS = 24;
 /** A listing still up this long after it was listed is recorded as unsold and no longer checked. */
@@ -25,6 +37,13 @@ export const MIN_DISCOVERY_MINUTES = 5;
 /** A search returns at most this many ids (newest first here), so a run that finds this many new
  *  listings has likely missed some. */
 export const SEARCH_RESULT_CAP = 100;
+/** A search's `total` stops counting here. */
+export const TRADE_TOTAL_CAP = 10000;
+
+/** A search's listing count, as "10,000+" when the trade site stopped counting. */
+export function formatSearchTotal(total: number): string {
+  return total >= TRADE_TOTAL_CAP ? `${TRADE_TOTAL_CAP.toLocaleString("en-US")}+` : total.toLocaleString("en-US");
+}
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -89,6 +108,9 @@ export interface TrackedSearchStatus {
   /** Minutes until the next run - shortened when a search gets busy. */
   intervalMinutes?: number;
   error?: string;
+  /** Why it isn't taking new listings: over MAX_LISTINGS_PER_SEARCH, or past MAX_SEARCHES. Its
+   *  listings already tracked are still checked. */
+  paused?: string;
 }
 
 /** The tracker's whole state, and the file the page reads (sold-listings/<League>.json). */
@@ -96,13 +118,36 @@ export interface SoldTrackerFile {
   version: 1;
   league: string;
   updatedAt: string;
-  minDivines: number;
+  /** The tracker was at MAX_TRACKED_LISTINGS at its last save, so new listings were being skipped. */
+  atCapacity?: boolean;
   searches: TrackedSearchStatus[];
   listings: TrackedListing[];
 }
 
 export function emptyTrackerFile(league: string): SoldTrackerFile {
-  return { version: 1, league, updatedAt: new Date(0).toISOString(), minDivines: SOLD_TRACKER_MIN_DIVINES, searches: [], listings: [] };
+  return { version: 1, league, updatedAt: new Date(0).toISOString(), searches: [], listings: [] };
+}
+
+/**
+ * The runtime limits (see MAX_TRACKED_LISTINGS): which of a discovery run's new listings to take in.
+ * A search matching more than MAX_LISTINGS_PER_SEARCH is paused - none taken - rather than trimmed,
+ * so it's visibly flagged instead of quietly using the budget. Otherwise new listings are taken
+ * until MAX_TRACKED_LISTINGS listings are being followed.
+ */
+export function admitNewListings(
+  freshIds: string[],
+  searchTotal: number,
+  listedCount: number
+): { admit: string[]; paused?: string; atCapacity: boolean } {
+  if (searchTotal > MAX_LISTINGS_PER_SEARCH) {
+    return {
+      admit: [],
+      paused: `Matches ${formatSearchTotal(searchTotal)} listings, over the ${MAX_LISTINGS_PER_SEARCH} limit - narrow it`,
+      atCapacity: listedCount >= MAX_TRACKED_LISTINGS,
+    };
+  }
+  const room = Math.max(0, MAX_TRACKED_LISTINGS - listedCount);
+  return { admit: freshIds.slice(0, room), atCapacity: freshIds.length > room || listedCount >= MAX_TRACKED_LISTINGS };
 }
 
 function modText(mod: TradeMod): string | undefined {

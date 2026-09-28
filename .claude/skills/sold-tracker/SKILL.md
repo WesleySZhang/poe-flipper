@@ -5,9 +5,9 @@ description: Use when adding or changing the trade searches the sold listing tra
 
 # The sold listing tracker
 
-`scripts/track-sold-listings.ts` follows trade site listings (instant buyout, 100d+, listed in the
-last week) matched by the links in `sold-tracker/searches.md`, and records which sell. The "Track
-sold listings" workflow runs it ~5.5 h every 6 h and force-pushes `sold-listings/<League>.json` to
+`scripts/track-sold-listings.ts` follows trade site listings (instant buyout, listed in the last
+week) matched by the links in `sold-tracker/searches.md`, and records which sell. The "Track sold
+listings" workflow runs it ~5.5 h every 6 h and force-pushes `sold-listings/<League>.json` to
 the `sold-tracker` branch; `/sold-listings` reads it (`lib/sold-listings.ts`, 5-min cache).
 
 ## Add a search
@@ -17,9 +17,12 @@ the `sold-tracker` branch; `/sold-listings` reads it (`lib/sold-listings.ts`, 5-
    unique (they tie listings to searches); a bare link gets the item name as its label.
 3. Check it decodes: `npx tsx -e 'import("./lib/trade-query").then(m => console.log(JSON.stringify(m.parseTradeSearchUrl("<link>"))))'`.
    An id not starting `H4sI` can't be decoded - copy the link again.
-4. Check its size: a search's `total` (on the page, or in the run log) is how many listings it adds.
-   All searches together should stay under ~1,000 listings, or hourly checks fall behind.
-5. Merge to master: the workflow checks out master, so a search only goes live once it's there.
+4. Check the limits: `npm run sold:check` counts every search's listings on the trade site today.
+   Limits (`lib/sold-tracker.ts`): 600 per search, 1,000 in total, 20 searches. Over? Add a price
+   range or more filters to the link. Near a limit (80%+) passes with a warning - a busier league
+   will likely push it over, and the tracker then pauses it.
+5. Open a PR: the "Check sold tracker searches" check runs the same count and fails over the
+   limits. The tracker workflow checks out master, so a search only goes live once merged.
 
 ## Run it locally
 
@@ -39,10 +42,16 @@ fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) i
   runner IP. Run the tracker from another machine (it only needs Node and the repo).
 - **Warning icon on a search:** it failed (hover for the error), or got 100 new listings between
   runs and missed some - narrow the search.
+- **"paused" on a search:** it now matches more than 600 listings, so it takes nothing new (its
+  tracked listings are still checked). Narrow the link; it resumes on its own once under.
+- **"Tracking limit reached":** 1,000 listings are being followed, so new ones are skipped until
+  some sell or expire. Narrow or remove searches.
+- **PR check fails with "Couldn't measure":** the trade site refused or failed - it fails closed.
+  Re-run it; if it's a 403 from GitHub's runners, see the workflow's comments.
 - **A "sale" that wasn't:** a seller pulling an item for good looks the same. One that's relisted
   under the same item id is reopened and marked "Relisted".
-- The rules (24 h gone = sold, 7 days = unsold, hourly checks) are constants in `lib/sold-tracker.ts`;
-  the rate-limit margin (70%) is in `lib/trade-api.ts`.
+- The rules (24 h gone = sold, 7 days = unsold, hourly checks) and limits are constants in
+  `lib/sold-tracker.ts`; the rate-limit margin (70%) is in `lib/trade-api.ts`.
 
 Trade API facts (limits, listing fields, repricing keeps the id) are in the `poe-data-sources`
 skill.

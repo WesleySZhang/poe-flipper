@@ -45,29 +45,19 @@ export function tradeSearchUrlForQuery(league: string, query: TradeQuery): strin
 const INDEXED_OPTIONS = ["1hour", "3hours", "12hours", "1day", "3days", "1week"];
 export const TRACKER_MAX_LISTING_AGE = "1week";
 
-export interface TrackerRules {
-  /** Lowest price tracked, in divines. A link's own divine minimum wins when it's higher. */
-  minDivines: number;
-}
-
 /**
- * The tracker's rules on top of a link's own filters: instant buyout only (status `securable`), at
- * least `minDivines`, listed in the last week. Instant buyout rules out offline sellers and bait
- * (weeks-old 1c listings): its price is what a buyer really pays, and the seller needn't be online.
+ * The tracker's rules on top of a link's own filters: instant buyout only (status `securable`) and
+ * listed in the last week. Instant buyout rules out offline sellers and bait (weeks-old 1c
+ * listings): its price is what a buyer really pays, and the seller needn't be online. Everything
+ * else - including any price range - is the link's; lib/sold-tracker.ts's limits keep the volume in
+ * check.
  */
-export function applyTrackerRules(query: TradeQuery, rules: TrackerRules): TradeQuery {
+export function applyTrackerRules(query: TradeQuery): TradeQuery {
   const filters = { ...(query.filters ?? {}) };
   const trade = { ...(filters.trade_filters ?? {}), disabled: false };
   const tradeFilters = { ...(trade.filters ?? {}) };
-
-  const price = tradeFilters.price as { min?: number; max?: number; option?: string } | undefined;
-  const linkMin = price?.option === "divine" && typeof price.min === "number" ? price.min : 0;
-  const linkMax = price?.option === "divine" && typeof price.max === "number" ? price.max : undefined;
-  tradeFilters.price = { min: Math.max(rules.minDivines, linkMin), ...(linkMax !== undefined ? { max: linkMax } : {}), option: "divine" };
-
   const indexed = (tradeFilters.indexed as { option?: string } | undefined)?.option;
   tradeFilters.indexed = { option: indexed && INDEXED_OPTIONS.includes(indexed) ? indexed : TRACKER_MAX_LISTING_AGE };
-
   trade.filters = tradeFilters;
   filters.trade_filters = trade;
   return { ...query, status: { option: "securable" }, filters };

@@ -110,16 +110,17 @@ Uniques ranked by how much Thaumaturgic Dust they give when disenchanted in King
 ### Sold Listings
 
 What happened to the trade site listings the [sold listing tracker](#the-sold-listing-tracker)
-followed: instant buyout, 100d+, from the searches in
-[`sold-tracker/searches.md`](sold-tracker/searches.md).
+followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold-tracker/searches.md).
 
 - **Tabs:** Sold, Unsold (still up after a week) and Listed (still being checked; "Gone" marks one
   that has disappeared but not for long enough yet to count as sold).
 - **Each row:** the item and its mods, the price (`135d → 95d` when it changed; hover for every
   price and when it was seen), when it was listed, when it sold or expired, how long it was up, and
   the search that found it.
-- **The searches** are listed at the top with how many listings each matches now. A warning icon
-  means the search failed or got more than 100 new listings between runs (so it missed some).
+- **The searches** are listed at the top with how many listings each matches now. "paused" means a
+  search grew past the per-search limit; a warning icon means it failed or got more than 100 new
+  listings between runs (so it missed some). A red line above them means the tracking limit is
+  reached and new listings are being skipped.
 
 ### Item detail page
 
@@ -232,18 +233,25 @@ from there (`lib/sold-listings.ts`).
 - **What it tracks:** the searches in [`sold-tracker/searches.md`](sold-tracker/searches.md). Add
   one by pasting a trade site link as a list item; the link's id is the search itself, gzipped
   (`lib/trade-query.ts`), so reading it costs no request. The tracker adds its own rules to every
-  search: instant buyout only (no offline sellers or bait), 100d or more, listed in the last week,
-  current league.
+  search: instant buyout only (no offline sellers or bait), listed in the last week, current league.
+  Everything else, including any price range, is the link's.
 - **Finding listings:** each search runs newest-first every 30 minutes (sooner when busy). A search
   returns at most 100 listings, so a first run only picks up the newest 100.
 - **Deciding a sale:** every listing is then checked by its item id about once an hour. A fetch by
-  id ignores the search's filters, and the id survives a price change, so a price drop (even below
-  100d) is recorded as a new price, not a sale. A listing counts as sold once it has been gone for
+  id ignores the search's filters, and the id survives a price change, so a price drop (even out of
+  the search's price range) is recorded as a new price, not a sale. A listing counts as sold once it has been gone for
   24 hours, and is reopened if it shows up again. A listing still up after a week counts as unsold.
 - **Rate limits:** GGG limits the trade API per IP. `lib/trade-api.ts` queues every request until
   each limit window has room, keeps to 70% of each limit, and follows the limits and usage the
-  site reports on every response. That covers about 1,000 tracked listings; past that, checks fall
-  behind.
+  site reports on every response. That covers about 1,000 listings checked hourly.
+- **Limits on volume** (`lib/sold-tracker.ts`): 600 listings per search, 1,000 in total, 20
+  searches. Enforced before merge by the **"Check sold tracker searches"** PR check
+  (`scripts/check-sold-searches.ts`, `npm run sold:check` locally): it runs every search on the
+  trade site and fails the PR when a limit is over, a link can't be read, two searches share a
+  label, or the trade site can't be reached. To make it block merging, add `check-searches` as a
+  required status check on `master` (Settings > Branches). And enforced while running, since the
+  market grows after a search is approved (a league start): a search past 600 is paused (its
+  tracked listings are still checked), and at 1,000 tracked listings new ones are skipped.
 - **Run it locally:** `npm run sold:track -- --minutes 60` (state in `.sold-tracker/`, which it
   resumes from). To see a local run on the page, start the dev server with
   `SOLD_LISTINGS_FILE=.sold-tracker/sold-listings/<League>.json`.
@@ -451,7 +459,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/liquidity.ts` | Liquidity tiers (exchange volume, and poe.ninja seller count for uniques) |
 | `lib/trade-site.ts` | Official trade site search links |
 | `lib/trade-query.ts`, `lib/trade-api.ts` | Trade site links decoded to their queries; the rate-limited trade API client (tracker only) |
-| `lib/sold-tracker.ts`, `lib/sold-listings.ts` | The sold listing tracker's data model and sale rules; reading its file for the page |
+| `lib/sold-tracker.ts`, `lib/sold-listings.ts`, `lib/sold-tracker-searches.ts` | The sold listing tracker's data model, sale rules and limits; reading its file for the page; reading `searches.md` |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
 | `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |
@@ -466,6 +474,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
 | `scripts/track-sold-listings.ts`, `sold-tracker/searches.md` | The sold listing tracker and the searches it follows |
+| `scripts/check-sold-searches.ts` | PR check: every search within the tracker's limits |
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
 | `scripts/check-current-league.ts`, `sync-current-league.ts` | League-swap check and fix |
 | `scripts/check-new-items.ts` | Daily check for new items and poe.ninja categories (see [New items and categories](#new-items-and-categories)) |

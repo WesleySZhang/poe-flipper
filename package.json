@@ -15,7 +15,8 @@
     "ml:parity": "tsx scripts/check-predictor-parity.ts",
     "ml:backtest": "tsx --conditions=react-server scripts/backtest-predictor.ts",
     "predictions:precompute": "tsx --conditions=react-server scripts/precompute-predictions.ts",
-    "sold:track": "tsx scripts/track-sold-listings.ts"
+    "sold:track": "tsx scripts/track-sold-listings.ts",
+    "sold:check": "tsx scripts/check-sold-searches.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
