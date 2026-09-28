@@ -1,4 +1,4 @@
-import type { TradeItem, TradeListing, TradeMod } from "./trade-api";
+import type { TradeItem, TradeListing, TradeMod, TradeProperty } from "./trade-api";
 
 /**
  * The sold listing tracker's data model and rules - shared by the tracker
@@ -68,8 +68,19 @@ export type ListingStatus = "listed" | "sold" | "unsold";
 export interface ListingPrice {
   amount: number;
   currency: string;
+  /** The note's prefix, "~b/o" or "~price". */
+  type?: string;
   /** ISO time the tracker first saw this price. */
   at: string;
+}
+
+export type ListingModKind = "enchant" | "implicit" | "fractured" | "explicit" | "crafted" | "crucible" | "scourge";
+
+/** One mod line, with the roll range of each number in it (in order) when the trade site gives one. */
+export interface ListingMod {
+  kind: ListingModKind;
+  text: string;
+  ranges?: Array<{ min: number; max: number }>;
 }
 
 export interface SoldListingItem {
@@ -81,10 +92,28 @@ export interface SoldListingItem {
   icon?: string;
   corrupted?: boolean;
   mutated?: boolean;
-  /** Enchants and implicits, in game order. */
+  /** Enchants and implicits, in game order - the table's short form. */
   implicits: string[];
   /** Fractured, explicit and crafted mods, in game order; crafted/fractured ones say so. */
   mods: string[];
+  /** Everything else about this exact item, for the page's detail view. Missing on listings the
+   *  tracker saw before it recorded details (filled in at their next check). */
+  detail?: SoldListingDetail;
+}
+
+export interface SoldListingDetail {
+  /** "Limited to: 1", "Quality: +20%", ... in the order the game shows them. */
+  properties: string[];
+  requirements: string[];
+  /** e.g. "R-G-B B" - linked sockets joined by "-". */
+  sockets?: string;
+  /** Shaper, Elder, Crusader, ... and Mirrored, Fractured, Synthesised, Split, Relic, Foil (...). */
+  tags: string[];
+  /** Every mod, in game order, with roll ranges. */
+  mods: ListingMod[];
+  flavourText?: string;
+  /** The in-game item text (what Ctrl+C copies) - pastes into Path of Building or the trade site. */
+  text?: string;
 }
 
 export interface TrackedListing {
@@ -222,8 +251,14 @@ export function admitNewListings(
   return { admit: freshIds.slice(0, room), atCapacity: freshIds.length > room || listedCount >= MAX_TRACKED_LISTINGS };
 }
 
+/** The game's text markup, "[Ref|Shown text]" or "[Text]", as the text the game shows. */
+export function stripGameMarkup(text: string): string {
+  return text.replace(/\[([^\]|]*)\|([^\]]*)\]/g, "$2").replace(/\[([^\]|]*)\]/g, "$1");
+}
+
 function modText(mod: TradeMod): string | undefined {
-  return typeof mod === "string" ? mod : mod.description;
+  const text = typeof mod === "string" ? mod : mod.description;
+  return text && stripGameMarkup(text);
 }
 
 function modList(mods: TradeMod[] | undefined, suffix = ""): string[] {
@@ -231,6 +266,77 @@ function modList(mods: TradeMod[] | undefined, suffix = ""): string[] {
     const text = modText(m);
     return text ? [text + suffix] : [];
   });
+}
+
+function modRanges(mod: TradeMod): Array<{ min: number; max: number }> | undefined {
+  if (typeof mod === "string") return undefined;
+  const ranges = (mod.mods ?? []).flatMap((m) =>
+    (m.magnitudes ?? []).flatMap((g) => {
+      const min = Number(g.min);
+      const max = Number(g.max);
+      return Number.isFinite(min) && Number.isFinite(max) ? [{ min: Math.min(min, max), max: Math.max(min, max) }] : [];
+    })
+  );
+  return ranges.length > 0 ? ranges : undefined;
+}
+
+const MOD_KINDS: Array<[ListingModKind, keyof TradeItem]> = [
+  ["enchant", "enchantMods"],
+  ["implicit", "implicitMods"],
+  ["fractured", "fracturedMods"],
+  ["explicit", "explicitMods"],
+  ["crafted", "craftedMods"],
+  ["crucible", "crucibleMods"],
+  ["scourge", "scourgeMods"],
+];
+
+/** "Limited to: 1", or a name with {0} placeholders filled in ("Radius: {0}"). */
+function propertyText(p: TradeProperty): string {
+  const name = stripGameMarkup(p.name);
+  const values = (p.values ?? []).map((v) => v[0]);
+  if (name.includes("{0}")) return values.reduce((text, v, i) => text.replace(`{${i}}`, v), name);
+  return values.length > 0 ? `${name}: ${values.join(", ")}` : name;
+}
+
+/** Base64 -> UTF-8, in both Node and the browser (this module is shared). */
+function decodeBase64(b64: string): string {
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function toListingDetail(item: TradeItem): SoldListingDetail {
+  const text = item.extended?.text ? decodeBase64(item.extended.text).replace(/\r\n/g, "\n").trim() : undefined;
+  const tags = [
+    ...Object.entries(item.influences ?? {})
+      .filter(([, on]) => on)
+      .map(([name]) => name[0].toUpperCase() + name.slice(1)),
+    ...(item.fractured ? ["Fractured"] : []),
+    ...(item.synthesised ? ["Synthesised"] : []),
+    ...(item.mirrored ? ["Mirrored"] : []),
+    ...(item.split ? ["Split"] : []),
+    ...(item.isRelic ? ["Relic"] : []),
+  ];
+  // The foil's name ("Celestial Emerald") is only in the item text: "Foil Unique (Celestial Emerald)".
+  const foil = text?.match(/^Foil Unique \((.+)\)$/m)?.[1];
+  if (foil) tags.push(`Foil: ${foil}`);
+  const groups = new Map<number, string[]>();
+  for (const s of item.sockets ?? []) groups.set(s.group, [...(groups.get(s.group) ?? []), s.sColour ?? "?"]);
+  const flavour = (item.flavourText ?? []).join("").replace(/\r/g, "\n").trim();
+  return {
+    properties: (item.properties ?? []).map(propertyText),
+    requirements: (item.requirements ?? []).map(propertyText),
+    ...(groups.size > 0 ? { sockets: [...groups.values()].map((g) => g.join("-")).join(" ") } : {}),
+    tags,
+    mods: MOD_KINDS.flatMap(([kind, key]) =>
+      ((item[key] as TradeMod[] | undefined) ?? []).flatMap((m) => {
+        const t = modText(m);
+        const ranges = modRanges(m);
+        return t ? [{ kind, text: t, ...(ranges ? { ranges } : {}) }] : [];
+      })
+    ),
+    ...(flavour ? { flavourText: flavour } : {}),
+    ...(text ? { text } : {}),
+  };
 }
 
 export function toListingItem(item: TradeItem): SoldListingItem {
@@ -245,6 +351,7 @@ export function toListingItem(item: TradeItem): SoldListingItem {
     ...(item.mutated ? { mutated: true } : {}),
     implicits: [...modList(item.enchantMods, " (enchant)"), ...modList(item.implicitMods)],
     mods: [...modList(item.fracturedMods, " (fractured)"), ...modList(item.explicitMods), ...modList(item.craftedMods, " (crafted)")],
+    detail: toListingDetail(item),
   };
 }
 
@@ -265,7 +372,7 @@ export function recordListing(listings: Map<string, TrackedListing>, fetched: Tr
       id: fetched.id,
       searches: searchLabel ? [searchLabel] : [],
       item: toListingItem(fetched.item),
-      prices: price ? [{ amount: price.amount, currency: price.currency, at: now }] : [],
+      prices: price ? [{ amount: price.amount, currency: price.currency, ...(price.type ? { type: price.type } : {}), at: now }] : [],
       listedAt: fetched.listing.indexed,
       firstSeen: now,
       lastSeen: now,
@@ -278,7 +385,7 @@ export function recordListing(listings: Map<string, TrackedListing>, fetched: Tr
   if (searchLabel && !existing.searches.includes(searchLabel)) existing.searches.push(searchLabel);
   const last = currentPrice(existing);
   if (price && (!last || last.amount !== price.amount || last.currency !== price.currency)) {
-    existing.prices.push({ amount: price.amount, currency: price.currency, at: now });
+    existing.prices.push({ amount: price.amount, currency: price.currency, ...(price.type ? { type: price.type } : {}), at: now });
   }
   existing.item = toListingItem(fetched.item);
   existing.lastSeen = now;

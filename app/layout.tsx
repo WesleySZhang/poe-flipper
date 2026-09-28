@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Cinzel, Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
@@ -14,6 +14,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Item tooltips (components/poe-item-tooltip.tsx): small caps with full-height digits, close to the
+// game's own tooltip font.
+const cinzel = Cinzel({
+  variable: "--font-poe",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "PoE Flipper",
   description: "Unofficial Path of Exile net worth and flip suggestion assistant.",
@@ -23,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">

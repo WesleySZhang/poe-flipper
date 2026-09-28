@@ -114,9 +114,14 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
 
 - **Tabs:** Sold, Unsold (still up after a week) and Listed (still being checked; "Gone" marks one
   that has disappeared but not for long enough yet to count as sold).
-- **Each row:** the item and its mods, the price (`135d → 95d` when it changed; hover for every
-  price and when it was seen), when it was listed, when it sold or expired, how long it was up, and
-  the search that found it.
+- **Each row:** the item drawn like the game's own tooltip (`components/poe-item-tooltip.tsx`), the
+  price (`135d → 95d` when it changed; hover for every price and when it was seen), when it was
+  listed, when it sold or expired, how long it was up, and the search that found it.
+- **Click an item** for everything recorded about it: every mod with its roll range (e.g.
+  `60% increased Lightning Damage while affected by Wrath (40–60)`), properties, item level,
+  influences, relic/foil, corruption, flavour text, the full price history, and a "Copy item text"
+  button (the in-game text, for Path of Building or the trade site). Listings recorded before
+  details were kept get them at their next check.
 - **The searches** are listed at the top with how many listings each matches now. "paused" means a
   search grew past the per-search limit; a warning icon means it failed or got more than 200 new
   listings between runs (so it missed some). Tabs: Sold (last 30 days), Unsold (last 7) and Gone
@@ -453,6 +458,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `*-panel.tsx` | Each page's main panel |
 | `mobile-sort-control.tsx` | Mobile sort and confidence/liquidity filter |
 | `trade-site-link.tsx` | Trade site link icon |
+| `poe-item-tooltip.tsx` | An item drawn like the game's tooltip (Sold Listings) |
 | `ui/` | shadcn components |
 
 ### Predictions

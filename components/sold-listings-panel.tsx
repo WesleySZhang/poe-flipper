@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { cn } from "cn";
+import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileSortControl } from "@/components/mobile-sort-control";
@@ -13,6 +14,7 @@ import { Pagination } from "@/components/pagination";
 import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { TradeSiteLink } from "@/components/trade-site-link";
+import { PoeItemTooltip } from "@/components/poe-item-tooltip";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
   LISTING_MAX_AGE_DAYS,
@@ -98,35 +100,104 @@ function matchesSearch(t: TrackedListing, text: string): boolean {
 }
 
 /** Item name, base, and every mod - the part of a listing that says what sold. */
-function ItemSummary({ t, className }: { t: TrackedListing; className?: string }) {
+/** The price as the item's note reads on the trade site, e.g. "~b/o 100 divine". */
+function priceNote(t: TrackedListing): string | undefined {
+  const p = currentPrice(t);
+  return p ? `${p.type ?? "~b/o"} ${p.amount} ${p.currency}` : undefined;
+}
+
+/** The item as the trade site shows it, plus the tracker's own flags. */
+function ItemCell({ t }: { t: TrackedListing }) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-0.5", className)}>
-      <div className="flex flex-wrap items-baseline gap-x-1.5">
-        <span className="font-medium">{t.item.name || t.item.typeLine}</span>
-        {t.item.name && <span className="text-xs text-muted-foreground">{t.item.typeLine}</span>}
-        {t.item.corrupted && <span className="text-xs text-destructive">Corrupted</span>}
-        {t.missingSince && t.status === "listed" && (
-          <Badge variant="outline" title={`Not listed since ${formatDate(t.missingSince)}. Counted sold after ${SOLD_AFTER_MISSING_HOURS}h gone.`}>
-            Gone
-          </Badge>
-        )}
-        {t.reappeared && (
-          <Badge variant="outline" title="Counted sold once, then listed again">
-            Relisted
-          </Badge>
-        )}
-      </div>
-      <ul className="text-xs leading-snug text-muted-foreground">
-        {t.item.implicits.map((m, i) => (
-          <li key={`i${i}`} className="italic">
-            {m}
-          </li>
-        ))}
-        {t.item.mods.map((m, i) => (
-          <li key={`m${i}`}>{m}</li>
-        ))}
-      </ul>
+    <div className="flex min-w-0 flex-col gap-1">
+      <PoeItemTooltip item={t.item} price={priceNote(t)} />
+      {((t.missingSince && t.status === "listed") || t.reappeared) && (
+        <div className="flex flex-wrap gap-1">
+          {t.missingSince && t.status === "listed" && (
+            <Badge variant="outline" title={`Not listed since ${formatDate(t.missingSince)}. Counted sold after ${SOLD_AFTER_MISSING_HOURS}h gone.`}>
+              Gone
+            </Badge>
+          )}
+          {t.reappeared && (
+            <Badge variant="outline" title="Counted sold once, then listed again">
+              Relisted
+            </Badge>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Everything recorded about one listing: the full item with roll ranges, and its listing history. */
+function ListingDetailDialog({
+  t,
+  onClose,
+  searchLinks,
+  loadedAt,
+}: {
+  t: TrackedListing | null;
+  onClose: () => void;
+  searchLinks: Map<string, string>;
+  loadedAt: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const text = t?.item.detail?.text;
+  return (
+    <Dialog open={t !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
+        {t && (
+          <>
+            <DialogTitle className="sr-only">{t.item.name ? `${t.item.name} ${t.item.typeLine}` : t.item.typeLine}</DialogTitle>
+            <PoeItemTooltip item={t.item} price={priceNote(t)} showRanges className="mt-6" />
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <dt className="text-muted-foreground">Status</dt>
+              <dd>
+                {t.status === "listed" && t.missingSince ? "Gone - not counted sold yet" : STATUS_LABEL[t.status]}
+                {t.reappeared && " (relisted once)"}
+              </dd>
+              <dt className="text-muted-foreground">Listed</dt>
+              <dd>{formatDate(t.listedAt)}</dd>
+              <dt className="text-muted-foreground">{ENDED_LABEL[t.status]}</dt>
+              <dd>{formatDate(endedAt(t))}</dd>
+              <dt className="text-muted-foreground">Time up</dt>
+              <dd>{formatDuration(listedDurationMs(t, loadedAt))}</dd>
+              <dt className="text-muted-foreground">Prices</dt>
+              <dd>
+                {t.prices.map((p) => (
+                  <div key={p.at}>
+                    {formatPrice(p)} <span className="text-muted-foreground">from {formatDate(p.at)}</span>
+                  </div>
+                ))}
+              </dd>
+              <dt className="text-muted-foreground">Found by</dt>
+              <dd>
+                {t.searches.map((label) => (
+                  <span key={label} className="flex items-center gap-1">
+                    {label}
+                    {searchLinks.get(label) && <TradeSiteLink href={searchLinks.get(label)!} className="size-3.5" />}
+                  </span>
+                ))}
+              </dd>
+            </dl>
+            {text && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="justify-self-start"
+                onClick={() => {
+                  void navigator.clipboard.writeText(text).then(() => setCopied(true));
+                }}
+                onBlur={() => setCopied(false)}
+              >
+                {copied ? <Check /> : <Copy />}
+                {copied ? "Copied" : "Copy item text"}
+              </Button>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -141,6 +212,8 @@ export function SoldListingsPanel() {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "ended", direction: "desc" });
   const [isPending, startTransition] = useTransition();
+  // The listing whose details are open.
+  const [selected, setSelected] = useState<TrackedListing | null>(null);
   // Durations of still-listed items count up to "now"; fixed per load so renders stay pure.
   const [loadedAt, setLoadedAt] = useState(() => new Date(0).toISOString());
 
@@ -196,6 +269,13 @@ export function SoldListingsPanel() {
   function changeSearchText(text: string) {
     setSearchText(text);
     setPage(0);
+  }
+
+  function openOnKey(e: React.KeyboardEvent, t: TrackedListing) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setSelected(t);
+    }
   }
 
   function handleSort(key: SortKey) {
@@ -291,8 +371,15 @@ export function SoldListingsPanel() {
           // -mx-4 cancels CardContent's own px-4, same as the other panels' mobile card lists.
           <div className="-mx-4 flex flex-col gap-2 sm:hidden">
             {paged.map((t) => (
-              <div key={t.id} className="flex flex-col gap-2 rounded-lg border border-border p-2">
-                <ItemSummary t={t} className="text-sm" />
+              <div
+                key={t.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelected(t)}
+                onKeyDown={(e) => openOnKey(e, t)}
+                className="flex cursor-pointer flex-col gap-2 rounded-lg border border-border p-2 active:bg-muted/50"
+              >
+                <ItemCell t={t} />
                 <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1.5">
                   {[
                     { label: "Listed", value: formatDate(t.listedAt) },
@@ -329,9 +416,9 @@ export function SoldListingsPanel() {
             </TableHeader>
             <TableBody>
               {paged.map((t) => (
-                <TableRow key={t.id} className="align-top">
-                  <TableCell className="max-w-[360px] whitespace-normal">
-                    <ItemSummary t={t} />
+                <TableRow key={t.id} tabIndex={0} onClick={() => setSelected(t)} onKeyDown={(e) => openOnKey(e, t)} className="cursor-pointer align-top">
+                  <TableCell className="w-[440px] max-w-[440px] whitespace-normal">
+                    <ItemCell t={t} />
                   </TableCell>
                   <TableCell className="text-right font-medium" title={priceTitle(t)}>
                     {formatPriceHistory(t)}
@@ -358,6 +445,7 @@ export function SoldListingsPanel() {
           </p>
         )}
         <Pagination page={Math.min(page, pageCount - 1)} pageCount={pageCount} totalRows={visible.length} onPageChange={setPage} />
+        <ListingDetailDialog t={selected} onClose={() => setSelected(null)} searchLinks={searchLinks} loadedAt={loadedAt} />
       </CardContent>
     </Card>
   );
