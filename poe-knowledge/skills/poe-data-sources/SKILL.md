@@ -56,6 +56,10 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   currency}, `account` {name, online}, `stash` {name, x, y}, `method: "psapi"`). The result id equals
   `item.id`. A fetched id that's no longer listed comes back as `null` in its slot - a cheap
   "still listed?" check. `[verified]` (2026-09-27)
+- Repricing keeps the listing id. A Watcher's Eye lowered from 100d to 50d kept its id. A fetch
+  returned the new price, with `indexed` reset to the time of the change and the gold `fee`
+  unchanged. The change reached the trade site ~6 minutes later (the original listing took ~9).
+  `[verified]` (2026-09-28)
 - Status `securable` = instant buyout only; its listings carry a gold `fee` and `account.online:
   null`. A search's `total` caps at 10,000. `sort: {"indexed": "desc"}` lists newest first. Filter
   by listing age with `trade_filters.indexed` (`1day`, `1week`, ...) and by price with

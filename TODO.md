@@ -127,6 +127,17 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
       for the 100d tie, which no price range can split.
     - Budget: at ~70% of the limits, ~54 searches an hour (~5,400 listings) plus ~90 fetches
       (~900 listings). That's what the table above divides up.
+  - **A price drop is not a sale** (tested 2026-09-28 with the owner's own Watcher's Eye). Lowering
+    it from 100d to 50d kept the same id. A fetch by id returned the new price and a new `indexed`
+    (the time of the change), not `null`. The trade site showed the change ~6 minutes later; the
+    original listing had taken ~9. So:
+    - Track by item id and keep each id's price history.
+    - Count a sale only when a fetch returns `null`. Dropping out of a search, e.g. below the
+      100d floor, doesn't count.
+    - Store a first-seen time, since `indexed` resets on every price change.
+    - Freshness doesn't matter, so wait (say 24 hours) before calling a missing id sold, in case
+      it's relisted under the same id.
+    - The one false positive left: an item taken off the market for good looks like a sale.
   - Listings still up after 7 days drop out as "unsold after a week".
   - Overpriced listings that never sell still take re-check budget.
 - **Storage** is small: a few thousand listings and their sales, each with mods, price, first seen,
@@ -156,7 +167,7 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
     - account name and whether they're online;
     - stash tab name and position;
     - `indexed`: when it was listed or last changed.
-  - The listing id equals the item's own id, so a repriced item keeps its id.
+  - The listing id equals the item's own id, and a repriced item keeps it (tested; see above).
   - **A fetch of a listing that's gone returns `null`** in its slot, and fetch doesn't need the
     search id. That makes it a cheap way to check whether a listing is still up, 10 per request.
 - **Traps:**
@@ -169,9 +180,9 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
     an id missing from the results is really gone (or repriced out of range; one fetch tells which).
 - **Timing is approximate:**
   - Sold time falls between the last check that saw the listing and the first that didn't, plus up
-    to ~5 minutes of trade-site indexing delay.
-  - "How long it was up" = sold time minus `indexed`. `indexed` probably resets when the price
-    changes (unchecked), so also store when the tracker first saw the listing.
+    to ~10 minutes of trade-site indexing delay.
+  - "How long it was up" = sold time minus the tracker's first-seen time. `indexed` resets on every
+    price change, so it only gives the time since the last change.
 - **Rate limiter:** use one shared, queuing rate limiter per endpoint: before each request, wait
   until every window has room. Update the windows from the `X-Rate-Limit-Ip`/`-State` headers after
   every response, and on a 429 honour `Retry-After`.
