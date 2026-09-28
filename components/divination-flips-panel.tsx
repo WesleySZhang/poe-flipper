@@ -210,14 +210,6 @@ export function DivinationFlipsPanel() {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {priceUnit === "divine" && (
-          <p
-            className="text-xs text-muted-foreground"
-            title="Cards at their own Divine market price on the Currency Exchange; rewards at their chaos price, converted"
-          >
-            Only cards traded for divines this hour
-          </p>
-        )}
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search cards or rewards..." />
           <NumericRangeFilter
