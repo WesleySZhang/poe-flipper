@@ -37,6 +37,13 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   each number in the mod, in order. A fixed value has min = max; negative ranges exist
   ("Non-Channelling Skills have -6 to Total Mana Cost": -10 to -5). Show ranges like the game's
   Alt view: after the mod, e.g. "60% increased ... (40–60)". `[verified]`
+  This app shows a mod's range only on hover (or tap, on touch screens), at the right edge of its
+  line in the grey label colour, laid over the line so it never moves the mod text. The mod text
+  stays exactly centred: the tier column on the left is matched by an equal empty one on the right.
+  No bold. `[owner]` (2026-09-28)
+- **Tiers:** magic/rare mods have a tier (1 = best; from the trade API's `tier`, "P7"/"S2"). This app
+  shows it as "T7" at the left edge of the mod's line, in the label colour; uniques and implicits
+  have none, and the column only appears when the item has a tiered mod. `[owner]` (2026-09-28)
 - **The item text** (what Ctrl+C copies in game) comes base64 in the trade API's `extended.text`,
   with `\r\n` line endings. It pastes into Path of Building and the trade site's search. Some
   facts are only in it, e.g. a foil's name: "Foil Unique (Celestial Emerald)". `[verified]`
@@ -52,8 +59,8 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   Cinzel as `--font-poe`; the light/dark palettes are CSS variables on `.poe-tooltip` in
   `app/globals.css`.
 - `lib/sold-tracker.ts` (`toListingDetail`, `stripGameMarkup`) turns a trade API item into the stored
-  detail: mods with ranges, properties, requirements, sockets, tags (influences, relic, foil), item
-  text.
+  detail: mods with ranges, properties, requirements, sockets, tags (influences, relic, foil). The
+  item text is read for the foil name but not stored.
 
 ## Sources
 

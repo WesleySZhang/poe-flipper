@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { cn } from "cn";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
@@ -169,64 +167,19 @@ function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string;
   );
 }
 
-/** Everything recorded about one listing: the full item with roll ranges, and its listing history. */
-function ListingDetailDialog({
-  t,
-  onClose,
-  searchLinks,
-  loadedAt,
-}: {
-  t: TrackedListing | null;
-  onClose: () => void;
-  searchLinks: Map<string, string>;
-  loadedAt: string;
-}) {
-  const [copied, setCopied] = useState(false);
-  const text = t?.item.detail?.text;
-  return (
-    <Dialog open={t !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
-        {t && (
-          <>
-            <DialogTitle className="sr-only">{itemName(t)}</DialogTitle>
-            <PoeItemTooltip item={t.item} price={priceNote(t)} showRanges className="mt-6" />
-            <ListingFacts t={t} now={loadedAt} searchLinks={searchLinks} />
-            {text && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="justify-self-start"
-                onClick={() => {
-                  void navigator.clipboard.writeText(text).then(() => setCopied(true));
-                }}
-                onBlur={() => setCopied(false)}
-              >
-                {copied ? <Check /> : <Copy />}
-                {copied ? "Copied" : "Copy item text"}
-              </Button>
-            )}
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /**
  * Listings the sold listing tracker followed, by what happened to them - see lib/sold-tracker.ts for
  * how a sale is decided and scripts/track-sold-listings.ts for the tracker itself. One row per item:
  * the item drawn like the game's tooltip, and its listing facts stacked beside it (under it on a
- * phone). Clicking a row opens the item with its roll ranges.
+ * phone).
  */
 export function SoldListingsPanel() {
   const [file, setFile] = useState<SoldListingsFile | null>(null);
   const [tab, setTab] = useState<Tab>("sold");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(0);
-  const [sort, setSort] = useState<SortState<SortKey>>({ key: "ended", direction: "desc" });
+  const [sort, setSort] = useState<SortState<SortKey>>({ key: "price", direction: "asc" });
   const [isPending, startTransition] = useTransition();
-  // The listing whose details are open.
-  const [selected, setSelected] = useState<TrackedListing | null>(null);
   // Durations count up to "now" for anything still open; fixed per load so renders stay pure.
   const [loadedAt, setLoadedAt] = useState(() => new Date(0).toISOString());
 
@@ -305,13 +258,6 @@ export function SoldListingsPanel() {
   function changeSearchText(text: string) {
     setSearchText(text);
     setPage(0);
-  }
-
-  function openOnKey(e: React.KeyboardEvent, t: TrackedListing) {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      setSelected(t);
-    }
   }
 
   function handleSort(key: SortKey) {
@@ -394,7 +340,7 @@ export function SoldListingsPanel() {
               className="text-xs text-muted-foreground"
               title={`Instant buyout, listed in the last week. Sold = no longer listed. Unsold = still listed, or expired after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
             >
-              Tracking {file.trackedCount.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
+              Tracking {file.trackedCount.toLocaleString("en-US")} / {MAX_TRACKED_LISTINGS.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
             </p>
             {file.atCapacity && (
               <p className="flex items-center gap-1.5 text-xs text-destructive">
@@ -433,13 +379,9 @@ export function SoldListingsPanel() {
             {paged.map((t) => (
               <div
                 key={t.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelected(t)}
-                onKeyDown={(e) => openOnKey(e, t)}
-                className="grid cursor-pointer grid-cols-1 gap-3 rounded-lg border border-border p-2 hover:bg-muted/40 active:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_15rem] sm:p-3"
+                className="grid grid-cols-1 gap-3 rounded-lg border border-border p-2 sm:grid-cols-[minmax(0,1fr)_15rem] sm:p-3"
               >
-                <PoeItemTooltip item={t.item} price={priceNote(t)} />
+                <PoeItemTooltip item={t.item} price={priceNote(t)} showRanges />
                 <ListingFacts t={t} now={loadedAt} searchLinks={searchLinks} />
               </div>
             ))}
@@ -451,7 +393,6 @@ export function SoldListingsPanel() {
           </p>
         )}
         <Pagination page={Math.min(page, pageCount - 1)} pageCount={pageCount} totalRows={visible.length} onPageChange={setPage} />
-        <ListingDetailDialog t={selected} onClose={() => setSelected(null)} searchLinks={searchLinks} loadedAt={loadedAt} />
       </CardContent>
     </Card>
   );

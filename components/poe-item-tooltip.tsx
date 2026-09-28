@@ -92,6 +92,7 @@ export function PoeItemTooltip({
       ...item.implicits.map((text) => ({ kind: "implicit" as const, text })),
       ...item.mods.map((text) => ({ kind: "explicit" as const, text })),
     ];
+  const hasTiers = mods.some((m) => m.tier !== undefined);
   const implicitMods = mods.filter((m) => m.kind === "enchant" || m.kind === "implicit");
   const explicitMods = mods.filter((m) => m.kind !== "enchant" && m.kind !== "implicit");
 
@@ -128,12 +129,38 @@ export function PoeItemTooltip({
       group.map((m, i) => {
         const range = showRanges ? formatRanges(m.ranges) : undefined;
         return (
-          <div key={i} style={{ color: MOD_COLOUR[m.kind] }}>
-            {stripGameMarkup(m.text)}
-            {m.kind === "crafted" || m.kind === "fractured" || m.kind === "enchant" ? (
-              <span style={{ color: LABEL }}> ({m.kind})</span>
-            ) : null}
-            {range && <span style={{ color: LABEL }}> {range}</span>}
+          // The tier (magic/rare only) sits at the line's left edge, with an equal empty column on the
+          // right so the mod text stays centred. The range shows at the right edge on hover, laid
+          // over the line so it never moves the text.
+          <div
+            key={i}
+            // Focusable so a tap shows the range on touch screens, which have no hover.
+            tabIndex={range ? 0 : undefined}
+            className={cn(
+              showRanges && "group relative outline-none",
+              showRanges && hasTiers && "grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-baseline gap-2"
+            )}
+          >
+            {showRanges && hasTiers && (
+              <span className="text-left" style={{ color: LABEL }} title={m.tier !== undefined ? `Tier ${m.tier} (1 is best)` : undefined}>
+                {m.tier !== undefined ? `T${m.tier}` : ""}
+              </span>
+            )}
+            <div style={{ color: MOD_COLOUR[m.kind] }}>
+              {stripGameMarkup(m.text)}
+              {m.kind === "crafted" || m.kind === "fractured" || m.kind === "enchant" ? (
+                <span style={{ color: LABEL }}> ({m.kind})</span>
+              ) : null}
+            </div>
+            {showRanges && hasTiers && <span />}
+            {range && (
+              <span
+                className="pointer-events-none absolute right-0 top-0 whitespace-nowrap pl-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+                style={{ color: LABEL, background: "var(--poe-bg)" }}
+              >
+                {range}
+              </span>
+            )}
           </div>
         );
       })
@@ -145,9 +172,6 @@ export function PoeItemTooltip({
   ];
   if (statusLines.length > 0) {
     sections.push(statusLines.map((l) => <div key={l.text} style={{ color: l.colour }}>{l.text}</div>));
-  }
-  if (showRanges && detail?.flavourText) {
-    sections.push(<div className="whitespace-pre-line italic" style={{ color: RARITY }}>{detail.flavourText}</div>);
   }
   if (price) sections.push(<div style={{ color: "var(--poe-price)" }}>{price}</div>);
 

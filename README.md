@@ -119,18 +119,20 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   taking most of the width, with the listing's facts stacked beside it (under it on a phone):
   every price it had, earlier ones struck through, each with how long it stood at that price; when
   it was listed; when it sold or expired; how long it was up; the search that found it. Sort by
-  sold/expired time, listed time, price or time up.
-- **Click an item** for everything recorded about it: every mod with its roll range (e.g.
-  `60% increased Lightning Damage while affected by Wrath (40–60)`), properties, item level,
-  influences, relic/foil, corruption, flavour text, the full price history, and a "Copy item text"
-  button (the in-game text, for Path of Building or the trade site). Listings recorded before
-  details were kept get them at their next check.
+  price (the default, lowest first), sold/expired time, listed time or time up. Price sorts divine
+  listings by amount; any priced in another currency come after them.
+- **Each item shows** every mod, centred, with its tier at the left (T1 = best; magic/rare mods
+  only). Hover a mod (tap, on a phone) to see its roll range at the right, e.g. `(40–60)` for
+  `46% increased Attack Damage while affected by Precision`. Also properties, item level,
+  influences, relic/foil and corruption. Rows don't open anything, so text can be selected. Listings
+  recorded before details were kept get them at their next check.
 - **The searches** are listed first, as filters: pick one or more to see only the listings they
   found (All = every search); each shows how many of the current tab's listings it found, and its
   hover shows how many listings it matches on the trade site now. "paused" means a
   search grew past the per-search limit; a warning icon means it failed or got more than 200 new
-  listings between runs (so it missed some). A red line above them means the tracking limit is
-  reached and new listings are being skipped.
+  listings between runs (so it missed some). Under them, "Tracking N / 6,000" shows how many
+  listings are followed against the limit; a red line means it's reached and new listings are
+  being skipped.
 
 ### Item detail page
 
@@ -245,7 +247,7 @@ rebuilds from scratch):
 | --- | --- |
 | `state/<League>.json` | The tracker's state: listed listings, ones that ended in the last week, search status |
 | `sold-listings/<League>.json` | What the Sold Listings page reads (`lib/sold-listings.ts`): sales from the last 30 days, unsold from the last 7, every listing still up |
-| `ended/<League>/<YYYY-MM>.jsonl` | Every listing that ended, one per line - the full history |
+| `ended/<League>/<YYYY-MM-DD>.jsonl` | Every listing that ended, by the day it ended, one per line - the full history |
 
 - **Published as it goes:** every 30 minutes during a run, and once more at its end (even if
   tracking failed partway), `scripts/publish-sold-tracker.sh` force-pushes a full snapshot of the
@@ -262,7 +264,12 @@ rebuilds from scratch):
 - **Finding listings:** each search runs newest-first. A search returns at most 100 listings, so
   when all 100 are new the tracker also fetches the oldest 100 since the last run: up to 200 new
   listings per search between runs (the per-search limit averages ~110 per 6 hours). More than
-  that and the search is flagged as having missed some.
+  that and the search is flagged as having missed some. So a new search only takes in ~200 of the
+  listings already up when it starts; the rest are never tracked, and "Tracking N" sits below the
+  trade site's count until they expire (7 days). After that it's close to the full count.
+- **How long records are kept:** a sale shows on the page for 30 days and an unsold listing for 7;
+  the state keeps ended listings 7 days; the archive keeps them forever. There's no backup: each
+  publish replaces the branch with one commit, so its history holds no older copies.
 - **Deciding a sale:** every listing is checked by its item id once per run. A fetch by id ignores
   the search's filters, and the id survives a price change, so a price drop (even out of the
   search's price range) is recorded as a new price, not a sale (repricing happens in place). A
