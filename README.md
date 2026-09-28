@@ -114,7 +114,7 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
 
 - **Tabs:** Sold (last 30 days) and Unsold (still up a week after listing; last 7 days).
 - **Each row:** the item drawn like the game's own tooltip (`components/poe-item-tooltip.tsx`; the
-  game's dark look in dark mode, a parchment version in light mode),
+  game's dark look in dark mode, black and white in light mode),
   taking most of the width, with the listing's facts stacked beside it (under it on a phone):
   every price it had, earlier ones struck through, each with how long it stood at that price; when
   it was listed; when it sold or expired; how long it was up; the search that found it. Sort by

@@ -8,20 +8,20 @@ import { stripGameMarkup, type ListingMod, type SoldListingItem } from "@/lib/so
  * sold listing tracker stored - listings recorded before details were kept fall back to the short
  * mod lists.
  *
- * Dark mode is the game's own look and colours; light mode keeps the layout on a parchment
- * background with the colours darkened to stay readable. The palettes are CSS variables on
- * `.poe-tooltip` in app/globals.css; only the rarity colour is set per item, here.
+ * Dark mode is the game's own look and colours; light mode keeps the layout in black and white, to
+ * match the light theme. The palettes are CSS variables on `.poe-tooltip` in app/globals.css; only
+ * the dark-mode rarity colour is set per item, here.
  */
 
-// Rarity (name text / header tint): [light mode, dark mode = the game's own].
-const RARITY_COLOUR: Record<string, [string, string]> = {
-  Normal: ["#555555", "#c8c8c8"],
-  Magic: ["#3a3ab8", "#8888ff"],
-  Rare: ["#8a7400", "#ffff77"],
-  Unique: ["#8a4a16", "#af6025"],
-  Gem: ["#137a74", "#1ba29b"],
-  Currency: ["#7a6c4c", "#aa9e82"],
-  "Divination Card": ["#0a7fb0", "#0ebaff"],
+// Rarity (name text / header tint) in dark mode - the game's own. Light mode is black and white.
+const RARITY_COLOUR: Record<string, string> = {
+  Normal: "#c8c8c8",
+  Magic: "#8888ff",
+  Rare: "#ffff77",
+  Unique: "#af6025",
+  Gem: "#1ba29b",
+  Currency: "#aa9e82",
+  "Divination Card": "#0ebaff",
 };
 const MOD_COLOUR: Record<ListingMod["kind"], string> = {
   enchant: "var(--poe-mod-soft)",
@@ -29,8 +29,8 @@ const MOD_COLOUR: Record<ListingMod["kind"], string> = {
   fractured: "var(--poe-fractured)",
   explicit: "var(--poe-mod)",
   crafted: "var(--poe-mod-soft)",
-  crucible: "#c27a17",
-  scourge: "#d0561a",
+  crucible: "var(--poe-mod)",
+  scourge: "var(--poe-mod)",
 };
 const RARITY = "var(--poe-rarity)";
 const LABEL = "var(--poe-label)";
@@ -83,7 +83,7 @@ export function PoeItemTooltip({
   className?: string;
 }) {
   const rarity = item.rarity ?? "Normal";
-  const [lightColour, darkColour] = RARITY_COLOUR[rarity] ?? RARITY_COLOUR.Normal;
+  const darkColour = RARITY_COLOUR[rarity] ?? RARITY_COLOUR.Normal;
   const detail = item.detail;
   const twoLineHeader = !!item.name && (rarity === "Unique" || rarity === "Rare");
   const mods: ListingMod[] =
@@ -156,7 +156,6 @@ export function PoeItemTooltip({
       className={cn("poe-tooltip overflow-hidden rounded-sm border text-center text-[13px] leading-snug", className)}
       style={
         {
-          "--poe-rarity-light": lightColour,
           "--poe-rarity-dark": darkColour,
           borderColor: rarityMix(60),
           background: "var(--poe-bg)",

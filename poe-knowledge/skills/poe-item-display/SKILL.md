@@ -23,10 +23,9 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   - Corrupted red `#d20000`; unique flavour text in the unique colour, italic.
   `[unsure]` - from memory of the game/community renderers, checked against a trade site screenshot
   by eye only.
-- **On a light page** the game's dark box looks out of place; a parchment background (`#faf6ee`)
-  with the same layout and darkened colours reads well (unique `#8a4a16`, mods `#3a3ab8`, label
-  `#6b6b6b`, value near-black, corrupted `#b3000c`). Keep the game's own colours for dark mode.
-  `[verified]` (owner's call, 2026-09-28)
+- **On a light page** the game's dark box looks out of place. This app draws it in black and white
+  there (white background, near-black text, grey labels and rules) with the same layout, and keeps
+  the game's colours for dark mode. `[owner]` (2026-09-28)
 - **The font** is Fontin SmallCaps (small caps, full-height digits). A serif fallback with
   `font-variant: small-caps` gets old-style digits on Windows (Palatino, Georgia) that look tiny;
   Cinzel (Google Fonts) is a close free stand-in. `[verified]` (2026-09-28)
