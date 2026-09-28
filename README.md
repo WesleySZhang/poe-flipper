@@ -236,9 +236,12 @@ rebuilds from scratch):
 | `sold-listings/<League>.json` | What the Sold Listings page reads (`lib/sold-listings.ts`): sales from the last 30 days, unsold from the last 7, listings gone but not yet counted sold |
 | `ended/<League>/<YYYY-MM>.jsonl` | Every listing that ended, one per line - the full history |
 
-- **The page updates every ~6 hours, all at once,** when a run's last step publishes. The tracker
-  saves every few minutes while running, and the publish step runs even if tracking failed
-  partway, so a failed run still publishes what it got.
+- **Published as it goes:** every 30 minutes during a run, and once more at its end (even if
+  tracking failed partway), `scripts/publish-sold-tracker.sh` force-pushes a full snapshot of the
+  three folders as one fresh commit. Each publish is complete and consistent (taken straight after
+  a save, from the tracker's own process), so publishing again is harmless and a failed push just
+  leaves the previous snapshot. It never touches the job's checkout. The archive skips listings
+  it already holds, so a run that stopped between archiving and saving doesn't write them twice.
 
 - **What it tracks:** the searches in [`sold-tracker/searches.md`](sold-tracker/searches.md). Add
   one by pasting a trade site link as a list item; the link's id is the search itself, gzipped
@@ -489,6 +492,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
 | `scripts/track-sold-listings.ts`, `sold-tracker/searches.md` | The sold listing tracker and the searches it follows |
+| `scripts/publish-sold-tracker.sh` | Publishes the tracker's files to the `sold-tracker` branch (during and after a run) |
 | `scripts/check-sold-searches.ts` | PR check: every search within the tracker's limits |
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
 | `scripts/check-current-league.ts`, `sync-current-league.ts` | League-swap check and fix |

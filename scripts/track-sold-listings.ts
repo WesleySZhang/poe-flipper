@@ -6,7 +6,13 @@
  * files change only at the end of a run; the local ones are saved every few minutes.
  *
  *   npx tsx scripts/track-sold-listings.ts [--minutes 330] [--dir .sold-tracker] [--searches sold-tracker/searches.md]
- *                                          [--fetch-pace-ms 25000]
+ *                                          [--fetch-pace-ms 25000] [--publish-cmd "<command>"]
+ *                                          [--publish-every-minutes 30]
+ *
+ * With --publish-cmd, the files are published as the run goes: right after a save, every
+ * PUBLISH_EVERY_MINUTES (the workflow passes scripts/publish-sold-tracker.sh). Publishing from this
+ * process, straight after a save, means every snapshot is consistent - nothing is written while it
+ * copies. A failed publish is logged and retried at the next one; it never stops tracking.
  *
  * Files under --dir (see lib/sold-tracker.ts for each one's shape):
  *   state/<League>.json          the tracker's state: listed listings, recently ended ones, searches
@@ -29,6 +35,7 @@
  * exit, so a killed run loses little. A first run picks up at most the newest and oldest 100 of the
  * week per search; after that, new listings are caught as they come.
  */
+import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
@@ -57,6 +64,8 @@ import {
 } from "../lib/sold-tracker";
 
 const SAVE_EVERY_MS = 5 * 60 * 1000;
+const PUBLISH_EVERY_MINUTES = 30;
+const PUBLISH_TIMEOUT_MS = 2 * 60 * 1000;
 const STATE_DAYS_LABEL = `${STATE_KEEP_ENDED_DAYS} days`;
 const IDLE_SLEEP_MS = 60 * 1000;
 
@@ -68,6 +77,9 @@ function arg(name: string, fallback: string): string {
 const minutes = Number(arg("minutes", "330"));
 // Lower for a quick local test; the workflow uses the default.
 const fetchPaceMs = Number(arg("fetch-pace-ms", String(FETCH_PACE_MS)));
+const publishCmd = arg("publish-cmd", "");
+const publishEveryMs = Number(arg("publish-every-minutes", String(PUBLISH_EVERY_MINUTES))) * 60 * 1000;
+const saveEveryMs = Math.min(SAVE_EVERY_MS, publishEveryMs);
 const dir = arg("dir", ".sold-tracker");
 const searchesPath = arg("searches", SEARCHES_DOC);
 const statePath = path.join(dir, "state", `${CURRENT_LEAGUE}.json`);
@@ -95,16 +107,56 @@ function writeJson(file: string, data: unknown) {
   renameSync(tmp, file);
 }
 
-/** Appends newly ended listings to the archive, by the month they ended. */
+// What each month's archive file already holds, as "<id>|<endedAt>" - read once per month per run.
+const archived = new Map<string, Set<string>>();
+
+function archivedKeys(month: string): Set<string> {
+  let keys = archived.get(month);
+  if (!keys) {
+    keys = new Set();
+    const file = path.join(archiveDir, `${month}.jsonl`);
+    if (existsSync(file)) {
+      for (const line of readFileSync(file, "utf8").split("\n")) {
+        if (!line.trim()) continue;
+        const t = JSON.parse(line) as TrackedListing;
+        keys.add(`${t.id}|${t.endedAt}`);
+      }
+    }
+    archived.set(month, keys);
+  }
+  return keys;
+}
+
+/**
+ * Appends newly ended listings to the archive, by the month they ended - skipping any already
+ * there, so it's idempotent: if a run stopped after archiving but before saving its state, the
+ * next run settles the same listing again and this adds nothing. (A relisted listing that ends
+ * again has a new endedAt, so it's a new line.)
+ */
 function archive(ended: TrackedListing[]) {
   if (ended.length === 0) return;
   mkdirSync(archiveDir, { recursive: true });
   const byMonth = new Map<string, string[]>();
   for (const t of ended) {
     const month = (t.endedAt ?? new Date().toISOString()).slice(0, 7);
+    const keys = archivedKeys(month);
+    const key = `${t.id}|${t.endedAt}`;
+    if (keys.has(key)) continue;
+    keys.add(key);
     byMonth.set(month, [...(byMonth.get(month) ?? []), JSON.stringify(t)]);
   }
   for (const [month, lines] of byMonth) appendFileSync(path.join(archiveDir, `${month}.jsonl`), lines.join("\n") + "\n");
+}
+
+/** Runs --publish-cmd (see the module doc). Never throws: a failure waits for the next publish. */
+function publish() {
+  if (!publishCmd) return;
+  const result = spawnSync(publishCmd, { shell: true, encoding: "utf8", timeout: PUBLISH_TIMEOUT_MS });
+  // The command's last line of normal output, or of its errors when it failed.
+  const text = result.status === 0 ? result.stdout : `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  const output = (text ?? "").trim().split("\n").pop();
+  if (result.status === 0) log(`published: ${output}`);
+  else log(`publish failed (${result.error?.message ?? `exit ${result.status}`}): ${output} - retrying at the next one`);
 }
 
 /** Saves the state and the page's file, dropping ended listings the state no longer needs. */
@@ -150,6 +202,7 @@ async function main() {
   const client = new TradeApiClient({ fetch: fetchPaceMs });
   const deadline = Date.now() + minutes * 60 * 1000;
   let lastSave = Date.now();
+  let lastPublish = Date.now();
   let stopping = false;
   const stop = () => {
     stopping = true;
@@ -260,9 +313,13 @@ async function main() {
         didWork = true;
       }
       archive(settleListings(listings.values(), new Date().toISOString()));
-      if (Date.now() - lastSave >= SAVE_EVERY_MS) {
+      if (Date.now() - lastSave >= saveEveryMs) {
         save(state, listings, statuses, atCapacity);
         lastSave = Date.now();
+        if (Date.now() - lastPublish >= publishEveryMs) {
+          publish();
+          lastPublish = Date.now();
+        }
       }
       if (!didWork) await new Promise((r) => setTimeout(r, Math.min(IDLE_SLEEP_MS, Math.max(0, deadline - Date.now()))));
     }

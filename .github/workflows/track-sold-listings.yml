@@ -7,9 +7,10 @@ name: Track sold listings
 #   sold-listings/<League>.json  what the Sold Listings page reads (lib/sold-listings.ts)
 #   ended/<League>/<YYYY-MM>.jsonl  every listing that ended - the full history
 #
-# The page's data changes only when the last step publishes - all at once, at the end of a run.
-# The tracker saves every few minutes while it runs, and the publish step runs even when tracking
-# fails partway, so a failed run still publishes what it got.
+# Published as it goes: the tracker publishes a full snapshot every 30 minutes, straight after a save
+# (scripts/publish-sold-tracker.sh), and the last step publishes once more - also when tracking
+# failed partway, so the last save isn't lost. Each publish replaces the branch with a complete,
+# consistent copy, so publishing again is harmless and a failed push leaves the previous copy.
 #
 # Why this schedule: the trade site allows ~7,000 listing checks per 6 hours at the tracker's 70%
 # margin, so running (nearly) all the time is what lets it check up to 6,000 listings every 6 hours.
@@ -62,34 +63,13 @@ jobs:
           fi
 
       - name: Track
-        run: npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '330' }}" --dir .sold-tracker
+        # Publishes every 30 minutes as it goes (--publish-cmd), so the page updates during the run.
+        run: >-
+          npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '330' }}"
+          --dir .sold-tracker --publish-cmd "bash scripts/publish-sold-tracker.sh .sold-tracker"
 
-      # Runs even when tracking failed partway, so the state saved so far isn't lost.
+      # Once more at the end, and even when tracking failed partway, so the last save isn't lost.
+      # The same script the tracker calls while running; see it for why running it twice is safe.
       - name: Publish to the sold-tracker branch
         if: always()
-        run: |
-          set -e
-          if [ ! -d .sold-tracker/state ]; then
-            echo "Nothing to publish."
-            exit 0
-          fi
-          rm -rf /tmp/sold-tracker && mkdir -p /tmp/sold-tracker
-          for d in state sold-listings ended; do
-            if [ -d ".sold-tracker/$d" ]; then cp -r ".sold-tracker/$d" "/tmp/sold-tracker/$d"; fi
-          done
-          find /tmp/sold-tracker -name '*.tmp' -delete
-          cp vercel.json /tmp/vercel.json
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # A fresh orphan commit each run, force-pushed, like the data branch: the branch holds the
-          # latest files, not a history of every run. vercel.json is re-added so Vercel reads its
-          # "never deploy this branch" rule from the pushed commit itself.
-          git checkout --orphan sold-tracker-publish
-          git rm -rf . > /dev/null
-          rm -rf state sold-listings ended .sold-tracker
-          cp -r /tmp/sold-tracker/. .
-          cp /tmp/vercel.json vercel.json
-          git add -f state sold-listings vercel.json
-          if [ -d ended ]; then git add -f ended; fi
-          git commit -m "Update sold listings"
-          git push --force origin sold-tracker-publish:sold-tracker
+        run: bash scripts/publish-sold-tracker.sh .sold-tracker
