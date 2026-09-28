@@ -1,8 +1,8 @@
 # PoE Flipper
 
 A Path of Exile trading assistant. It predicts which items and currency are likely to gain value
-over the next few days of the current league, and finds same-day flips on GGG's Currency Exchange
-and in divination card turn-ins.
+over the next few days of the current league, finds same-day flips on GGG's Currency Exchange
+and in divination card turn-ins, and tracks which trade site listings sell.
 
 Built with Next.js, DuckDB (an embedded database holding past leagues' price history) and a small
 learned model. Prices come from [poe.ninja](https://poe.ninja) and GGG's Currency Exchange API.
@@ -387,6 +387,9 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 - **Environment:** set `SITE_PASSWORD`. Set `PREDICTOR=baseline` to switch off the learned model
   without a code change.
 - **Cost:** the model is a 4.5 MB JSON file; scoring ~10k items takes about 0.2 s of CPU.
+- **Sold listing tracker:** runs in GitHub Actions, not Vercel. It publishes to the `sold-tracker`
+  branch, which `vercel.json` keeps from deploying. Make its PR check (`check-searches`) a required
+  status check on `master` so an over-limit search can't be merged.
 
 ---
 
