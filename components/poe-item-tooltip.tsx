@@ -128,12 +128,19 @@ export function PoeItemTooltip({
       group.map((m, i) => {
         const range = showRanges ? formatRanges(m.ranges) : undefined;
         return (
-          <div key={i} style={{ color: MOD_COLOUR[m.kind] }}>
-            {stripGameMarkup(m.text)}
-            {m.kind === "crafted" || m.kind === "fractured" || m.kind === "enchant" ? (
-              <span style={{ color: LABEL }}> ({m.kind})</span>
-            ) : null}
-            {range && <span style={{ color: LABEL }}> {range}</span>}
+          // With ranges shown, each range sits at the line's right edge, apart from the mod text.
+          <div key={i} className={showRanges ? "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3" : undefined}>
+            <div style={{ color: MOD_COLOUR[m.kind] }}>
+              {stripGameMarkup(m.text)}
+              {m.kind === "crafted" || m.kind === "fractured" || m.kind === "enchant" ? (
+                <span style={{ color: LABEL }}> ({m.kind})</span>
+              ) : null}
+            </div>
+            {showRanges && (
+              <span className="whitespace-nowrap text-right" style={{ color: LABEL }}>
+                {range}
+              </span>
+            )}
           </div>
         );
       })

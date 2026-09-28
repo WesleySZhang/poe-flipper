@@ -37,6 +37,8 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   each number in the mod, in order. A fixed value has min = max; negative ranges exist
   ("Non-Channelling Skills have -6 to Total Mana Cost": -10 to -5). Show ranges like the game's
   Alt view: after the mod, e.g. "60% increased ... (40–60)". `[verified]`
+  This app puts each range at the right edge of its line, in the grey label colour, so the rolled
+  number stays in the mod text and the ranges line up in a column. No bold. `[owner]` (2026-09-28)
 - **The item text** (what Ctrl+C copies in game) comes base64 in the trade API's `extended.text`,
   with `\r\n` line endings. It pastes into Path of Building and the trade site's search. Some
   facts are only in it, e.g. a foil's name: "Foil Unique (Celestial Emerald)". `[verified]`
