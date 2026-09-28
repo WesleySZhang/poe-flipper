@@ -51,6 +51,23 @@ function formatRanges(ranges: ListingMod["ranges"]): string | undefined {
   return `(${shown.map((r) => (r.min < 0 ? `${r.min} to ${r.max}` : `${r.min}–${r.max}`)).join(", ")})`;
 }
 
+/** A mod with a roll range, its numbers (the rolls) picked out so they read before the range. */
+function RolledText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/([+-]?\d+(?:\.\d+)?%?)/).map((part, i) =>
+        i % 2 === 1 ? (
+          <span key={i} className="font-bold" style={{ color: VALUE, fontVariantNumeric: "lining-nums" }}>
+            {part}
+          </span>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
 function Separator() {
   return <div className="mx-auto my-1.5 h-px w-4/5" style={{ background: `linear-gradient(to right, transparent, ${RARITY}, transparent)` }} />;
 }
@@ -129,7 +146,7 @@ export function PoeItemTooltip({
         const range = showRanges ? formatRanges(m.ranges) : undefined;
         return (
           <div key={i} style={{ color: MOD_COLOUR[m.kind] }}>
-            {stripGameMarkup(m.text)}
+            {range ? <RolledText text={stripGameMarkup(m.text)} /> : stripGameMarkup(m.text)}
             {m.kind === "crafted" || m.kind === "fractured" || m.kind === "enchant" ? (
               <span style={{ color: LABEL }}> ({m.kind})</span>
             ) : null}
