@@ -118,7 +118,7 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   price and when it was seen), when it was listed, when it sold or expired, how long it was up, and
   the search that found it.
 - **The searches** are listed at the top with how many listings each matches now. "paused" means a
-  search grew past the per-search limit; a warning icon means it failed or got more than 100 new
+  search grew past the per-search limit; a warning icon means it failed or got more than 200 new
   listings between runs (so it missed some). A red line above them means the tracking limit is
   reached and new listings are being skipped.
 
@@ -225,25 +225,32 @@ How the app uses them:
 ## The sold listing tracker
 
 `scripts/track-sold-listings.ts` follows trade site listings and records which ones sell. The
-"Track sold listings" workflow (`.github/workflows/track-sold-listings.yml`) runs it for ~5.5 hours
-every 6 hours and publishes its file, `sold-listings/<League>.json`, to the **`sold-tracker`
-branch** (not `data`, which the daily job rebuilds from scratch). The Sold Listings page reads it
-from there (`lib/sold-listings.ts`).
+"Track sold listings" workflow (`.github/workflows/track-sold-listings.yml`) runs it once a day
+(02:40 UTC, usually started a few hours late) for ~45 minutes, then publishes its file,
+`sold-listings/<League>.json`, to the **`sold-tracker` branch** (not `data`, which the daily job
+rebuilds from scratch). The Sold Listings page reads it from there (`lib/sold-listings.ts`).
+
+- **The page updates once a day, all at once,** when the run's last step publishes. The tracker
+  saves its state every few minutes while running, and the publish step runs even if tracking
+  failed partway, so a failed run still publishes what it got.
 
 - **What it tracks:** the searches in [`sold-tracker/searches.md`](sold-tracker/searches.md). Add
   one by pasting a trade site link as a list item; the link's id is the search itself, gzipped
   (`lib/trade-query.ts`), so reading it costs no request. The tracker adds its own rules to every
   search: instant buyout only (no offline sellers or bait), listed in the last week, current league.
   Everything else, including any price range, is the link's.
-- **Finding listings:** each search runs newest-first every 30 minutes (sooner when busy). A search
-  returns at most 100 listings, so a first run only picks up the newest 100.
-- **Deciding a sale:** every listing is then checked by its item id about once an hour. A fetch by
-  id ignores the search's filters, and the id survives a price change, so a price drop (even out of
-  the search's price range) is recorded as a new price, not a sale. A listing counts as sold once it has been gone for
-  24 hours, and is reopened if it shows up again. A listing still up after a week counts as unsold.
+- **Finding listings:** each search runs newest-first. A search returns at most 100 listings, so
+  when all 100 are new the tracker also fetches the oldest 100 since the last run: up to 200 new
+  listings per search per day (the per-search limit averages ~86 a day). More than that and the
+  search is flagged as having missed some.
+- **Deciding a sale:** every listing is checked by its item id once per run. A fetch by id ignores
+  the search's filters, and the id survives a price change, so a price drop (even out of the
+  search's price range) is recorded as a new price, not a sale. A listing counts as sold once it's
+  gone on two runs in a row (12+ hours apart), and is reopened if it shows up again. One still up
+  after a week counts as unsold. Times on the page are accurate to about a day.
 - **Rate limits:** GGG limits the trade API per IP. `lib/trade-api.ts` queues every request until
   each limit window has room, keeps to 70% of each limit, and follows the limits and usage the
-  site reports on every response. That covers about 1,000 listings checked hourly.
+  site reports on every response. Checking 1,000 listings takes ~15 minutes of it.
 - **Limits on volume** (`lib/sold-tracker.ts`): 600 listings per search, 1,000 in total, 20
   searches. Enforced before merge by the **"Check sold tracker searches"** PR check
   (`scripts/check-sold-searches.ts`, `npm run sold:check` locally): it runs every search on the

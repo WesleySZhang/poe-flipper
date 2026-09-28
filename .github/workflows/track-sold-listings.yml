@@ -1,13 +1,17 @@
 name: Track sold listings
 
-# Runs the sold listing tracker (scripts/track-sold-listings.ts) for ~5.5 hours per run, starting
-# every 6 hours, and publishes its file to the "sold-tracker" branch for the Sold Listings page
-# (lib/sold-listings.ts). Not the "data" branch: the daily job rebuilds that from scratch every run.
+# Runs the sold listing tracker (scripts/track-sold-listings.ts) once a day for ~45 minutes, then
+# publishes its file to the "sold-tracker" branch for the Sold Listings page (lib/sold-listings.ts).
+# Not the "data" branch: the daily job rebuilds that from scratch every run.
 #
-# GitHub starts scheduled runs late (the daily job here has started 4-5 hours late), so there can be
-# gaps of hours between runs. That's fine for this: sales are confirmed only after a listing has
-# been gone for a day, and a gap just delays the next check - the state carries over between runs.
-# The concurrency group keeps two runs from overlapping.
+# The page's data changes only when this last step publishes - all at once, at the end of a run.
+# The tracker saves its state every few minutes while it runs, and the publish step runs even when
+# tracking fails partway, so a failed run still publishes what it got.
+#
+# Once a day is enough: each run checks every tracked listing once (~15 minutes of the rate limit
+# for 1,000), a sale is confirmed when a listing is gone on two runs in a row, and times on the page
+# are accurate to about a day. GitHub starts scheduled runs late (the daily job here has started
+# 4-5 hours late); that just shifts the day. The concurrency group keeps two runs from overlapping.
 #
 # Untested from GitHub's runners: whether pathofexile.com lets their IPs through. If it doesn't, the
 # run fails with a 403 "blocked before reaching the API" - run the tracker somewhere else instead
@@ -15,12 +19,12 @@ name: Track sold listings
 
 on:
   schedule:
-    - cron: "20 */6 * * *"
+    - cron: "40 2 * * *"
   workflow_dispatch:
     inputs:
       minutes:
         description: "How long to run, in minutes"
-        default: "330"
+        default: "45"
 
 permissions:
   contents: write
@@ -32,7 +36,7 @@ concurrency:
 jobs:
   track:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 75
     steps:
       - name: Check out master
         uses: actions/checkout@v4
@@ -55,7 +59,7 @@ jobs:
           fi
 
       - name: Track
-        run: npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '330' }}" --dir .sold-tracker
+        run: npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '45' }}" --dir .sold-tracker
 
       # Runs even when tracking failed partway, so the state saved so far isn't lost.
       - name: Publish to the sold-tracker branch

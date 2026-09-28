@@ -96,8 +96,8 @@ total and 20 searches, checked on every PR and enforced while running. Still ope
   the workflow fails with a 403, run the tracker from an always-on machine instead.
 - **Terms of Use.** The trade API isn't in GGG's docs (see below). The tracker keeps to 70% of the
   rate limits, but it's still steady automated use.
-- **First run only sees the newest 100 per search.** Older listings already up aren't picked up.
-  Price-sliced searches could backfill them.
+- **A first run sees at most 200 per search** (the newest and oldest 100 of the week). Listings in
+  between aren't picked up. Price-sliced searches could backfill them.
 - **Withdrawn vs sold.** Measure from real data how often a "sale" is really a withdrawal, e.g. by
   how many sold listings come back as Relisted.
 - **A fresh league's volume** is unmeasured. The PR check counts today's market, so searches near

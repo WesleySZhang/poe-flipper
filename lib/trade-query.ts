@@ -63,6 +63,18 @@ export function applyTrackerRules(query: TradeQuery): TradeQuery {
   return { ...query, status: { option: "securable" }, filters };
 }
 
+/** The query limited to listings from the last `age` (an INDEXED_OPTIONS value) - never wider than
+ *  the query's own age filter. */
+export function withListingAge(query: TradeQuery, age: string): TradeQuery {
+  const trade = query.filters?.trade_filters ?? {};
+  const current = (trade.filters?.indexed as { option?: string } | undefined)?.option;
+  const narrower = current && INDEXED_OPTIONS.indexOf(current) !== -1 && INDEXED_OPTIONS.indexOf(current) < INDEXED_OPTIONS.indexOf(age) ? current : age;
+  return {
+    ...query,
+    filters: { ...query.filters, trade_filters: { ...trade, filters: { ...trade.filters, indexed: { option: narrower } } } },
+  };
+}
+
 /** A short label for a link with none: the item name or base type it searches for. */
 export function describeQuery(query: TradeQuery): string | undefined {
   const name = typeof query.name === "string" ? query.name : undefined;

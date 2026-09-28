@@ -11,8 +11,8 @@ own rules on top, whatever the link says:
 - listed in the last week (a shorter age filter in the link wins);
 - the current league, whatever league the link was made in.
 
-**Limits** (`lib/sold-tracker.ts`) - the trade site's rate limit covers about this many listings
-checked hourly:
+**Limits** (`lib/sold-tracker.ts`) - what the trade site's rate limit comfortably covers in the
+tracker's daily run:
 
 - at most **600 listings per search**;
 - at most **1,000 listings** across all searches;

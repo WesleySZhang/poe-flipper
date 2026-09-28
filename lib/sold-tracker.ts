@@ -7,13 +7,18 @@ import type { TradeItem, TradeListing, TradeMod } from "./trade-api";
  *
  * A listing is followed by its item id, which the trade site uses as the listing id and keeps when
  * the price changes (tested 2026-09-28: 100d -> 50d kept the id). So a price drop - even out of the
- * search's own price range - is a price change, not a sale. A listing counts as sold only when fetching its id
- * returns nothing for SOLD_AFTER_MISSING_HOURS; if it comes back after that (relisted), it's reopened.
- * The one false positive left: an item taken off the market for good looks the same as a sale.
+ * search's own price range - is a price change, not a sale. A listing counts as sold once fetching
+ * its id has returned nothing for SOLD_AFTER_MISSING_HOURS; if it comes back after that (relisted),
+ * it's reopened. The one false positive left: an item taken off the market for good looks the same
+ * as a sale.
+ *
+ * The tracker runs once a day (the "Track sold listings" workflow), so every listed listing is
+ * checked once per run, and times (sold, how long it was up) are accurate to about a day.
  */
 /**
- * Limits on how much the tracker takes in. The rate limit covers about MAX_TRACKED_LISTINGS listings
- * checked hourly; past that, checks fall behind. Enforced twice, from these same numbers:
+ * Limits on how much the tracker takes in. A daily run re-checks MAX_TRACKED_LISTINGS listings in
+ * ~15 minutes of the fetch limit (10 per request, ~35 requests per 5 minutes at lib/trade-api.ts's
+ * margin). Enforced twice, from these same numbers:
  *  - before merge: scripts/check-sold-searches.ts (the "Check sold tracker searches" PR check) runs
  *    every search and fails if one matches more than MAX_LISTINGS_PER_SEARCH, the searches together
  *    more than MAX_TRACKED_LISTINGS, or there are more than MAX_SEARCHES;
@@ -22,14 +27,18 @@ import type { TradeItem, TradeListing, TradeMod } from "./trade-api";
  */
 export const MAX_TRACKED_LISTINGS = 1000;
 export const MAX_LISTINGS_PER_SEARCH = 600;
-/** Each search costs ~2 discovery searches an hour (up to 12 when busy), from a budget of ~70. */
+/** Each search costs up to 2 trade searches per discovery (see scripts/track-sold-listings.ts). */
 export const MAX_SEARCHES = 20;
-/** How long a listing must be gone before it counts as sold - long enough for a relist to show up. */
-export const SOLD_AFTER_MISSING_HOURS = 24;
+/**
+ * How long a listing must be gone before it counts as sold - long enough for a relist to show up.
+ * With a daily run this means gone on two runs in a row: GitHub's start time drifts by an hour or
+ * more, so 24 would often just miss the next day's check and take a third run.
+ */
+export const SOLD_AFTER_MISSING_HOURS = 12;
 /** A listing still up this long after it was listed is recorded as unsold and no longer checked. */
 export const LISTING_MAX_AGE_DAYS = 7;
-// Hourly: the fetch limit (~1,170 listings an hour at lib/trade-api.ts's margin) then covers about
-// 1,000 tracked listings. Past that, checks fall behind (most overdue first) rather than failing.
+// Within one run, each listing is checked once (the run is shorter than this); a daily run finds
+// every listing overdue. Missing ones wait longer, for the next run.
 export const RECHECK_LISTED_MINUTES = 60;
 export const RECHECK_MISSING_MINUTES = 120;
 export const DISCOVERY_MINUTES = 30;

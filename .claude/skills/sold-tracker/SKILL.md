@@ -7,8 +7,9 @@ description: Use when adding or changing the trade searches the sold listing tra
 
 `scripts/track-sold-listings.ts` follows trade site listings (instant buyout, listed in the last
 week) matched by the links in `sold-tracker/searches.md`, and records which sell. The "Track sold
-listings" workflow runs it ~5.5 h every 6 h and force-pushes `sold-listings/<League>.json` to
-the `sold-tracker` branch; `/sold-listings` reads it (`lib/sold-listings.ts`, 5-min cache).
+listings" workflow runs it once a day for ~45 min, then force-pushes `sold-listings/<League>.json`
+to the `sold-tracker` branch; `/sold-listings` reads it (`lib/sold-listings.ts`, 5-min cache). The
+page changes only when a run publishes, at its end.
 
 ## Add a search
 
@@ -40,8 +41,10 @@ fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) i
   missing. Check the workflow's last run; the file is per league, so a league swap starts empty.
 - **Workflow fails with `403 (blocked before reaching the API)`:** pathofexile.com refused GitHub's
   runner IP. Run the tracker from another machine (it only needs Node and the repo).
-- **Warning icon on a search:** it failed (hover for the error), or got 100 new listings between
-  runs and missed some - narrow the search.
+- **Warning icon on a search:** it failed (hover for the error), or got more than 200 new
+  listings between runs (the newest and oldest 100 are fetched) and missed some - narrow it.
+- **Page not updated today:** check the day's "Track sold listings" run. GitHub starts it hours
+  late, and occasionally skips it; the next run catches up (state carries over).
 - **"paused" on a search:** it now matches more than 600 listings, so it takes nothing new (its
   tracked listings are still checked). Narrow the link; it resumes on its own once under.
 - **"Tracking limit reached":** 1,000 listings are being followed, so new ones are skipped until
@@ -50,7 +53,7 @@ fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) i
   Re-run it; if it's a 403 from GitHub's runners, see the workflow's comments.
 - **A "sale" that wasn't:** a seller pulling an item for good looks the same. One that's relisted
   under the same item id is reopened and marked "Relisted".
-- The rules (24 h gone = sold, 7 days = unsold, hourly checks) and limits are constants in
+- The rules (gone 12 h+, i.e. on two daily runs = sold; 7 days = unsold) and limits are constants in
   `lib/sold-tracker.ts`; the rate-limit margin (70%) is in `lib/trade-api.ts`.
 
 Trade API facts (limits, listing fields, repricing keeps the id) are in the `poe-data-sources`

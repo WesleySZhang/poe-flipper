@@ -1,31 +1,35 @@
 /**
  * The sold listing tracker: follows the trade site listings matched by the links in
  * sold-tracker/searches.md and records which ones sell. Runs for --minutes, then exits; the
- * "Track sold listings" workflow runs it back to back and publishes its file to the sold-tracker
- * branch, where the Sold Listings page reads it (lib/sold-listings.ts).
+ * "Track sold listings" workflow runs it once a day and then publishes its file to the sold-tracker
+ * branch, where the Sold Listings page reads it (lib/sold-listings.ts). The published file changes
+ * only at the end of a run; the local file is saved every few minutes.
  *
- *   npx tsx scripts/track-sold-listings.ts [--minutes 60] [--dir .sold-tracker] [--searches sold-tracker/searches.md]
+ *   npx tsx scripts/track-sold-listings.ts [--minutes 45] [--dir .sold-tracker] [--searches sold-tracker/searches.md]
  *
  * Each loop:
  *  1. Discovery, per search, every DISCOVERY_MINUTES (shorter when a search is busy): the newest
  *     listings first, with the tracker's rules applied (instant buyout, last week - see
- *     applyTrackerRules). New ids are fetched for their item and price - within the limits in
+ *     applyTrackerRules). A search returns only 100, and a day's new listings can be more: when
+ *     all 100 are new, the oldest 100 since the last run are fetched too. New ids are fetched for their item and price - within the limits in
  *     lib/sold-tracker.ts (admitNewListings): a search matching too many listings is paused, and
  *     nothing new is taken in once MAX_TRACKED_LISTINGS listings are being followed.
  *  2. Checks: listed ids due a re-check are fetched by id, 10 per request. A fetch ignores the
- *     search's filters, so a listing repriced out of its search still comes back (a price change); an empty
- *     result means it's gone (lib/sold-tracker.ts decides when gone counts as sold).
+ *     search's filters, so a listing repriced out of its search still comes back (a price change);
+ *     an empty result means it's gone (lib/sold-tracker.ts decides when gone counts as sold).
  * Requests go through lib/trade-api.ts's rate limiter. The state is saved every few minutes and on
- * exit, so a killed run loses little. A search only returns the newest 100, so on a first run only
- * those are picked up; after that, new listings are caught as they come.
+ * exit, so a killed run loses little. A first run picks up at most the newest and oldest 100 of the
+ * week per search; after that, new listings are caught as they come.
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
 import { TradeApiClient, TradeApiError } from "../lib/trade-api";
 import { SEARCHES_DOC, parseSearchesDoc, type TrackedSearch } from "../lib/sold-tracker-searches";
+import { withListingAge } from "../lib/trade-query";
 import {
   DISCOVERY_MINUTES,
+  MAX_LISTINGS_PER_SEARCH,
   MAX_SEARCHES,
   MIN_DISCOVERY_MINUTES,
   SEARCH_RESULT_CAP,
@@ -48,7 +52,7 @@ function arg(name: string, fallback: string): string {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-const minutes = Number(arg("minutes", "60"));
+const minutes = Number(arg("minutes", "45"));
 const dir = arg("dir", ".sold-tracker");
 const searchesPath = arg("searches", SEARCHES_DOC);
 const filePath = path.join(dir, "sold-listings", `${CURRENT_LEAGUE}.json`);
@@ -127,7 +131,21 @@ async function main() {
     const status = statuses.get(search.label)!;
     const now = new Date().toISOString();
     try {
-      const { ids, total } = await client.search(CURRENT_LEAGUE, search.query, { indexed: "desc" });
+      const newest = await client.search(CURRENT_LEAGUE, search.query, { indexed: "desc" });
+      const total = newest.total;
+      let ids = newest.ids;
+      let missed = false;
+      // Every one of the newest 100 is new: the page likely cut off listings since the last run.
+      // Fetch the oldest 100 of that window too (limited to the last day or 3 days, as the gap
+      // allows), which covers up to 200 new listings per run - the per-search limit averages ~86 a
+      // day. Skipped for a search that's over the limit, which admitNewListings pauses anyway.
+      if (ids.length >= SEARCH_RESULT_CAP && ids.every((id) => !listings.has(id)) && total <= MAX_LISTINGS_PER_SEARCH) {
+        const sinceMs = status.lastRun ? Date.now() - Date.parse(status.lastRun) : Infinity;
+        const window = sinceMs <= 24 * 3600e3 ? "1day" : sinceMs <= 72 * 3600e3 ? "3days" : "1week";
+        const oldest = await client.search(CURRENT_LEAGUE, withListingAge(search.query!, window), { indexed: "asc" });
+        ids = [...new Set([...ids, ...oldest.ids])];
+        missed = status.lastRun !== undefined && oldest.total > SEARCH_RESULT_CAP * 2;
+      }
       // Unsold records are final; a sold one showing up again is fetched to reopen it.
       const fresh = ids.filter((id) => {
         const t = listings.get(id);
@@ -156,7 +174,7 @@ async function main() {
         lastRun: now,
         total,
         newListings: admit.length,
-        missedListings: !paused && fresh.length >= SEARCH_RESULT_CAP && status.lastRun !== undefined,
+        missedListings: !paused && missed,
         intervalMinutes: nextInterval,
       });
       delete status.error;
