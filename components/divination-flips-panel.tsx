@@ -6,7 +6,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
@@ -196,7 +195,7 @@ export function DivinationFlipsPanel() {
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search cards or rewards..." />
           <NumericRangeFilter
             key={priceUnit}
-            label={`stack cost (${priceUnitLabel(priceUnit)})`}
+            label={`cost (${priceUnitLabel(priceUnit)})`}
             onChange={changeCostRange}
             initialMin={priceUnit === "divine" ? 1 : undefined}
           />
@@ -209,8 +208,7 @@ export function DivinationFlipsPanel() {
           >
             Instant buy
           </Button>
-          <div className="ml-auto flex flex-col gap-1.5">
-            <Label>Prices in</Label>
+          <div className="ml-auto flex items-center gap-2">
             <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
               <TabsList>
                 <TabsTrigger value="chaos">Chaos</TabsTrigger>

@@ -170,7 +170,6 @@ export function DustValuePanel() {
             />
           </div>
           <div className="ml-auto flex flex-col gap-1.5">
-            <Label>Prices in</Label>
             <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
               <TabsList>
                 <TabsTrigger value="chaos">Chaos</TabsTrigger>

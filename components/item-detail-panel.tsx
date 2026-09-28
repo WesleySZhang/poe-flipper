@@ -342,7 +342,6 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Prices in</Label>
             <Tabs value={priceUnit} onValueChange={(value) => setPriceUnit(value as PriceUnit)}>
               <TabsList>
                 <TabsTrigger value="chaos">Chaos</TabsTrigger>

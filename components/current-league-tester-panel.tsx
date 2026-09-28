@@ -117,7 +117,6 @@ export function CurrentLeagueTesterPanel() {
           <span />
         )}
         <div className="flex items-center gap-2">
-          <Label>Prices in</Label>
           <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
             <TabsList>
               <TabsTrigger value="chaos">Chaos</TabsTrigger>

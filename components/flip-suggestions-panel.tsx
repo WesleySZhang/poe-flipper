@@ -322,7 +322,6 @@ export function FlipSuggestionsPanel() {
         </div>
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex items-center gap-2">
-            <Label>Prices in</Label>
             <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
               <TabsList>
                 <TabsTrigger value="chaos">Chaos</TabsTrigger>
