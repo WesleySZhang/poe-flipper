@@ -25,7 +25,7 @@ sync with this. In short, in order:
    run `npx tsx scripts/generate-disenchant-values.ts --write` (Dust Value page) and commit it.
 4. **Categories that moved** between the currency and item endpoints need a look beyond what the check
    does (see the `poe-item-categories` skill): history lookups by exact category can miss.
-5. **First days:** the league day reads 0-1, and `history/<League>/` appears on the `data` branch
+5. **First days:** the league day reads 0-1, and `history/<League>/` appears on the `precompute-data` branch
    after the first daily run (see the `precompute-check` skill).
 6. **Tidy up:** knowledge skills in `poe-knowledge/` (league list, new mechanics), the README, and
    optionally `ml/README.md` results. The Mirage simulator and backtest still replay Mirage

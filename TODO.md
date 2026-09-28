@@ -213,7 +213,7 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
   - *Vercel cron* depends on the plan; Hobby allows once a day.
   - *An always-on worker* (a small VM or container, or a home machine) is the reliable choice.
   - Storage for listings and sales needs a small database (e.g. Postgres or KV) rather than CSVs on
-    the `data` branch, since it changes every few minutes.
+    the `precompute-data` branch, since it changes every few minutes.
   - Unchecked: whether pathofexile.com blocks datacenter IPs (GitHub runners, Vercel). Test with one
     search from the chosen host first.
 

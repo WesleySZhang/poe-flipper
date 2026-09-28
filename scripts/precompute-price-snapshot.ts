@@ -2,7 +2,7 @@
  * Writes prices.json at the repo root: today's whole poe.ninja price map (every currency and item
  * with its type, sparkline and seller count) plus which category buckets had any listings at all.
  * The daily GitHub Actions workflow (.github/workflows/precompute-predictions.yml) publishes it to
- * the "data" branch alongside predictions.json; lib/price-snapshot.ts reads it back so the running
+ * the "precompute-data" branch alongside predictions.json; lib/price-snapshot.ts reads it back so the running
  * app doesn't have to call poe.ninja itself for anything that doesn't need to be fresher than the
  * predictions are.
  *

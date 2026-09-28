@@ -1,6 +1,6 @@
 name: Precompute predictions
 
-# Runs three daily jobs and publishes all of them to the "data" branch in one commit:
+# Runs three daily jobs and publishes all of them to the "precompute-data" branch in one commit:
 #  - scripts/precompute-price-snapshot.ts: today's whole poe.ninja price map + which category
 #    buckets have any listings - see lib/price-snapshot.ts (why: the running app reads this instead
 #    of calling poe.ninja itself for anything that doesn't need to be fresher than the predictions).
@@ -13,7 +13,7 @@ name: Precompute predictions
 #    pair matching scripts/ingest-history.ts's own format - see that script's module doc for why (the
 #    currently active league otherwise has no daily price history at all until someone manually
 #    downloads poe.ninja's export after it ends).
-# "data" is configured (see vercel.json) to never trigger a Vercel deployment - this app's committed
+# "precompute-data" is configured (see vercel.json) to never trigger a Vercel deployment - this app's committed
 # database is ~72MB, and a deployment re-bundles the whole app regardless of how small the actual
 # change was.
 #
@@ -91,18 +91,18 @@ jobs:
         env:
           POE_NINJA_DISK_CACHE: .poe-ninja-cache
 
-      - name: Publish to the data branch
+      - name: Publish to the precompute-data branch
         run: |
           set -e
           cp predictions.json /tmp/predictions.json
           cp prices.json /tmp/prices.json
-          # Start from everything already on the data branch, then overlay today's files. This run
+          # Start from everything already on the precompute-data branch, then overlay today's files. This run
           # only produces the current league's current month, so copying just that would drop every
           # earlier month on the 1st and the previous league's whole folder after a league swap.
           rm -rf /tmp/history
           mkdir -p /tmp/history
-          if git fetch --depth=1 origin data; then
-            git archive FETCH_HEAD history | tar -x -C /tmp || echo "No history/ on the data branch yet."
+          if git fetch --depth=1 origin precompute-data; then
+            git archive FETCH_HEAD history | tar -x -C /tmp || echo "No history/ on the precompute-data branch yet."
           fi
           cp -r history/. /tmp/history/
           echo "Publishing history files:" && (cd /tmp/history && find . -name '*.csv' | sort)
@@ -110,7 +110,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Always a fresh orphan branch, force-pushed over whatever "data" currently is, rather than
+          # Always a fresh orphan branch, force-pushed over whatever "precompute-data" currently is, rather than
           # committing on top of yesterday's commit - this branch is meant to hold LATEST FILE
           # CONTENT, not a history of every past commit. predictions.json is deliberately a full,
           # disposable snapshot every run (see its own module doc); history/'s CSVs deliberately DO
@@ -118,7 +118,7 @@ jobs:
           # FILE CONTENT itself (this job downloaded yesterday's CSVs and appended to them before this
           # step ran) - git's own commit history doesn't need to grow too for that to work, and
           # keeping it flat is what stops this branch from bloating forever.
-          git checkout --orphan data-publish
+          git checkout --orphan precompute-data-publish
           git rm -rf . > /dev/null
 
           # Both are .gitignore'd on every other branch (only ever meaningful here, freshly
@@ -139,4 +139,4 @@ jobs:
           cp /tmp/vercel.json vercel.json
           git add -f predictions.json prices.json history vercel.json
           git commit -m "Update precomputed predictions and price history"
-          git push --force origin data-publish:data
+          git push --force origin precompute-data-publish:precompute-data

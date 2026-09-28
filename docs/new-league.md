@@ -79,7 +79,7 @@ lookups by exact category can miss them (see the `poe-item-categories` skill).
 - **Day 0–1:** Flip Predictions loads for the new league and the league day reads 0 or 1. Early
   prices are volatile and poe.ninja lists few items at first; that's expected. Items the league
   added get prices and links but no forecast until a league containing them is trained on.
-- **Day 2:** the `data` branch has `history/<New league>/` files, and the item page chart shows a
+- **Day 2:** the `precompute-data` branch has `history/<New league>/` files, and the item page chart shows a
   current-league line.
 - **Currency Exchange Flip:** its name map fills in by itself as markets open (the daily check adds
   names).
@@ -91,7 +91,7 @@ lookups by exact category can miss them (see the `poe-item-categories` skill).
 - `ml/README.md` results, if you want them to reflect the retrained model.
 - Optional: the Mirage simulator always replays Mirage (`lib/mirage-league.ts`). Moving it to a newer
   finished league is a separate change: the Mirage backtest and the retrain's holdouts depend on it.
-- Optional: the `data` branch keeps ended leagues' daily files (about 50 MB a month). Once a league
+- Optional: the `precompute-data` branch keeps ended leagues' daily files (about 50 MB a month). Once a league
   is in the training set they're only a fallback and can be deleted.
 
 ## If something goes wrong

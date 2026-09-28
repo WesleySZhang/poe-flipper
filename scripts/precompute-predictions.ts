@@ -4,7 +4,7 @@
  * TODAY's real league day, and writes them to
  * predictions.json at the repo root. A scheduled GitHub Actions workflow
  * (.github/workflows/precompute-predictions.yml) runs this once a day and publishes the result to
- * this repo's "data" branch; lib/precomputed-predictions.ts reads it from there at request time
+ * this repo's "precompute-data" branch; lib/precomputed-predictions.ts reads it from there at request time
  * instead of recomputing live - see that file's module doc for why (and vercel.json for why that
  * branch never triggers a Vercel deployment).
  *

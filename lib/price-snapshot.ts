@@ -1,3 +1,4 @@
+import { PRECOMPUTE_DATA_BRANCH } from "./data-branches";
 import {
   getAllCurrentCurrencyPrices,
   getAllCurrentItemPrices,
@@ -8,7 +9,7 @@ import {
 
 /**
  * A once-a-day snapshot of poe.ninja's whole live price map, published by the daily precompute job
- * (scripts/precompute-price-snapshot.ts -> the "data" branch's prices.json) and read back here, so
+ * (scripts/precompute-price-snapshot.ts -> the "precompute-data" branch's prices.json) and read back here, so
  * the running app stops calling poe.ninja (~48 requests per cold server instance) for data that
  * doesn't need to be fresher than the predictions themselves already are - those are computed once
  * a day from the same prices, so showing a live sparkline/price next to a day-old forecast was
@@ -49,7 +50,6 @@ export interface PriceSnapshot {
 }
 
 const DEFAULT_REPO = "WesleySZhang/poe-flipper";
-const DATA_BRANCH = "data";
 const DATA_FILE_PATH = "prices.json";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
 // The daily job runs at 00:10 UTC; anything older than this means it missed a run (or several), and
@@ -88,7 +88,7 @@ async function fetchSnapshot(): Promise<PriceSnapshot | null> {
     let data: PriceSnapshot | null = null;
     try {
       const repo = process.env.PREDICTIONS_REPO ?? DEFAULT_REPO;
-      const res = await fetch(`https://raw.githubusercontent.com/${repo}/${DATA_BRANCH}/${DATA_FILE_PATH}`, {
+      const res = await fetch(`https://raw.githubusercontent.com/${repo}/${PRECOMPUTE_DATA_BRANCH}/${DATA_FILE_PATH}`, {
         headers: { "User-Agent": USER_AGENT },
       });
       if (res.ok) {

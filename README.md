@@ -190,7 +190,7 @@ from GGG's leagues API (`.github/workflows/check-current-league-swap.yml`). `npm
 ## The daily data job
 
 `.github/workflows/precompute-predictions.yml` runs once a day (cron 00:10 UTC), on demand, and on
-any push to `master` that changes the prediction code. It publishes to the **`data` branch**, which
+any push to `master` that changes the prediction code. It publishes to the **`precompute-data` branch**, which
 never triggers a Vercel deploy. Each run replaces the branch with fresh files:
 
 | File | Made by | Used for |
@@ -227,7 +227,7 @@ How the app uses them:
 
 `scripts/track-sold-listings.ts` follows trade site listings and records which ones sell. The
 "Track sold listings" workflow (`.github/workflows/track-sold-listings.yml`) runs it for ~5.5 hours
-every 6 hours, then publishes to the **`sold-tracker` branch** (not `data`, which the daily job
+every 6 hours, then publishes to the **`sold-tracker-data` branch** (not `precompute-data`, which the daily job
 rebuilds from scratch):
 
 | File | What it is |
@@ -288,7 +288,7 @@ rebuilds from scratch):
    | `SITE_PASSWORD` | yes | Shared password for the whole app (`proxy.ts`, `lib/site-auth.ts`). Not per-user auth. |
    | `POE_DATA_DIR` | for ingest | Folder with past leagues' CSV exports (see below). Default `../poe-pricing/data`. |
    | `PREDICTOR` | no | `xgb` (default), `formula` or `baseline`. |
-   | `PREDICTIONS_REPO` | no | Repo whose `data` branch to read. Defaults to this repo. |
+   | `PREDICTIONS_REPO` | no | Repo whose `precompute-data` branch to read. Defaults to this repo. |
 
 2. Build the history database: `npm run db:ingest`
 3. Start the dev server: `npm run dev`
@@ -299,8 +299,8 @@ Past leagues' prices aren't in the repo; download them once per machine.
 
 1. Run `npx tsx scripts/download-league-history.ts`. It fetches every training league in
    `lib/training-leagues.ts` from [poe.ninja's exports](https://poe.ninja/poe1/data) into
-   `<POE_DATA_DIR>/<League>/`. A league poe.ninja hasn't exported yet comes from the `data`
-   branch's `history/` instead, which is less complete.
+   `<POE_DATA_DIR>/<League>/`. A league poe.ninja hasn't exported yet comes from the
+   `precompute-data` branch's `history/` instead, which is less complete.
 2. Run `npm run db:ingest`. It rebuilds `db/history.duckdb` from scratch each time.
    (`POE_INCLUDED_LEAGUES` overrides the league list for an experiment.)
 
@@ -387,8 +387,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 - **Environment:** set `SITE_PASSWORD`. Set `PREDICTOR=baseline` to switch off the learned model
   without a code change.
 - **Cost:** the model is a 4.5 MB JSON file; scoring ~10k items takes about 0.2 s of CPU.
-- **Sold listing tracker:** runs in GitHub Actions, not Vercel. It publishes to the `sold-tracker`
-  branch, which `vercel.json` keeps from deploying. Make its PR check (`check-searches`) a required
+- **Sold listing tracker:** runs in GitHub Actions, not Vercel. It publishes to the
+  `sold-tracker-data` branch, which `vercel.json` keeps from deploying. Make its PR check (`check-searches`) a required
   status check on `master` so an over-limit search can't be merged.
 
 ---
@@ -463,7 +463,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/prediction-features.ts`, `lib/prediction-model.ts` | Model inputs and evaluator; `lib/models/predictor.json` is the trained model |
 | `lib/flip-suggestions.ts` | Ranks live prices by predicted growth (live path) |
 | `lib/confidence.ts` | Confidence tiers |
-| `lib/precomputed-predictions.ts` | Reads `predictions.json` from the `data` branch |
+| `lib/precomputed-predictions.ts` | Reads `predictions.json` from the `precompute-data` branch |
 | `lib/predicted-suggestion.ts` | Rebuilds rows from that file (server and browser), and shifts a day-old file to today |
 | `lib/horizon-fill.ts` | Fills missing days in the precomputed file |
 | `lib/league-recency.ts`, `lib/league-day.ts` | Current league, release dates, league-day math |
@@ -482,7 +482,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/trade-query.ts`, `lib/trade-api.ts` | Trade site links decoded to their queries; the rate-limited trade API client (tracker only) |
 | `lib/sold-tracker.ts`, `lib/sold-listings.ts`, `lib/sold-tracker-searches.ts` | The sold listing tracker's data model, sale rules and limits; reading its file for the page; reading `searches.md` |
 | `lib/price-history.ts` | Past-league history for the chart |
-| `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
+| `lib/current-league-history.ts` | Current league's history from the `precompute-data` branch CSVs |
 | `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |
 | `lib/item-detail.ts`, `lib/item-search.ts`, `lib/ninja-link.ts` | Detail page data, search, poe.ninja links |
 | `lib/divination-cards.ts`, `lib/divination-flips.ts` | Card data (generated) and card flip scoring |
@@ -495,7 +495,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
 | `scripts/track-sold-listings.ts`, `sold-tracker/searches.md` | The sold listing tracker and the searches it follows |
-| `scripts/publish-sold-tracker.sh` | Publishes the tracker's files to the `sold-tracker` branch (during and after a run) |
+| `scripts/publish-sold-tracker.sh` | Publishes the tracker's files to the `sold-tracker-data` branch (during and after a run) |
 | `scripts/check-sold-searches.ts` | PR check: every search within the tracker's limits |
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
 | `scripts/check-current-league.ts`, `sync-current-league.ts` | League-swap check and fix |

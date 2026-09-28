@@ -9,7 +9,7 @@
  *   1. already on disk (FORCE=1 re-downloads);
  *   2. poe.ninja's export, published after a league ends: GET /poe1/api/data/dumps lists them, and
  *      /poe1/api/data/dumps/dump?name=<League> is a zip that also holds hardcore/standard files we skip;
- *   3. this app's own daily snapshots on the data branch (history/<League>/*.YYYY-MM.csv), for a league
+ *   3. this app's own daily snapshots on the precompute-data branch (history/<League>/*.YYYY-MM.csv), for a league
  *      that ended but isn't exported yet (never CURRENT_LEAGUE, which may still be running). Less
  *      complete: only the items poe.ninja's live API listed, and only since collection began.
  *
@@ -21,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { config } from "dotenv";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
+import { PRECOMPUTE_DATA_BRANCH } from "../lib/data-branches";
 import { TRAINING_LEAGUES } from "../lib/training-leagues";
 
 config({ path: ".env.local" });
@@ -33,7 +34,7 @@ const HEADERS = { "User-Agent": "poe-flipper retrain (github.com/WesleySZhang/po
 
 export interface LeagueSource {
   league: string;
-  source: "local" | "poe.ninja export" | "data branch";
+  source: "local" | "poe.ninja export" | "precompute-data branch";
   detail: string;
 }
 
@@ -72,7 +73,7 @@ async function fromNinja(league: string, dump: NinjaDump, destDir: string): Prom
 }
 
 async function fromDataBranch(league: string, destDir: string): Promise<string | undefined> {
-  const api = `https://api.github.com/repos/${REPO}/contents/history/${encodeURIComponent(league)}?ref=data`;
+  const api = `https://api.github.com/repos/${REPO}/contents/history/${encodeURIComponent(league)}?ref=${PRECOMPUTE_DATA_BRANCH}`;
   const headers: Record<string, string> = { ...HEADERS, Accept: "application/vnd.github+json" };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   const res = await fetch(api, { headers });
@@ -108,12 +109,12 @@ async function main() {
       console.log(`${league}: poe.ninja export (${detail})`);
       continue;
     }
-    // The data branch keeps growing while a league runs; without an export it hasn't ended.
+    // The precompute-data branch keeps growing while a league runs; without an export it hasn't ended.
     if (league === CURRENT_LEAGUE) throw new Error(`${league} is still running (no poe.ninja export yet).`);
     const detail = await fromDataBranch(league, destDir);
-    if (!detail) throw new Error(`${league}: no poe.ninja export and no history on the data branch.`);
-    sources.push({ league, source: "data branch", detail });
-    console.log(`${league}: no poe.ninja export yet, used the data branch (${detail})`);
+    if (!detail) throw new Error(`${league}: no poe.ninja export and no history on the precompute-data branch.`);
+    sources.push({ league, source: "precompute-data branch", detail });
+    console.log(`${league}: no poe.ninja export yet, used the precompute-data branch (${detail})`);
   }
 
   if (process.env.RETRAIN_OUT) {

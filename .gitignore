@@ -55,7 +55,7 @@ ml/cache/
 ml/*.log
 __pycache__/
 
-# Output of scripts/precompute-predictions.ts - only meaningful on the "data" branch (see
+# Output of scripts/precompute-predictions.ts - only meaningful on the "precompute-data" branch (see
 # .github/workflows/precompute-predictions.yml, lib/precomputed-predictions.ts), where the workflow
 # force-adds it past this rule. A local dry run of the script elsewhere just produces a scratch file.
 /predictions.json
@@ -63,9 +63,9 @@ __pycache__/
 /.poe-ninja-cache/
 
 # Same idea, for scripts/precompute-price-history.ts's growing per-league CSV pair - also only
-# meaningful on the "data" branch.
+# meaningful on the "precompute-data" branch.
 /history/
 
 # The sold listing tracker's working state from a local run (scripts/track-sold-listings.ts). The
-# workflow publishes the real one to the sold-tracker branch.
+# workflow publishes the real one to the sold-tracker-data branch.
 /.sold-tracker/

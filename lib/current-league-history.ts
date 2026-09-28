@@ -1,4 +1,5 @@
 import "server-only";
+import { PRECOMPUTE_DATA_BRANCH } from "./data-branches";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "./league-recency";
 import { daysBetweenUtc } from "./league-day";
 import { itemPriceKey } from "./poe-ninja";
@@ -6,7 +7,7 @@ import type { LeagueSeries, PriceHistoryPoint } from "./price-history";
 
 /**
  * The CURRENTLY ACTIVE league's own price history, built from the raw daily CSV snapshots
- * scripts/precompute-price-history.ts has been collecting on the "data" branch since the day it was
+ * scripts/precompute-price-history.ts has been collecting on the "precompute-data" branch since the day it was
  * added - not from db/history.duckdb, which only ever has FINISHED, manually-ingested leagues (see
  * that file's own module doc). This is what lets components/price-history-chart.tsx draw a real,
  * solid line for the current league up to today, instead of starting the chart with nothing but a
@@ -27,7 +28,6 @@ import type { LeagueSeries, PriceHistoryPoint } from "./price-history";
  */
 
 const DEFAULT_REPO = "WesleySZhang/poe-flipper";
-const DATA_BRANCH = "data";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
 // Same reasoning as lib/precomputed-predictions.ts's own cache - these files only change once a day.
 // Short (not e.g. 20 minutes) specifically so that once the daily ingest job (see
@@ -38,7 +38,7 @@ const CACHE_TTL_MS = 2 * 60 * 1000;
 
 function repoRawUrl(filePath: string): string {
   const repo = process.env.PREDICTIONS_REPO ?? DEFAULT_REPO;
-  return `https://raw.githubusercontent.com/${repo}/${DATA_BRANCH}/history/${filePath}`;
+  return `https://raw.githubusercontent.com/${repo}/${PRECOMPUTE_DATA_BRANCH}/history/${filePath}`;
 }
 
 /**

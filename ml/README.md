@@ -43,7 +43,7 @@ to league. The question the app answers is:
 | --- | --- | --- |
 | poe.ninja history exports | Daily prices for every item across past leagues | Training and validation (`db/history.duckdb`) |
 | poe.ninja live API | Today's price and a 7-day sparkline | Live predictions |
-| Daily price snapshots (`data` branch) | The current league's own daily history | The chart; the current league isn't trained on |
+| Daily price snapshots (`precompute-data` branch) | The current league's own daily history | The chart; the current league isn't trained on |
 
 The training leagues are listed in `lib/training-leagues.ts`; the results below were measured on
 **Settlers, Mercenaries, Keepers, Phrecia 2.0 and Mirage**. Days with

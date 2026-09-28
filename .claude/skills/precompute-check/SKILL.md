@@ -1,13 +1,13 @@
 ---
 name: precompute-check
-description: Use to check or trigger the daily precompute job - whether the data branch is fresh, prices.json/predictions.json/history exist and look right, or a rerun is needed after a deploy or data bug.
+description: Use to check or trigger the daily precompute job - whether the precompute-data branch is fresh, prices.json/predictions.json/history exist and look right, or a rerun is needed after a deploy or data bug.
 ---
 
 # Check the precompute job
 
 The workflow (`.github/workflows/precompute-predictions.yml`) runs at 00:10 UTC, on manual
 dispatch, and on pushes to prediction-algorithm files, `db/history.duckdb` or `lib/league-recency.ts`
-(a merged league swap). It force-pushes an orphan `data` branch with `predictions.json`,
+(a merged league swap). It force-pushes an orphan `precompute-data` branch with `predictions.json`,
 `prices.json`, `history/`, and `vercel.json`.
 
 The scripts only produce the current league's current month, so the publish step first copies the
@@ -15,7 +15,7 @@ branch's existing `history/` (`git archive`) and overlays today's files. Before 
 each 1st of the month dropped earlier months and a league swap dropped the old league's folder;
 collection only began 2026-09-21, so Allflame has nothing before that.
 
-1. **Freshness.** `git fetch origin data`, then:
+1. **Freshness.** `git fetch origin precompute-data`, then:
    - `git log origin/data -1 --format=%cd` - last publish time.
    - `git ls-tree -r --name-only origin/data` - expect `predictions.json`, `prices.json`,
      `vercel.json`, and `history/<League>/*.csv` with **one pair per month since collection began**

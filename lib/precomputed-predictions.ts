@@ -1,4 +1,5 @@
 import "server-only";
+import { PRECOMPUTE_DATA_BRANCH } from "./data-branches";
 import type { FlipSuggestion, PredictionCurvePoint } from "./flip-suggestions";
 import {
   alignPrecomputedToDay,
@@ -10,7 +11,7 @@ import {
 
 /**
  * Reads today's flip suggestions from a small file a scheduled GitHub Actions job publishes once a
- * day to this repo's "data" branch (see scripts/precompute-predictions.ts and
+ * day to this repo's "precompute-data" branch (see scripts/precompute-predictions.ts and
  * .github/workflows/precompute-predictions.yml), instead of running the model live on every request.
  *
  * This exists purely to cut request latency: the expensive part (growth-ratio SQL + the learned
@@ -18,7 +19,7 @@ import {
  * See ml/README.md's "Whole-trend-line forecasting" section for why that per-request cost isn't
  * safely approximable away instead, especially in a league's first few days.
  *
- * The "data" branch is deliberately never deployed (see vercel.json's git.deploymentEnabled) - this
+ * The "precompute-data" branch is deliberately never deployed (see vercel.json's git.deploymentEnabled) - this
  * app's committed database is ~72MB, and a Vercel deployment re-bundles the WHOLE app regardless of
  * how small the actual change was, so a daily commit that triggered a real deployment would burn
  * through deployment storage for no reason. Instead this fetches the branch's raw file content
@@ -31,11 +32,10 @@ import {
  */
 
 // Defaults to this project's own repo/branch - override via PREDICTIONS_REPO only if you've forked
-// this project and set up your own scheduled job publishing to your own "data" branch; otherwise a
+// this project and set up your own scheduled job publishing to your own "precompute-data" branch; otherwise a
 // fork simply always falls back to computing live, which is correct (there's nothing wrong with that
 // path - see the module doc above).
 const DEFAULT_REPO = "WesleySZhang/poe-flipper";
-const DATA_BRANCH = "data";
 const DATA_FILE_PATH = "predictions.json";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
 // The file itself only changes once a day, but kept short (not e.g. lib/poe-ninja.ts's 20-minute
@@ -56,7 +56,7 @@ let cache: CacheEntry | undefined;
 
 function rawUrl(): string {
   const repo = process.env.PREDICTIONS_REPO ?? DEFAULT_REPO;
-  return `https://raw.githubusercontent.com/${repo}/${DATA_BRANCH}/${DATA_FILE_PATH}`;
+  return `https://raw.githubusercontent.com/${repo}/${PRECOMPUTE_DATA_BRANCH}/${DATA_FILE_PATH}`;
 }
 
 async function fetchPrecomputed(): Promise<PrecomputedPredictions | null> {

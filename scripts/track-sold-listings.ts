@@ -2,7 +2,7 @@
  * The sold listing tracker: follows the trade site listings matched by the links in
  * sold-tracker/searches.md and records which ones sell. Runs for --minutes, then exits; the
  * "Track sold listings" workflow runs it ~5.5 hours every 6 hours and then publishes --dir to the
- * sold-tracker branch, where the Sold Listings page reads it (lib/sold-listings.ts). The published
+ * sold-tracker-data branch, where the Sold Listings page reads it (lib/sold-listings.ts). The published
  * files change only at the end of a run; the local ones are saved every few minutes.
  *
  *   npx tsx scripts/track-sold-listings.ts [--minutes 330] [--dir .sold-tracker] [--searches sold-tracker/searches.md]

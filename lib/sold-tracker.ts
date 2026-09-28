@@ -130,7 +130,7 @@ export interface TrackedSearchStatus {
 }
 
 /**
- * The tracker's own state (state/<League>.json on the sold-tracker branch): every listed listing,
+ * The tracker's own state (state/<League>.json on the sold-tracker-data branch): every listed listing,
  * plus ended ones from the last STATE_KEEP_ENDED_DAYS. Ended listings are also appended to the
  * archive (ended/<League>/<YYYY-MM>.jsonl, one listing per line; a relisted one that ends again
  * appears twice - the later line wins).

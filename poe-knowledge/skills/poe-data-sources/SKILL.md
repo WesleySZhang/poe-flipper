@@ -96,7 +96,7 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   slugified name with apostrophes dropped. `?search=` on a category page did not filter. `[verified]`
   (`lib/ninja-link.ts`)
 - The current league has no ingested daily history until it ends; the app collects its own daily
-  snapshots into CSVs on the `data` branch to fill that gap. They're a weaker substitute for
+  snapshots into CSVs on the `precompute-data` branch to fill that gap. They're a weaker substitute for
   poe.ninja's export: only items the live API lists, `Confidence` always "High", and only since
   collection began (Allflame: from 2026-09-22, league day ~60). Train on the export instead. `[verified]`
 - poe.ninja's `/poe1/api/economy/leagues` lists the live league first (e.g. Allflame, Hardcore
@@ -112,7 +112,7 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   The sold listing tracker (`scripts/track-sold-listings.ts`, a separate job) does, through the
   queuing rate limiter in `lib/trade-api.ts`; see the `sold-tracker` project skill.
 - Past-league history: `db/history.duckdb`, built by `scripts/ingest-history.ts`.
-- Current-league history: CSVs on the `data` branch, read by `lib/current-league-history.ts`.
+- Current-league history: CSVs on the `precompute-data` branch, read by `lib/current-league-history.ts`.
 
 ## Sources
 

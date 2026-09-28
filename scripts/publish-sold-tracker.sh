@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publishes the sold listing tracker's files (state/, sold-listings/, ended/ under $1) to the
-# "sold-tracker" branch as one fresh orphan commit, force-pushed. Called by the tracker every
+# "sold-tracker-data" branch as one fresh orphan commit, force-pushed. Called by the tracker every
 # PUBLISH_EVERY_MINUTES while it runs (--publish-cmd) and once more by the workflow at the end.
 #
 # Safe to run any number of times: each run publishes a full snapshot, so publishing the same state
@@ -29,5 +29,5 @@ cp vercel.json "$STAGE/vercel.json"
 TREE="$(GIT_INDEX_FILE="$INDEX" git --work-tree="$STAGE" add -A -f . && GIT_INDEX_FILE="$INDEX" git write-tree)"
 COMMIT="$(git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
   commit-tree "$TREE" -m "Update sold listings")"
-git push --quiet --force origin "$COMMIT:refs/heads/sold-tracker"
+git push --quiet --force origin "$COMMIT:refs/heads/sold-tracker-data"
 echo "Published $COMMIT (tree $TREE)"

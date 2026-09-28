@@ -131,7 +131,7 @@ async function main() {
     const c = cov.get(league);
     const days = c ? `${c.days} (day ${c.firstDay}–${c.lastDay})` : "none";
     md.push(`| ${league} | ${s?.source ?? "?"} | ${s?.detail ?? ""} | ${days} | ${c?.items.toLocaleString() ?? 0} |`);
-    if (s?.source === "data branch") {
+    if (s?.source === "precompute-data branch") {
       warnings.push(
         `**${league}** came from the app's own daily snapshots, not poe.ninja's export (not published yet). ` +
           "Consider waiting for the export and rerunning."

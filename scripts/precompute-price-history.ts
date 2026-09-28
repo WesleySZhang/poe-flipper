@@ -4,7 +4,7 @@
  * be a byte-for-byte drop-in match for poe.ninja's own downloadable historical export
  * (poe.ninja/poe1/data), the exact format scripts/ingest-history.ts already reads. A scheduled
  * GitHub Actions workflow (.github/workflows/precompute-predictions.yml) runs this once a day
- * alongside the predictions job and publishes the result to this repo's "data" branch.
+ * alongside the predictions job and publishes the result to this repo's "precompute-data" branch.
  *
  * WHY this exists: scripts/ingest-history.ts only ever has data for a league once it's over and
  * someone manually downloads poe.ninja's export - the currently active league has no daily history
@@ -14,7 +14,7 @@
  *
  * UNLIKE predictions.json (see that file's own doc for why it's always a single, disposable
  * snapshot), this file is meant to GROW for the whole life of a league - every run downloads
- * yesterday's accumulated CSVs from the "data" branch, appends today's rows, and republishes the
+ * yesterday's accumulated CSVs from the "precompute-data" branch, appends today's rows, and republishes the
  * combined (larger) file. Re-running on the same day replaces that day's rows rather than
  * duplicating them, so a manual re-trigger is always safe.
  *
@@ -73,6 +73,7 @@ import {
   sparkPointsFrom,
 } from "../lib/poe-ninja";
 import { installRawResponseCache } from "./raw-response-cache";
+import { PRECOMPUTE_DATA_BRANCH } from "../lib/data-branches";
 import { CURRENT_LEAGUE, CURRENT_LEAGUE_START_DATE } from "../lib/league-recency";
 import { isoDaysAgo, LOST_LOOKBACK_DAYS, planBackfill, SPARK_WINDOW_DAYS, valueFromSpark } from "../lib/spark-backfill";
 
@@ -85,7 +86,7 @@ const MAX_SAFE_FILE_BYTES = 90 * 1024 * 1024;
 
 function repoRawUrl(filePath: string): string {
   const repo = process.env.PREDICTIONS_REPO ?? "WesleySZhang/poe-flipper";
-  return `https://raw.githubusercontent.com/${repo}/data/history/${filePath}`;
+  return `https://raw.githubusercontent.com/${repo}/${PRECOMPUTE_DATA_BRANCH}/history/${filePath}`;
 }
 
 async function fetchExisting(filePath: string): Promise<string | undefined> {

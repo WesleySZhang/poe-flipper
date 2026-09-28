@@ -9,7 +9,7 @@ description: Use when adding or changing the trade searches the sold listing tra
 week) matched by the links in `sold-tracker/searches.md`, and records which sell. The "Track sold
 listings" workflow runs it ~5.5 h every 6 h, then force-pushes `state/`, `sold-listings/` (the
 page's file: recent sales/unsold) and `ended/` (the full history, JSONL by month) to the
-`sold-tracker` branch; `/sold-listings` reads `sold-listings/<League>.json` (`lib/sold-listings.ts`,
+`sold-tracker-data` branch; `/sold-listings` reads `sold-listings/<League>.json` (`lib/sold-listings.ts`,
 5-min cache). Publishing (`scripts/publish-sold-tracker.sh`, a full snapshot force-pushed as one
 commit) happens every 30 min during a run and once at its end, so the page lags by up to ~35 min.
 
@@ -41,7 +41,7 @@ fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) i
 
 - **"publish failed" in the run log:** the push was refused or timed out. Tracking carries on and the
   next publish (30 min later, or the final step) retries; the branch keeps the previous snapshot.
-- **Page says "No tracker data yet":** the `sold-tracker` branch or the current league's file is
+- **Page says "No tracker data yet":** the `sold-tracker-data` branch or the current league's file is
   missing. Check the workflow's last run; the file is per league, so a league swap starts empty.
 - **Workflow fails with `403 (blocked before reaching the API)`:** pathofexile.com refused GitHub's
   runner IP. Run the tracker from another machine (it only needs Node and the repo).

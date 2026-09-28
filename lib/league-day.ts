@@ -7,8 +7,8 @@ export function daysBetweenUtc(start: Date, end: Date): number {
 }
 
 // .github/workflows/precompute-predictions.yml's daily job runs at 00:10 UTC and, as measured,
-// takes about 2 minutes end to end (checkout, npm ci, the actual compute, publishing to the "data"
-// branch) - so it's typically done by ~00:12 UTC. Without any buffer, currentLeagueDay() flips to the
+// takes about 2 minutes end to end (checkout, npm ci, the actual compute, publishing to the
+// "precompute-data" branch) - so it's typically done by ~00:12 UTC. Without any buffer, currentLeagueDay() flips to the
 // new day at the exact instant of midnight, while every consumer of "today"
 // (lib/precomputed-predictions.ts's day-match check, the current league's real-history CSV row) is
 // still waiting on that job - a precomputed-predictions miss that falls back to a slower live model

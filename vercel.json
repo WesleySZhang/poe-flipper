@@ -2,8 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "data": false,
-      "sold-tracker": false,
+      "precompute-data": false,
+      "sold-tracker-data": false,
       "master": false
     }
   }
