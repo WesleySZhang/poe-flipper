@@ -60,15 +60,17 @@ one is ignored as an odd trade.
 
 Cost of a full stack (card price × stack size) versus the value of its reward, at today's prices.
 
-- **Chaos mode:** cards at poe.ninja's price, the reward at its chaos price.
-- **Divine mode:** cards bought with divines, at their own Divine market price on the Currency
-  Exchange, not a conversion. A card with no Divine market that hour is hidden. The reward is still
-  valued at its chaos price, converted to divines.
+- **Cost** is a buy order: the bottom of the card's last closed hour on the Currency Exchange ×
+  stack size. A card with no exchange market falls back to poe.ninja's price.
+- **Chaos mode:** cards on their Chaos market, the reward at its chaos price.
+- **Divine mode:** cards bought with divines, on their own Divine market, not a conversion. A card
+  with no Divine market that hour is hidden. The reward is still valued at its chaos price,
+  converted to divines.
 - **Instant buy** (button, off by default): Cost, Profit % and Profit switch to the stack bought off
-  other players' sell orders instead of with a buy order: the top of the card's hour trade range on
-  the exchange × stack size. Cards with no exchange market, or fewer listed than a stack at any point
-  that hour, are hidden. The item page's card section
-  has the same button.
+  other players' sell orders: the top of the same hour's range × stack size, so it's never below
+  Cost (often equal: many cards trade at one price in an hour). Cards with no exchange market, or
+  fewer listed than a stack at any point that hour, are hidden. The item page's card section has the
+  same button.
 - Hovering Min/Max shows the stock listed on that market during the hour (cards for sale, currency in
   buy orders), lowest to highest.
 

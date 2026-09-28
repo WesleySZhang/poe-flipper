@@ -2,7 +2,7 @@ import "server-only";
 import { DIVINATION_CARDS, type DivinationRewardKind } from "./divination-cards";
 import { getAllCurrentCurrencyPrices, getAllCurrentItemPrices, itemPriceKey } from "./poe-ninja";
 import { getActiveTypes } from "./price-snapshot";
-import { getExchangeQuotes, isFaustusTradeable, marketMid, type ItemMarket } from "./faustus";
+import { getExchangeQuotes, isFaustusTradeable, type ItemMarket } from "./faustus";
 import type { MarketStockRange } from "./exchange-route";
 import { liquidityTier, type LiquidityTier } from "./liquidity";
 
@@ -19,24 +19,27 @@ import { liquidityTier, type LiquidityTier } from "./liquidity";
  * lib/liquidity.ts tiering the Currency Exchange Flip page already uses for exactly this "is this
  * spread real or just rounding noise on a barely-traded item" question.
  *
- * Divine mode buys the cards with divines, not a conversion: each card at its own Divine market price
- * on GGG's exchange (the hour's midpoint). A card with no Divine market that hour has no Divine
- * figures at all, and the table hides it. The reward is still valued at its chaos price (poe.ninja's),
- * converted to divines at poe.ninja's Divine rate - the owner's call, since that's what it sells for.
+ * Both buy costs come from the card's last closed hour on GGG's exchange, the same "buy at low, sell
+ * at high" reading the Currency Exchange Flip page uses: a buy order pays the bottom of the hour's
+ * range, an instant buy (taking someone else's sell order) the top. Same source and hour, so an
+ * instant buy can never read cheaper than a buy order. poe.ninja's card price is only the buy-order
+ * cost for a card with no exchange market (no instant cost then). It used to be the buy-order cost
+ * for every card, and being a different source at a different time it sat above the hour's top for
+ * 13 of 33 exchange-traded cards (2026-09-27), making the instant buy look cheaper.
  *
- * The stack cost is what a buy order pays. The instant-buy cost (taking someone else's sell order)
- * is the top of the card's hour trade range on the exchange, the same "buy at low, sell at high"
- * reading the Currency Exchange Flip page uses; undefined when the card has no exchange market.
+ * Divine mode buys the cards with divines, not a conversion: each card on its own Divine market. A
+ * card with no Divine market that hour has no Divine figures at all, and the table hides it. The
+ * reward is still valued at its chaos price (poe.ninja's), converted to divines at poe.ninja's Divine
+ * rate - the owner's call, since that's what it sells for.
  */
 export interface DivinationFlip {
   name: string;
   stackSize: number;
-  /** poe.ninja's live per-card price - the primary buy-side source (cards are bought via the
-   *  Currency Exchange, but poe.ninja's stash-scrape price is what's shown by default; see
-   *  buyMin/MaxChaosValue below for the Currency Exchange's own historical range). */
+  /** Per-card buy-order price: the bottom of the card's hour range on the exchange, or poe.ninja's
+   *  price when it has no exchange market. */
   cardChaosValue: number;
-  /** The card's own Divine market price (hour midpoint) - undefined when it had no Divine market
-   *  this hour, which leaves every Divine figure below undefined and hides the row in Divine mode. */
+  /** The same on the card's Divine market - undefined when it had no Divine market this hour,
+   *  which leaves every Divine figure below undefined and hides the row in Divine mode. */
   cardDivineValue?: number;
   /** The card's hour-range low/high on GGG's Currency Exchange: chaos from its Chaos market (or its
    *  Divine market converted, for a card only traded for divines), divine from its Divine market.
@@ -178,14 +181,18 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
     const rangeMarket = cardMarkets?.chaos ?? cardMarkets?.divine;
     const cardConfidence = exchangeTier(rangeMarket);
 
+    // Buy order: the bottom of the card's hour range; poe.ninja's price only with no exchange market.
+    const buyMinChaosValue = rangeMarket ? toChaos(rangeMarket, rangeMarket.low) : undefined;
+    const cardChaosValue = buyMinChaosValue ?? cardPrice.chaosValue;
+
     const rewardChaosValue = rewardChaosPerUnit * def.rewardQuantity;
-    const stackCostChaosValue = cardPrice.chaosValue * def.stackSize;
+    const stackCostChaosValue = cardChaosValue * def.stackSize;
     const profitChaosValue = rewardChaosValue - stackCostChaosValue;
 
     // Divine mode: the cards bought on their own Divine market, or not at all; the reward at its
     // chaos value converted.
     const cardDivineMarket = cardMarkets?.divine;
-    const cardDivineValue = cardDivineMarket ? marketMid(cardDivineMarket) : undefined;
+    const cardDivineValue = cardDivineMarket?.low;
     const stackCostDivineValue = cardDivineValue !== undefined ? cardDivineValue * def.stackSize : undefined;
     const rewardDivineValue = ninjaDivineRate ? rewardChaosValue / ninjaDivineRate : undefined;
     const divinePriced = stackCostDivineValue !== undefined && rewardDivineValue !== undefined;
@@ -198,9 +205,9 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
     flips.push({
       name: def.name,
       stackSize: def.stackSize,
-      cardChaosValue: cardPrice.chaosValue,
+      cardChaosValue,
       cardDivineValue,
-      buyMinChaosValue: rangeMarket ? toChaos(rangeMarket, rangeMarket.low) : undefined,
+      buyMinChaosValue,
       buyMaxChaosValue,
       buyMinDivineValue: cardDivineMarket?.low,
       buyMaxDivineValue: cardDivineMarket?.high,
