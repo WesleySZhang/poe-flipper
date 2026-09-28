@@ -15,6 +15,7 @@ ordered by importance.
 | 6 | [Sold item tracker](#6-sold-item-tracker) | Built; first live run pending |
 | 7 | [Trade site links don't always match the item](#7-trade-site-links-dont-always-match-the-item) | Open |
 | 8 | [Should DuckDB stay in the deployed app?](#8-should-duckdb-stay-in-the-deployed-app) | Discovery |
+| 9 | [Copy a sold listing's item as game text](#9-copy-a-sold-listings-item-as-game-text) | Open |
 | – | [Done](#done) | – |
 
 ---
@@ -288,6 +289,27 @@ gains little over files built at ingest and shipped with the app, and adds a run
 2. Make the testing tools local-only, or keep DuckDB for those routes only (per discovery step 3).
 3. Remove the `next.config.ts` workarounds and LFS if nothing in production needs DuckDB; update
    README (deploy notes, LFS) and the `new-league` and `precompute-check` skills.
+
+## 9. Copy a sold listing's item as game text
+
+A copy button on each Sold Listings row that puts the item on the clipboard in the game's own
+Ctrl+C format (`Item Class:`, `Rarity:`, name, base, `--------` sections, requirements, item level,
+implicits/explicits, Corrupted, ...), so it pastes into Path of Building and Craft of Exile (and the
+trade site's search) exactly like an item copied in game.
+
+The trade API already sends this text (`extended.text`, base64), but the tracker stopped storing it
+to keep its files small (it was half of each listing). Options:
+1. **Rebuild it from the stored detail** (mods, properties, requirements, sockets, tags, item
+   level, rarity, corruption). No storage cost. Needs the exact section order and wording checked
+   against real Ctrl+C text: implicit/crafted/fractured markers, `Item Class`, influence lines,
+   `Note:` for the price. Risk: small format differences that PoB or Craft of Exile reject.
+2. **Store the text again, but only where it's needed**: per listing in a separate file fetched on
+   click, not in the page file. Exact, costs storage and a fetch.
+
+**To do:** compare option 1's output with the real `extended.text` for a sample of items (uniques,
+rares, jewels, relics/foils, corrupted), paste each into Path of Building and Craft of Exile, then
+pick an option. Add the rebuild rules to the `poe-item-display` skill. Keep the button small; rows
+must stay text-selectable (no row click).
 
 ---
 
