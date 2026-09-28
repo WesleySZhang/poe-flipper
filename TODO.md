@@ -91,39 +91,46 @@ forecast days (see Done), but:
 long it was listed. A job polls the trade site every few minutes, and a listing that disappears is
 assumed sold.
 
-**Scope chosen:** instant buyout only, priced at 100d or more, listed in the last week.
+**Scope chosen:** Watcher's Eye only, instant buyout, priced at 100d or more, listed in the last
+week. All items is out of scope: ~20,500 listings match even in a late, quiet league, and each
+could only be re-checked about once a day.
 
-**Verdict:** finding new listings is cheap. Spotting sales is the bottleneck, and the rate limit sets
-how often each tracked listing can be re-checked:
+**Verdict: feasible.** Watcher's Eye is small enough to re-check every listing often:
 
 | Listings tracked | Re-checked about every |
 | --- | --- |
-| ~20,500 (the whole scope) | ~1 day |
-| ~7,800 (uniques only) | ~9 hours |
-| ~2,000 | ~2 hours |
-| ~150 | ~10 minutes |
+| ~540 (now, late Allflame) | ~10 minutes |
+| ~2,700 (5x, a guess at an active league) | ~30-40 minutes |
+| ~5,400 (10x) | ~1-1.5 hours |
 
-So the whole scope is feasible only if a sale's time is known to within about a day. Minute-level
-timing needs a narrower scope, such as specific items. Findings (probed 2026-09-27):
+A fresh league's volume is a guess. Measure it in the first days of the next league, and raise the
+price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
 
-- **The scope, measured (2026-09-28, ~06:00 UTC):**
+- **Watcher's Eye, measured (2026-09-28, ~06:00 UTC):**
+  - 540 listings: instant buyout, 100d+, listed in the last week.
+    - Listed in the last day: 146. The newest 100 spanned 15 hours, so about 7 new or repriced
+      listings an hour.
+    - Any status instead of instant buyout: 643.
+    - Instant buyout at any price: over 10,000.
+  - Prices run from 100d to 999d, and about a quarter sit at exactly 100d.
+  - Each listing's mods come with it (e.g. "Gain 30 Life per Enemy Hit while affected by
+    Vitality"), so a sold record can show the full roll.
+- **How it would run:**
   - Instant buyout is status `securable`. These listings have a gold `fee` and `online: null`
     (the seller needn't be online), so offline sellers and bait are both handled.
-  - 100d+, instant buyout, last week: ~20,500 listings (100-150d: 6,978; 150-300d: 7,626; 300d+:
-    5,948). A search's `total` stops at 10,000, so count in price bands.
-    - Listed in the last day: 5,460.
-    - Uniques only: 7,837.
-  - Sorting by `indexed` descending works (newest first). At ~3.3 new or repriced listings a
-    minute (~4,700 a day), a newest-first search every 10 minutes catches every new listing with
-    room to spare. That's ~6 searches and ~30 fetches an hour.
-  - The rest of the fetch budget, ~900 listings an hour at a safe ~70% of the limit, goes to
-    re-checking listings. That budget is what the table above divides up.
-  - Search can't do the re-checking at this size either. Slicing 20k listings into ≤100-id searches
-    takes 200+ searches (~2+ hours of budget), and 7k listings sit at exactly 100d, which no price
-    slice can split.
+  - *Discovery:* a newest-first search (`sort: {"indexed": "desc"}`) every 10 minutes. About one
+    search and one fetch per cycle.
+  - *Re-checks, mainly by search:* slice the price range so each search returns ≤100 listings. Any
+    tracked id missing from its slice gets one fetch, which returns `null` if the listing is gone
+    or shows its new price if it was repriced out of the slice.
+    - Sorting a slice both newest-first and oldest-first covers up to 200 listings. That's needed
+      for the 100d tie, which no price range can split.
+    - Budget: at ~70% of the limits, ~54 searches an hour (~5,400 listings) plus ~90 fetches
+      (~900 listings). That's what the table above divides up.
   - Listings still up after 7 days drop out as "unsold after a week".
-  - Overpriced listings that never sell still use re-check budget. For uniques, one fix is to skip
-    listings far above poe.ninja's price.
+  - Overpriced listings that never sell still take re-check budget.
+- **Storage** is small: a few thousand listings and their sales, each with mods, price, first seen,
+  `indexed` and gone time.
 
 - **The official route is closed.** GGG's public stash API (`service:psapi`, the feed poe.ninja
   uses, with a 5-minute delay) reports every stash change. That's how you'd see removals across the
@@ -165,13 +172,9 @@ timing needs a narrower scope, such as specific items. Findings (probed 2026-09-
     to ~5 minutes of trade-site indexing delay.
   - "How long it was up" = sold time minus `indexed`. `indexed` probably resets when the price
     changes (unchecked), so also store when the tracker first saw the listing.
-- **Budget:** plan on half the sustained limits (~50 searches and ~80 fetches an hour). That's about
-  12 watched searches every 15 minutes, or 25 every 30.
-  - The search itself shows which ids are still up. Fetch only new ids (for their details) and ids
-    that dropped out of the results.
-  - Use one shared, queuing rate limiter per endpoint: before each request, wait until every window
-    has room. Update the windows from the `X-Rate-Limit-Ip`/`-State` headers after every response,
-    and on a 429 honour `Retry-After`.
+- **Rate limiter:** use one shared, queuing rate limiter per endpoint: before each request, wait
+  until every window has room. Update the windows from the `X-Rate-Limit-Ip`/`-State` headers after
+  every response, and on a 429 honour `Retry-After`.
 - **Where it runs:**
   - *GitHub Actions cron* has a 5-minute minimum and starts runs late (the daily job here has run
     hours late). That's poor for sale timing, and every run has to commit its state somewhere.
@@ -183,13 +186,13 @@ timing needs a narrower scope, such as specific items. Findings (probed 2026-09-
     search from the chosen host first.
 
 **Suggested first step:**
-1. Build a local script for the chosen scope: a newest-first search every 10 minutes, and re-checks
-   as the budget allows. Run it for a day.
+1. Build a local script for Watcher's Eye: a newest-first search every 10 minutes, and sliced
+   re-checks as the budget allows. Run it for a day.
 2. From that log, measure:
    - how long sold listings lasted;
    - how many "sales" reappear (withdrawn, not sold);
    - how much re-check budget overpriced listings use.
-3. Use those numbers to pick the final scope, then build storage and a page.
+3. Use those numbers to set the poll interval and price floor, then build storage and a page.
 
 ---
 
