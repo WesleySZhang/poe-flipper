@@ -12,7 +12,7 @@ ordered by importance.
 | 3 | [Live price vs history for items with several poe.ninja lines](#3-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
 | 4 | [Holes in past-league history](#4-holes-in-past-league-history) | Open |
 | 5 | [Small follow-ups](#5-small-follow-ups) | Open |
-| 6 | [Sold item tracker](#6-sold-item-tracker) | Built; first live run pending |
+| 6 | [Sold item tracker](#6-sold-item-tracker) | Live; follow-ups open |
 | 7 | [Trade site links don't always match the item](#7-trade-site-links-dont-always-match-the-item) | Open |
 | 8 | [Should DuckDB stay in the deployed app?](#8-should-duckdb-stay-in-the-deployed-app) | Discovery |
 | 9 | [Copy a sold listing's item as game text](#9-copy-a-sold-listings-item-as-game-text) | Open |
@@ -94,14 +94,24 @@ forecast days (see Done), but:
 see the README). Searches come from trade site links in `sold-tracker/searches.md`, starting with
 Watcher's Eye. Runs ~5.5 hours every 6 hours, checking every listing each run. No price floor of
 its own; volume is capped at 3,000 listings per search, 6,000 in total and 20 searches, checked on
-every PR and enforced while running. Still open:
+every PR and enforced while running. Live since 2026-09-28: GitHub's runners reach the trade site
+(no 403 so far). Still open:
 
-- **First run from GitHub's runners.** Untested whether pathofexile.com lets their IPs through. If
-  the workflow fails with a 403, run the tracker from an always-on machine instead.
+- **Backfill a new search.** A first run sees at most 200 per search (the newest and oldest 100 of
+  the week); the first took 205 of 546, and the ~340 in between are never tracked. The gap closes
+  on its own as they expire (Watcher's Eye: by ~2026-10-05). A one-time backfill that splits the
+  search by price or listing age (each slice under 100) would close it at once for new searches.
+- **Back up the archive.** `ended/` is the only full history and lives only on `sold-tracker-data`,
+  which each publish replaces with a single commit. A run that restored an incomplete copy and
+  published would lose it for good. E.g. copy it to a release asset or a second branch weekly.
+- **Price sort across currencies.** Price sorts divine listings by amount and puts anything else
+  after them (all listings are divine today). A chaos-priced listing needs a divine rate to sort
+  in the right place.
+- **Scheduled runs start late or not at all.** On 2026-09-28 the 12:20 UTC run never started and
+  the 18:20 one started 82 minutes late, so the page went ~8 hours without an update. If it keeps
+  happening, run the tracker on an always-on machine.
 - **Terms of Use.** The trade API isn't in GGG's docs (see below). The tracker keeps to 70% of the
   rate limits, but it's still steady automated use.
-- **A first run sees at most 200 per search** (the newest and oldest 100 of the week). Listings in
-  between aren't picked up. Price-sliced searches could backfill them.
 - **Withdrawn vs sold.** Measure from real data how often a "sale" is really a withdrawal, e.g. by
   how many sold listings come back as Relisted.
 - **A fresh league's volume** is unmeasured. The PR check counts today's market, so searches near
@@ -109,7 +119,9 @@ every PR and enforced while running. Still open:
 - **Make the PR check required** on `master` (Settings > Branches > required status check
   `check-searches`), so an over-limit search can't be merged.
 
-The research this was built on:
+The research this was built on (2026-09-27/28). Some choices changed in the build - it runs in
+GitHub Actions, stores to a branch, and counts a listing sold at the first check that finds it
+gone; the README describes what it does now:
 
 **Goal:** list items that sold on the trade site: the item and its mods, price, when it sold and how
 long it was listed. A job polls the trade site every few minutes, and a listing that disappears is
@@ -217,17 +229,7 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
   - *An always-on worker* (a small VM or container, or a home machine) is the reliable choice.
   - Storage for listings and sales needs a small database (e.g. Postgres or KV) rather than CSVs on
     the `precompute-data` branch, since it changes every few minutes.
-  - Unchecked: whether pathofexile.com blocks datacenter IPs (GitHub runners, Vercel). Test with one
-    search from the chosen host first.
-
-**Suggested first step:**
-1. Build a local script for Watcher's Eye: a newest-first search every 10 minutes, and sliced
-   re-checks as the budget allows. Run it for a day.
-2. From that log, measure:
-   - how long sold listings lasted;
-   - how many "sales" reappear (withdrawn, not sold);
-   - how much re-check budget overpriced listings use.
-3. Use those numbers to set the poll interval and price floor, then build storage and a page.
+  - GitHub's runners are not blocked (checked 2026-09-28); Vercel's are untested.
 
 ## 7. Trade site links don't always match the item
 
@@ -315,6 +317,11 @@ must stay text-selectable (no row click).
 
 ## Done
 
+- **Sold Listings page, reworked** (2026-09-28). Listings still up count as Unsold ("Still listed",
+  "Last seen"); a listing counts as sold the first time it's found gone (no "Gone" state); each
+  item drawn like the game's tooltip with mod tiers (T1 = best) at the left and roll ranges on
+  hover; price timeline with earlier prices struck through; searches as filters; "Tracking N /
+  6,000"; sorted by price, lowest first. Page headers on every page lost their duplicate title.
 - **Sold tracker files kept small.** The item text and flavour text aren't stored (half of each
   listing; the detail dialog and its "Copy item text" button were removed), and the archive is one
   file per day, so none nears GitHub's 100 MB limit. A listing is ~1.7 KB, so the page file is ~10 MB
