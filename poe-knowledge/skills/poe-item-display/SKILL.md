@@ -39,6 +39,9 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   Alt view: after the mod, e.g. "60% increased ... (40–60)". `[verified]`
   This app puts each range at the right edge of its line, in the grey label colour, so the rolled
   number stays in the mod text and the ranges line up in a column. No bold. `[owner]` (2026-09-28)
+- **Tiers:** magic/rare mods have a tier (1 = best; from the trade API's `tier`, "P7"/"S2"). This app
+  shows it as "T7" at the left edge of the mod's line, in the label colour; uniques and implicits
+  have none, and the column only appears when the item has a tiered mod. `[owner]` (2026-09-28)
 - **The item text** (what Ctrl+C copies in game) comes base64 in the trade API's `extended.text`,
   with `\r\n` line endings. It pastes into Path of Building and the trade site's search. Some
   facts are only in it, e.g. a foil's name: "Foil Unique (Celestial Emerald)". `[verified]`

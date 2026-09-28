@@ -92,6 +92,7 @@ export function PoeItemTooltip({
       ...item.implicits.map((text) => ({ kind: "implicit" as const, text })),
       ...item.mods.map((text) => ({ kind: "explicit" as const, text })),
     ];
+  const hasTiers = mods.some((m) => m.tier !== undefined);
   const implicitMods = mods.filter((m) => m.kind === "enchant" || m.kind === "implicit");
   const explicitMods = mods.filter((m) => m.kind !== "enchant" && m.kind !== "implicit");
 
@@ -128,8 +129,21 @@ export function PoeItemTooltip({
       group.map((m, i) => {
         const range = showRanges ? formatRanges(m.ranges) : undefined;
         return (
-          // With ranges shown, each range sits at the line's right edge, apart from the mod text.
-          <div key={i} className={showRanges ? "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3" : undefined}>
+          // With ranges shown, the tier (magic/rare only) sits at the line's left edge and the range at
+          // its right, apart from the mod text.
+          <div
+            key={i}
+            className={
+              showRanges
+                ? cn("grid items-baseline gap-3", hasTiers ? "grid-cols-[2rem_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]")
+                : undefined
+            }
+          >
+            {showRanges && hasTiers && (
+              <span className="text-left" style={{ color: LABEL }} title={m.tier !== undefined ? `Tier ${m.tier} (1 is best)` : undefined}>
+                {m.tier !== undefined ? `T${m.tier}` : ""}
+              </span>
+            )}
             <div style={{ color: MOD_COLOUR[m.kind] }}>
               {stripGameMarkup(m.text)}
               {m.kind === "crafted" || m.kind === "fractured" || m.kind === "enchant" ? (

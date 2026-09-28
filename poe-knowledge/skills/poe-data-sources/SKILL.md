@@ -59,7 +59,9 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 - A fetched listing's `item` carries far more than names and mod text (2026-09-28):
   - each mod as `{description, hash, mods: [{magnitudes: [{min, max}]}]}` - `min`/`max` is the
     **roll range** of each number in the mod (a Watcher's Eye "60% increased Lightning Damage while
-    affected by Wrath" has 40-60; a fixed mod has min = max);
+    affected by Wrath" has 40-60; a fixed mod has min = max). Magic/rare explicit mods also have
+    `name` ("of the Furnace"), `tier` ("P7" = prefix tier 7, "S2" = suffix tier 2; 1 is best) and
+    `level`. Unique mods and implicits have no tier. `[verified]` (2026-09-28)
   - `properties` / `requirements` as `{name, values: [[text, displayType]]}` ("Limited to", [["1",0]]);
   - `sockets`, `influences`, `corrupted`, `mirrored`, `fractured`, `synthesised`, `isRelic`,
     `foilVariation` (a number - the foil's name is only in the item text), `flavourText`;

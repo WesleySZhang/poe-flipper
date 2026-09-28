@@ -78,6 +78,8 @@ export interface ListingMod {
   kind: ListingModKind;
   text: string;
   ranges?: Array<{ min: number; max: number }>;
+  /** Mod tier, 1 = best (magic/rare mods only - uniques have none). */
+  tier?: number;
 }
 
 export interface SoldListingItem {
@@ -273,6 +275,13 @@ function modRanges(mod: TradeMod): Array<{ min: number; max: number }> | undefin
   return ranges.length > 0 ? ranges : undefined;
 }
 
+/** "P7" / "S2" -> 7 / 2. A hybrid mod's parts share one tier, so the first is enough. */
+function modTier(mod: TradeMod): number | undefined {
+  if (typeof mod === "string") return undefined;
+  const match = mod.mods?.find((m) => m.tier)?.tier?.match(/(\d+)$/);
+  return match ? Number(match[1]) : undefined;
+}
+
 const MOD_KINDS: Array<[ListingModKind, keyof TradeItem]> = [
   ["enchant", "enchantMods"],
   ["implicit", "implicitMods"],
@@ -327,7 +336,8 @@ function toListingDetail(item: TradeItem): SoldListingDetail {
       ((item[key] as TradeMod[] | undefined) ?? []).flatMap((m) => {
         const t = modText(m);
         const ranges = modRanges(m);
-        return t ? [{ kind, text: t, ...(ranges ? { ranges } : {}) }] : [];
+        const tier = modTier(m);
+        return t ? [{ kind, text: t, ...(ranges ? { ranges } : {}), ...(tier !== undefined ? { tier } : {}) }] : [];
       })
     ),
   };

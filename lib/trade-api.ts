@@ -144,9 +144,16 @@ export interface TradeListing {
 /**
  * A mod as the fetch returns it: its text, plus each stat's roll range in `mods[].magnitudes` (a
  * Watcher's Eye "60% increased Lightning Damage while affected by Wrath" comes with min 40, max 60).
- * A plain string in older responses. (Checked 2026-09-28.)
+ * Magic/rare mods also carry `name` ("of the Furnace"), `tier` ("P7" = prefix tier 7, "S2" = suffix
+ * tier 2; 1 is best) and `level`; unique mods have no tier. A plain string in older responses.
+ * (Checked 2026-09-28.)
  */
-export type TradeMod = string | { description?: string; mods?: Array<{ magnitudes?: Array<{ min?: string; max?: string }> }> };
+export type TradeMod =
+  | string
+  | {
+      description?: string;
+      mods?: Array<{ name?: string; tier?: string; level?: number; magnitudes?: Array<{ min?: string; max?: string }> }>;
+    };
 
 /** "Limited to: 1", "Level: 70", ... - `values` pairs are [text, display type]. */
 export interface TradeProperty {
