@@ -120,9 +120,9 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   every price it had, earlier ones struck through, each with how long it stood at that price; when
   it was listed; when it sold or expired; how long it was up; the search that found it. Sort by
   sold/expired time, listed time, price or time up.
-- **Each item shows** every mod with its tier at the left (T1 = best; magic/rare mods only) and its
-  roll range at the right (e.g. `60% increased Lightning Damage while affected by Wrath (40–60)`),
-  properties, item level,
+- **Each item shows** every mod, centred, with its tier at the left (T1 = best; magic/rare mods
+  only). Hover a mod (tap, on a phone) to see its roll range at the right, e.g. `(40–60)` for
+  `46% increased Attack Damage while affected by Precision`. Also properties, item level,
   influences, relic/foil and corruption. Rows don't open anything, so text can be selected. Listings
   recorded before details were kept get them at their next check.
 - **The searches** are listed first, as filters: pick one or more to see only the listings they

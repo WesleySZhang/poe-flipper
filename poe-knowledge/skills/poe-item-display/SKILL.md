@@ -37,8 +37,10 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   each number in the mod, in order. A fixed value has min = max; negative ranges exist
   ("Non-Channelling Skills have -6 to Total Mana Cost": -10 to -5). Show ranges like the game's
   Alt view: after the mod, e.g. "60% increased ... (40–60)". `[verified]`
-  This app puts each range at the right edge of its line, in the grey label colour, so the rolled
-  number stays in the mod text and the ranges line up in a column. No bold. `[owner]` (2026-09-28)
+  This app shows a mod's range only on hover (or tap, on touch screens), at the right edge of its
+  line in the grey label colour, laid over the line so it never moves the mod text. The mod text
+  stays exactly centred: the tier column on the left is matched by an equal empty one on the right.
+  No bold. `[owner]` (2026-09-28)
 - **Tiers:** magic/rare mods have a tier (1 = best; from the trade API's `tier`, "P7"/"S2"). This app
   shows it as "T7" at the left edge of the mod's line, in the label colour; uniques and implicits
   have none, and the column only appears when the item has a tiered mod. `[owner]` (2026-09-28)

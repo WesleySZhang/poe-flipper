@@ -129,15 +129,17 @@ export function PoeItemTooltip({
       group.map((m, i) => {
         const range = showRanges ? formatRanges(m.ranges) : undefined;
         return (
-          // With ranges shown, the tier (magic/rare only) sits at the line's left edge and the range at
-          // its right, apart from the mod text.
+          // The tier (magic/rare only) sits at the line's left edge, with an equal empty column on the
+          // right so the mod text stays centred. The range shows at the right edge on hover, laid
+          // over the line so it never moves the text.
           <div
             key={i}
-            className={
-              showRanges
-                ? cn("grid items-baseline gap-3", hasTiers ? "grid-cols-[2rem_minmax(0,1fr)_auto]" : "grid-cols-[minmax(0,1fr)_auto]")
-                : undefined
-            }
+            // Focusable so a tap shows the range on touch screens, which have no hover.
+            tabIndex={range ? 0 : undefined}
+            className={cn(
+              showRanges && "group relative outline-none",
+              showRanges && hasTiers && "grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-baseline gap-2"
+            )}
           >
             {showRanges && hasTiers && (
               <span className="text-left" style={{ color: LABEL }} title={m.tier !== undefined ? `Tier ${m.tier} (1 is best)` : undefined}>
@@ -150,8 +152,12 @@ export function PoeItemTooltip({
                 <span style={{ color: LABEL }}> ({m.kind})</span>
               ) : null}
             </div>
-            {showRanges && (
-              <span className="whitespace-nowrap text-right" style={{ color: LABEL }}>
+            {showRanges && hasTiers && <span />}
+            {range && (
+              <span
+                className="pointer-events-none absolute right-0 top-0 whitespace-nowrap pl-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100"
+                style={{ color: LABEL, background: "var(--poe-bg)" }}
+              >
                 {range}
               </span>
             )}
