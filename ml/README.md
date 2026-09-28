@@ -254,6 +254,7 @@ narrow: 16% of outcomes fell outside each end, against 10%.
 | Dropping league-wide features (Divine price) | Slightly worse |
 | Top-N features by importance | 0.42–0.45; a hand-picked set works better |
 | Weighting recent leagues more | Worse than equal weights |
+| Whole trend line from one model pass (h=14 + a learned shape) instead of one call per horizon | Matches the per-horizon curve from league day ~3 at less compute; over-predicts short horizons on days 0-2. Not built - the daily precompute scores every horizon instead. See [`trend-line-study.md`](trend-line-study.md) |
 
 ## 11. Limits
 
@@ -336,3 +337,4 @@ $PY fit_final.py         # the 2-feature formula's coefficients
 | `test_quantile_xgb.py` | Quantile spread vs error (superseded by `fit_production.py`) |
 | `test_currency_leadlag.py` | Cross-currency lead-lag (weak; not used) |
 | `test_sparkline_cnn.py` | CNN over the raw sparkline (no gain; not used) |
+| `trend-line-study.md` | Whole-trend-line forecasting study (not shipped) |
