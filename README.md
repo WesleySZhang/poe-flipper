@@ -264,7 +264,12 @@ rebuilds from scratch):
 - **Finding listings:** each search runs newest-first. A search returns at most 100 listings, so
   when all 100 are new the tracker also fetches the oldest 100 since the last run: up to 200 new
   listings per search between runs (the per-search limit averages ~110 per 6 hours). More than
-  that and the search is flagged as having missed some.
+  that and the search is flagged as having missed some. So a new search only takes in ~200 of the
+  listings already up when it starts; the rest are never tracked, and "Tracking N" sits below the
+  trade site's count until they expire (7 days). After that it's close to the full count.
+- **How long records are kept:** a sale shows on the page for 30 days and an unsold listing for 7;
+  the state keeps ended listings 7 days; the archive keeps them forever. There's no backup: each
+  publish replaces the branch with one commit, so its history holds no older copies.
 - **Deciding a sale:** every listing is checked by its item id once per run. A fetch by id ignores
   the search's filters, and the id survives a price change, so a price drop (even out of the
   search's price range) is recorded as a new price, not a sale (repricing happens in place). A

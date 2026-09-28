@@ -62,6 +62,15 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   listings between runs (the newest and oldest 100 are fetched) and missed some - narrow it.
 - **Page not updated today:** check the day's "Track sold listings" run. GitHub starts it hours
   late, and occasionally skips it; the next run catches up (state carries over).
+- **"Tracking N" well below the trade site's count:** expected for about a week after a search
+  starts. A search returns at most 100 ids, so the first run takes only the newest and oldest 100
+  of the listings already up (the first run on 2026-09-28 took 205 of 546). New listings are all
+  caught after that, and the untracked backlog expires within 7 days of being listed. If it's still
+  far below after a week, check for "missed some" warnings or skipped runs. A one-time backfill
+  (splitting the search by price or listing age so each slice is under 100) would close it at once;
+  not built.
+- **Short manual runs:** "How long to run" defaults to 330 minutes. A short run (e.g. 20) publishes
+  only at its end and re-checks little, so the page barely moves.
 - **"paused" on a search:** it now matches more than 3,000 listings, so it takes nothing new (its
   tracked listings are still checked). Narrow the link; it resumes on its own once under.
 - **"Tracking limit reached":** 6,000 listings are being followed, so new ones are skipped until
@@ -82,6 +91,11 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   one file per day (`ended/<League>/<YYYY-MM-DD>.jsonl`) to stay far under it; the tracker splits
   any old month file (`YYYY-MM.jsonl`) into day files at start. `dropUnusedDetail` strips fields
   older versions stored (item text, flavour text) from the state as it loads.
+- **How long records are kept:** page file - sold 30 days (`SOLD_PAGE_DAYS`), unsold 7
+  (`UNSOLD_PAGE_DAYS`), listed always; state - ended listings 7 days (`STATE_KEEP_ENDED_DAYS`);
+  archive - forever. **No backup:** each publish replaces the branch with a single commit, and each
+  run restores the branch, then republishes it all, so a run that restored an incomplete copy and
+  published would lose the archive for good. Copy `ended/` elsewhere if the history matters.
 - **Checks falling behind** (listings not re-checked each run): the tracked count is near what one
   run's fetch budget covers (~6,750), or runs were short/skipped. Lower `MAX_TRACKED_LISTINGS` or
   narrow searches.
@@ -92,9 +106,12 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - One row per item: `components/poe-item-tooltip.tsx` draws the item like the game's tooltip (see the
   `poe-item-display` skill for its colours, markup and sections); beside it, the listing's facts -
   a price timeline (earlier prices struck through, time at each; `priceSpans` in
-  `lib/sold-tracker.ts`), listed / sold or expired / time up / search. Mods show their roll
-  ranges. Rows don't open anything (the owner dropped the detail dialog so text can be selected).
-- Item stats come from the tracker's `SoldListingItem.detail` (every mod with roll ranges,
+  `lib/sold-tracker.ts`), listed / sold or expired / time up / search. Each mod line: text centred,
+  tier ("T7", magic/rare only) at the left, roll range at the right on hover/tap only (laid over
+  the line so the text never shifts). Rows don't open anything (the owner dropped the detail dialog
+  so text can be selected). Both tabs sort by price, lowest first, by default (shared sort state).
+- Unsold = listings still up ("Still listed" badge, "Last seen" date) + ones expired after 7 days.
+- Item stats come from the tracker's `SoldListingItem.detail` (every mod with roll ranges and tier,
   properties, requirements, sockets, influences, relic/foil). The in-game item text and flavour
   text aren't stored: nothing shows them, and the item text was half of each listing's size.
   Listings stored before details existed show only their mod lines until their next check.
