@@ -119,7 +119,8 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   taking most of the width, with the listing's facts stacked beside it (under it on a phone):
   every price it had, earlier ones struck through, each with how long it stood at that price; when
   it was listed; when it sold or expired; how long it was up; the search that found it. Sort by
-  sold/expired time, listed time, price or time up.
+  price (the default, lowest first), sold/expired time, listed time or time up. Price sorts divine
+  listings by amount; any priced in another currency come after them.
 - **Each item shows** every mod, centred, with its tier at the left (T1 = best; magic/rare mods
   only). Hover a mod (tap, on a phone) to see its roll range at the right, e.g. `(40–60)` for
   `46% increased Attack Damage while affected by Precision`. Also properties, item level,

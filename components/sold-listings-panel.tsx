@@ -178,7 +178,7 @@ export function SoldListingsPanel() {
   const [tab, setTab] = useState<Tab>("sold");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(0);
-  const [sort, setSort] = useState<SortState<SortKey>>({ key: "ended", direction: "desc" });
+  const [sort, setSort] = useState<SortState<SortKey>>({ key: "price", direction: "asc" });
   const [isPending, startTransition] = useTransition();
   // Durations count up to "now" for anything still open; fixed per load so renders stay pure.
   const [loadedAt, setLoadedAt] = useState(() => new Date(0).toISOString());
