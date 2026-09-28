@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
-import { FaustusPriceButton } from "@/components/faustus-price-button";
+import { ExchangePriceButton } from "@/components/exchange-price-button";
+import { TradeSiteLink } from "@/components/trade-site-link";
+import { tradeSearchUrl } from "@/lib/trade-site";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
 import { MobileSortControl } from "@/components/mobile-sort-control";
@@ -278,7 +280,15 @@ export function DivinationFlipsPanel() {
                     emphasized: true,
                   },
                   { label: "Stack", value: `x${f.stackSize}` },
-                  { label: "Reward", value: f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName },
+                  {
+                    label: "Reward",
+                    value: (
+                      <span className="inline-flex items-center gap-1">
+                        {f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName}
+                        {f.rewardKind === "unique" && <TradeSiteLink href={tradeSearchUrl(f.rewardName)} />}
+                      </span>
+                    ),
+                  },
                   {
                     label: "Min/Max",
                     value:
@@ -288,7 +298,7 @@ export function DivinationFlipsPanel() {
                           {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
                         </span>
                       ) : f.faustusTradeable ? (
-                        <FaustusPriceButton name={f.name} priceUnit={priceUnit} />
+                        <ExchangePriceButton name={f.name} />
                       ) : (
                         "—"
                       ),
@@ -357,14 +367,18 @@ export function DivinationFlipsPanel() {
                           {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
                         </span>
                       ) : f.faustusTradeable ? (
-                        <FaustusPriceButton name={f.name} priceUnit={priceUnit} />
+                        <ExchangePriceButton name={f.name} />
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="max-w-[160px] truncate" title={f.rewardName}>
-                    {f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName}
+                  <TableCell className="max-w-[160px]" title={f.rewardName}>
+                    {/* A unique reward sells on the trade site, not the exchange - link its search. */}
+                    <div className="flex items-center gap-1">
+                      <span className="truncate">{f.rewardQuantity > 1 ? `${f.rewardQuantity}x ${f.rewardName}` : f.rewardName}</span>
+                      {f.rewardKind === "unique" && <TradeSiteLink href={tradeSearchUrl(f.rewardName)} />}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">{formatPriceValue(f.rewardChaosValue, f.rewardDivineValue, priceUnit)}</TableCell>
                   <TableCell className="text-right font-medium">{formatOptionalPercent(f.shownRatio)}</TableCell>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { PriceHistoryChart } from "@/components/price-history-chart";
+import { TradeSiteLink } from "@/components/trade-site-link";
 import { useItemHistoryExpand } from "@/components/item-history-row";
 import { itemDetailUrlKey, poeWikiUrl } from "@/lib/poe-ninja";
 import type { PriceUnit } from "@/lib/price-unit";
@@ -38,6 +39,8 @@ interface ItemHistoryCardProps {
    *  trend-based (Currency Exchange Flip, Divination Card Flips), making the card a static summary
    *  with no tap-to-expand chart, chevron, or pressed/hover affordance. */
   expandable?: boolean;
+  /** See ItemHistoryRow's identical prop. */
+  tradeUrl?: string;
 }
 
 /**
@@ -62,6 +65,7 @@ export function ItemHistoryCard({
   fields,
   rightFields,
   expandable = true,
+  tradeUrl,
 }: ItemHistoryCardProps) {
   const { expanded, hasExpandedOnce, state, predictedCurve, toggle } = useItemHistoryExpand({
     category,
@@ -118,6 +122,7 @@ export function ItemHistoryCard({
           >
             <ExternalLink className="size-3.5" />
           </a>
+          {tradeUrl && <TradeSiteLink href={tradeUrl} className="size-3.5" />}
           {/* Purely decorative - not its own click target, so tapping it (or the empty space
               around it) falls through to the card's own click-to-expand. Flips while expanded.
               Omitted entirely when expandable is false - nothing to indicate. */}

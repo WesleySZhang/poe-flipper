@@ -10,13 +10,14 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
-import { FaustusPriceButton } from "@/components/faustus-price-button";
+import { ExchangePriceButton } from "@/components/exchange-price-button";
 import { LEG_LABEL, fullStackListed, otherCurrencyTitle, profitUnit, stockRangeTitle } from "@/lib/exchange-route";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
 import type { FlipSuggestion, PredictionCurvePoint } from "@/lib/flip-suggestions";
 import type { ItemDetail } from "@/lib/item-detail";
+import { isTradeSiteItem, tradeSearchUrl } from "@/lib/trade-site";
 import type { DivinationFlip } from "@/lib/divination-flips";
 import type { LeagueSeries } from "@/lib/price-history";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
@@ -291,6 +292,17 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             <ExternalLink className="size-3.5" />
           </a>
         )}
+        {detail && isTradeSiteItem(detail.category, detail.filterCategory) && (
+          <a
+            href={tradeSearchUrl(detail.historyName, detail.variant)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
+          >
+            Search the trade site
+            <ExternalLink className="size-3.5" />
+          </a>
+        )}
       </div>
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4">
@@ -414,7 +426,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Currency Exchange</CardTitle>
-                <FaustusPriceButton name={historyName} priceUnit="market" />
+                <ExchangePriceButton name={historyName} />
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground">
@@ -485,7 +497,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Divination Card Flip</CardTitle>
                 <div className="flex items-center gap-2">
-                  {divinationFlip.faustusTradeable && <FaustusPriceButton name={historyName} priceUnit={priceUnit} />}
+                  {divinationFlip.faustusTradeable && <ExchangePriceButton name={historyName} />}
                   <Button
                     type="button"
                     size="sm"

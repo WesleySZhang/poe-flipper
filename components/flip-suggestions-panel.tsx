@@ -12,7 +12,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
-import { FaustusPriceButton } from "@/components/faustus-price-button";
+import { isTradeSiteItem, tradeSearchUrl } from "@/lib/trade-site";
+import { ExchangePriceButton } from "@/components/exchange-price-button";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
 import { MobileSortControl } from "@/components/mobile-sort-control";
@@ -410,6 +411,7 @@ export function FlipSuggestionsPanel() {
                 currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                 predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                 fetchPredictedCurve
+                tradeUrl={isTradeSiteItem(s.category, s.filterCategory) ? tradeSearchUrl(s.historyName, s.variant) : undefined}
                 priceUnit={priceUnit}
                 fields={[
                   {
@@ -427,7 +429,7 @@ export function FlipSuggestionsPanel() {
                   { label: "Category", value: humanizeCategoryName(s.filterCategory) },
                   {
                     label: "Exchange",
-                    value: s.faustusTradeable ? <FaustusPriceButton name={s.name} priceUnit={priceUnit} /> : "—",
+                    value: s.faustusTradeable ? <ExchangePriceButton name={s.name} /> : "—",
                   },
                 ]}
                 rightFields={[
@@ -493,6 +495,7 @@ export function FlipSuggestionsPanel() {
                   currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   fetchPredictedCurve
+                  tradeUrl={isTradeSiteItem(s.category, s.filterCategory) ? tradeSearchUrl(s.historyName, s.variant) : undefined}
                   priceUnit={priceUnit}
                   colSpan={7}
                 >
@@ -507,7 +510,7 @@ export function FlipSuggestionsPanel() {
                   <TableCell className="hidden sm:table-cell">
                     <div className="flex justify-center">
                       {s.faustusTradeable ? (
-                        <FaustusPriceButton name={s.name} priceUnit={priceUnit} />
+                        <ExchangePriceButton name={s.name} />
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

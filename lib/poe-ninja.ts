@@ -195,6 +195,11 @@ export interface ExchangeOverviewLine {
    *  Orb as "primary" (verified across Currency, Fragment, Scarab, Essence, DivinationCard, Tattoo,
    *  Fossil), same as CurrencyOverviewLine.chaosEquivalent. */
   primaryValue: number;
+  /** Chaos traded, on about the same scale as GGG's own hourly exchange volume (median ratio
+   *  ~0.85 across Currency, Scarab, Essence and DivinationCard on 2026-09-28) - so the chaos-volume
+   *  tiers in lib/liquidity.ts apply to it as-is. Covers items GGG's hourly data had no market for
+   *  (153 of 213 cards that day). */
+  volumePrimaryValue?: number;
   sparkline?: SparkLine;
 }
 
@@ -230,6 +235,12 @@ export interface CurrencyPrice {
   spark?: Array<number | null>;
   /** Which CURRENCY_OVERVIEW_TYPES bucket this came from (Currency, Fragment, Scarab, ...) - used for the category filter. */
   type: CurrencyOverviewType;
+  /** poe.ninja's exchange volume in chaos (see ExchangeOverviewLine.volumePrimaryValue) - live
+   *  data only, not kept in the daily snapshot. */
+  volumeChaos?: number;
+  /** The official trade site's id for this item ("the-doctor", "divine") - poe.ninja's exchange
+   *  ids are the trade site's (726 of 728 matched on 2026-09-28). Live data only. */
+  tradeId?: string;
 }
 
 // The stash-listing scrape (fetchCurrencyOverviewRaw) only ever returns rows for these two types -
@@ -310,9 +321,13 @@ export async function getAllCurrentCurrencyPrices(
       // For Currency specifically, exchange data replaces the stash value outright (see above) -
       // for every other type, only fill a gap the stash scrape left empty, so a type that DOES
       // still have working stash data isn't silently overridden by this fallback.
-      if (type !== "Currency" && existing) continue;
+      // Volume and trade id are still worth keeping - the stash scrape has neither.
+      if (type !== "Currency" && existing) {
+        prices.set(name, { ...existing, volumeChaos: line.volumePrimaryValue, tradeId: line.id });
+        continue;
+      }
       const spark = sparkPointsFrom(line.sparkline) ?? existing?.spark;
-      prices.set(name, { chaosValue: line.primaryValue, type, spark });
+      prices.set(name, { chaosValue: line.primaryValue, type, spark, volumeChaos: line.volumePrimaryValue, tradeId: line.id });
     }
   });
 

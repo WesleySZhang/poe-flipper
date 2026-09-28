@@ -65,8 +65,21 @@ forecast days (see Done), but:
 ## 5. Small follow-ups
 
 - **Dust Value gaps.** Foulborn (mutated) uniques are left out until it's confirmed they give their
-  base unique's dust; quality (poedb says +1% per point, the game +2%) and corruption/influence
-  (+50% each) aren't counted. poedb lists unique maps too; unchecked whether Kingsmarch accepts them.
+  base unique's dust; corruption/influence (+50% each) aren't counted. poedb lists unique maps too;
+  unchecked whether Kingsmarch accepts them.
+- **Dust formula: ×2000 or ×2500?** The page uses poedb's item-level multiplier (×2000 of the base
+  value at ilvl 84). Another formula in circulation gives exactly 1.25× that from ilvl 68 up (×2500
+  at 84) and a gentler slope below 68 (poedb bottoms out at 65). Settle it with one in-game
+  disenchant of a unique with a known item level. The ranking doesn't change either way, only the
+  dust shown. Also unconfirmed: quality is counted at +2% per point (the in-game text; poedb's
+  formula says +1%), with every item assumed at 20%.
+- **poe.ninja's single-request price feed, on hold.** `/poe1/api/economy/current/dense/overviews`
+  returns every category in one response (~366 KB, ~0.3 s) instead of the ~48 requests the app and
+  daily job make. Not a drop-in: lines carry only name, variant, price and 7-day graph (no seller
+  count, links, detailsId or base type; variants include the base type and "6L"), and its currency
+  and card prices differ from the exchange-based ones the app uses (71 of 213 cards, 77 of 100
+  currencies on 2026-09-28). Unique and gem prices match. Candidate use: the daily job's stash-type
+  fetches.
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
   table on the previous value until release, then waits for a live calculation.
@@ -75,6 +88,14 @@ forecast days (see Done), but:
 
 ## Done
 
+- **Trade site links and a live Exchange Price.** Uniques (and Vaal Aspects) link to an official
+  trade site search - on every table that lists them, the item page, and card flips' unique rewards.
+  The Exchange Price button now shows live bulk-exchange listings (price and stock per level), through
+  a rate limiter that follows the trade site's reported limits, refuses instead of queueing, and
+  caches per item for 5 minutes.
+- **Liquidity from poe.ninja's exchange volume.** Divination Card Flips rate a leg with no GGG market
+  this hour by poe.ninja's exchange volume (same chaos scale) instead of calling it Low.
+- **Dust Value assumes 20% quality.**
 - **Dust Value page** (`/dust-value`). Uniques ranked by Thaumaturgic Dust per chaos for Kingsmarch
   disenchanting: poedb's dust values (generated into `lib/disenchant-values.ts`) against poe.ninja's
   cheapest trusted line per unique, with an item-level input and the usual price, confidence and

@@ -44,6 +44,9 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   (Divine Beauty 203.7c vs 200-202c; The Doctor 577c vs 401c), which made the instant buy read
   cheaper than the buy order. Many cards trade at a single price in an hour, so instant often
   equals Cost. `[verified]` (`lib/divination-flips.ts`)
+- Liquidity per leg: GGG's hourly traded volume on its market, or poe.ninja's exchange volume
+  (`CurrencyPrice.volumeChaos`, same chaos scale) when GGG had no market that hour - most cards
+  don't trade on GGG's exchange in a given hour. `[verified]` (`lib/divination-flips.ts`)
 - Nothing says a full stack can be bought at the Min/Max price: the exchange API has no stock per
   price. The one quantity check is the hour's highest listed card stock vs the stack size - on
   2026-09-27, 8 of 34 exchange-traded cards never had a full stack listed (The Soul 0-5 for a stack

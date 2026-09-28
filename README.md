@@ -40,7 +40,10 @@ live calculation). Each row shows the current price, predicted price, change and
 
 - **Click a row** to expand a price chart across every past league, with markers for today and
   the target day, and the model's day-by-day forecast as a dotted line.
-- **Click an item's name** to open its detail page. The small icon next to it opens poewiki.
+- **Click an item's name** to open its detail page. The small icon next to it opens poewiki; a cart
+  icon on uniques opens a trade site search.
+- **Exchange Price** (Currency Exchange items): live listings from the trade site - see
+  [Shared across pages](#shared-across-pages).
 - **Filters:** category, price range, search, and confidence tier (Low is hidden by default).
 - **Chaos / Divine** toggle switches every price and ratio to that currency.
 
@@ -85,7 +88,8 @@ Magic/rare rewards are priced as their base type, ignoring affixes. Card data is
 RePoE's game files (`scripts/generate-divination-cards.ts`).
 
 "Confidence" here means **liquidity**: the weaker of the two trades (buying the card, selling the
-reward). It is usually low on an old league, because most card trading happens off the exchange.
+reward). Each leg uses GGG's traded volume that hour, or poe.ninja's exchange volume when GGG had no
+market for it (most cards in a given hour). A unique reward has a cart icon for its trade site search.
 
 ### Dust Value
 
@@ -97,10 +101,11 @@ Uniques ranked by how much Thaumaturgic Dust they give when disenchanted in King
   least 5 sellers so a lone lowball listing doesn't win.
 - **Item level** (default 84) scales the dust shown: ×1 at 65 and below up to ×20 at 84+. It's the
   same factor for every unique, so it never changes the order. poe.ninja prices don't say a
-  listing's item level.
+  listing's item level; each row's cart icon searches the trade site at that item level or above.
+- **20% quality** is assumed for every item (+2% dust per point, so ×1.4): it's cheap to add.
 - **Confidence** is the seller count on poe.ninja (High 20+, Medium 5+).
 - **Left out:** Foulborn (mutated) uniques, since it's unchecked whether they give their base's dust;
-  quality and corruption bonuses.
+  corruption and influence bonuses.
 
 ### Item detail page
 
@@ -115,7 +120,7 @@ Reached from any item name, or from the header search. It shows:
 - **Currency Exchange** (if the item trades there): the same flip as the Currency Exchange Flip
   table, each price in its market's currency whatever the page's Chaos/Divine toggle says;
 - **Divination Card Flip** (if it's a card);
-- links to the item's **poewiki** and **poe.ninja** pages.
+- links to the item's **poewiki** and **poe.ninja** pages, and for a unique, a **trade site** search.
 
 On desktop the chart and Overview take the left 70%, and the other cards stack on the right.
 
@@ -128,6 +133,17 @@ On desktop the chart and Overview take the left 70%, and the other cards stack o
   filter above them. Nothing needs horizontal scrolling. The league tester doesn't have this yet.
 - **Charts:** the current league has its own solid line up to today, joining the dotted forecast.
   On touch devices a tap shows the tooltip; the bar under the chart is for zooming.
+- **Trade site links** (cart icon) for items not on the Currency Exchange - uniques, including Vaal
+  Aspects: the official trade site's search for that item (online or instant-buyout sellers,
+  cheapest first, one listing per seller; link count when the row is a 5/6-link line). The search
+  runs in your browser, not through this app (`lib/trade-site.ts`).
+- **Exchange Price** button, on items the Currency Exchange covers: live online listings from the
+  trade site's bulk exchange, as each price and the stock listed at it (e.g. `8c - 12 in stock`).
+  It runs a search from this app's server only when pressed. The trade API limits requests per IP
+  and every user shares the server's IP, so searches go through a rate limiter that follows the
+  limits the trade site reports and answers "Retry in Ns" rather than queueing
+  (`lib/trade-rate-limit.ts`); results are cached for 5 minutes per item. The bulk exchange is thin
+  since the in-game Currency Exchange, so few or no listings is common.
 
 ---
 
@@ -338,6 +354,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
   Settings → Actions → "Allow GitHub Actions to create and approve pull requests"). Choosing to
   train on a finished league means starting the Retrain model workflow and reviewing its PR.
 - **Currency Exchange data is about 2 hours old** and gold costs are hand-transcribed.
+- **Exchange Price searches are rate limited per server IP,** shared by every user, and the limiter's
+  state is per server instance (it re-syncs from the trade site's own counts on every response).
 - **One item, several poe.ninja lines.** Base types have one line per item level or influence.
   The live price uses the first line while history averages them, so the two can differ.
 
@@ -365,6 +383,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `item-detail-panel.tsx` | Item detail page content |
 | `*-panel.tsx` | Each page's main panel |
 | `mobile-sort-control.tsx` | Mobile sort and confidence/liquidity filter |
+| `exchange-price-button.tsx`, `trade-site-link.tsx` | Exchange Price button (live listings) and the trade site link icon |
 | `ui/` | shadcn components |
 
 ### Predictions
@@ -390,6 +409,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client (Chaos and Divine markets per item) and gold costs |
 | `lib/exchange-route.ts` | Picking a flip's buy/sell markets, and which currency to show profit in |
 | `lib/liquidity.ts` | Liquidity tiers (exchange volume, and poe.ninja seller count for uniques) |
+| `lib/trade-site.ts`, `lib/trade-exchange.ts`, `lib/trade-rate-limit.ts` | Official trade site: search links, the Exchange Price bulk-exchange search, and its rate limiter |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
 | `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |

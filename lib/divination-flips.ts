@@ -52,7 +52,7 @@ export interface DivinationFlip {
   buyStock?: MarketStockRange;
   buyStockDivine?: MarketStockRange;
   /** Whether GGG's Currency Exchange covers this exact card at all - drives the on-demand
-   *  "Exchange Price" button (components/faustus-price-button.tsx), same as the main dashboard. */
+   *  "Exchange Price" button (components/exchange-price-button.tsx), same as the main dashboard. */
   faustusTradeable: boolean;
   rewardName: string;
   rewardKind: DivinationRewardKind;
@@ -130,7 +130,10 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
   ]);
   // poe.ninja's Divine rate, for the reward's value in Divine mode (see the module doc).
   const ninjaDivineRate = currencyPrices.get("Divine Orb")?.chaosValue;
-  const exchangeTier = (m: ItemMarket | undefined): LiquidityTier => (m ? liquidityTier(m.volumeChaos) : "low");
+  // A leg's liquidity: its GGG market's volume this hour, or poe.ninja's exchange volume when GGG
+  // had no market for it (most cards in a given hour) - same chaos scale, so the same tiers.
+  const exchangeTier = (m: ItemMarket | undefined, ninjaVolumeChaos?: number): LiquidityTier =>
+    m ? liquidityTier(m.volumeChaos) : ninjaVolumeChaos !== undefined ? liquidityTier(ninjaVolumeChaos) : "low";
   const toChaos = (m: ItemMarket, v: number) => (m.currency === "chaos" ? v : v * (quotes.divineChaosRate ?? 0));
   const stockOf = (m: ItemMarket | undefined): MarketStockRange | undefined =>
     m ? { cards: m.stockRange.item, currency: m.stockRange.currency, currencyIn: m.currency } : undefined;
@@ -156,14 +159,14 @@ async function computeDivinationFlips(league: string): Promise<DivinationFlip[]>
       // card's own price (DivinationCard type) is fetched from the same getAllCurrentCurrencyPrices
       // call this app already uses for currency, so a card-to-card reward needs no separate lookup.
       rewardChaosPerUnit = currencyPrices.get(def.rewardName)?.chaosValue;
-      rewardConfidence = exchangeTier(rewardMarkets?.chaos ?? rewardMarkets?.divine);
+      rewardConfidence = exchangeTier(rewardMarkets?.chaos ?? rewardMarkets?.divine, currencyPrices.get(def.rewardName)?.volumeChaos);
     }
     if (rewardChaosPerUnit === undefined || !(rewardChaosPerUnit > 0)) continue; // reward not (yet) priceable
 
     // Chaos mode: the card's Chaos market (or, for a card only traded for divines, that market).
     const cardMarkets = quotes.markets.get(def.name);
     const rangeMarket = cardMarkets?.chaos ?? cardMarkets?.divine;
-    const cardConfidence = exchangeTier(rangeMarket);
+    const cardConfidence = exchangeTier(rangeMarket, cardPrice.volumeChaos);
 
     // Buy order: the bottom of the card's hour range; poe.ninja's price only with no exchange market.
     const buyMinChaosValue = rangeMarket ? toChaos(rangeMarket, rangeMarket.low) : undefined;
