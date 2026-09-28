@@ -1,27 +1,35 @@
 /**
  * The sold listing tracker: follows the trade site listings matched by the links in
  * sold-tracker/searches.md and records which ones sell. Runs for --minutes, then exits; the
- * "Track sold listings" workflow runs it once a day and then publishes its file to the sold-tracker
- * branch, where the Sold Listings page reads it (lib/sold-listings.ts). The published file changes
- * only at the end of a run; the local file is saved every few minutes.
+ * "Track sold listings" workflow runs it ~5.5 hours every 6 hours and then publishes --dir to the
+ * sold-tracker branch, where the Sold Listings page reads it (lib/sold-listings.ts). The published
+ * files change only at the end of a run; the local ones are saved every few minutes.
  *
- *   npx tsx scripts/track-sold-listings.ts [--minutes 45] [--dir .sold-tracker] [--searches sold-tracker/searches.md]
+ *   npx tsx scripts/track-sold-listings.ts [--minutes 330] [--dir .sold-tracker] [--searches sold-tracker/searches.md]
+ *                                          [--fetch-pace-ms 25000]
+ *
+ * Files under --dir (see lib/sold-tracker.ts for each one's shape):
+ *   state/<League>.json          the tracker's state: listed listings, recently ended ones, searches
+ *   sold-listings/<League>.json  the page's file: recent sales and unsold, listings gone but pending
+ *   ended/<League>/<YYYY-MM>.jsonl  every ended listing, one per line - the full history
  *
  * Each loop:
  *  1. Discovery, per search, every DISCOVERY_MINUTES (shorter when a search is busy): the newest
  *     listings first, with the tracker's rules applied (instant buyout, last week - see
- *     applyTrackerRules). A search returns only 100, and a day's new listings can be more: when
- *     all 100 are new, the oldest 100 since the last run are fetched too. New ids are fetched for their item and price - within the limits in
- *     lib/sold-tracker.ts (admitNewListings): a search matching too many listings is paused, and
- *     nothing new is taken in once MAX_TRACKED_LISTINGS listings are being followed.
+ *     applyTrackerRules). A search returns only 100, and the new listings since the last run can be
+ *     more: when all 100 are new, the oldest 100 since the last run are fetched too. New ids are
+ *     fetched for their item and price - within the limits in lib/sold-tracker.ts
+ *     (admitNewListings): a search matching too many listings is paused, and nothing new is taken
+ *     in once MAX_TRACKED_LISTINGS listings are being followed.
  *  2. Checks: listed ids due a re-check are fetched by id, 10 per request. A fetch ignores the
  *     search's filters, so a listing repriced out of its search still comes back (a price change);
  *     an empty result means it's gone (lib/sold-tracker.ts decides when gone counts as sold).
- * Requests go through lib/trade-api.ts's rate limiter. The state is saved every few minutes and on
+ * Requests go through lib/trade-api.ts's rate limiter, with fetches paced (FETCH_PACE_MS) so a run's
+ * ~600 fetches are spread over hours rather than bursts. The state is saved every few minutes and on
  * exit, so a killed run loses little. A first run picks up at most the newest and oldest 100 of the
  * week per search; after that, new listings are caught as they come.
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
 import { TradeApiClient, TradeApiError } from "../lib/trade-api";
@@ -29,22 +37,27 @@ import { SEARCHES_DOC, parseSearchesDoc, type TrackedSearch } from "../lib/sold-
 import { withListingAge } from "../lib/trade-query";
 import {
   DISCOVERY_MINUTES,
+  FETCH_PACE_MS,
   MAX_LISTINGS_PER_SEARCH,
   MAX_SEARCHES,
   MIN_DISCOVERY_MINUTES,
   SEARCH_RESULT_CAP,
+  STATE_KEEP_ENDED_DAYS,
   admitNewListings,
-  emptyTrackerFile,
+  buildSoldListingsFile,
+  emptyTrackerState,
+  endedToDrop,
   listingsDueForCheck,
   recordListing,
   recordMissing,
   settleListings,
-  type SoldTrackerFile,
   type TrackedListing,
+  type TrackerState,
   type TrackedSearchStatus,
 } from "../lib/sold-tracker";
 
 const SAVE_EVERY_MS = 5 * 60 * 1000;
+const STATE_DAYS_LABEL = `${STATE_KEEP_ENDED_DAYS} days`;
 const IDLE_SLEEP_MS = 60 * 1000;
 
 function arg(name: string, fallback: string): string {
@@ -52,10 +65,14 @@ function arg(name: string, fallback: string): string {
   return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-const minutes = Number(arg("minutes", "45"));
+const minutes = Number(arg("minutes", "330"));
+// Lower for a quick local test; the workflow uses the default.
+const fetchPaceMs = Number(arg("fetch-pace-ms", String(FETCH_PACE_MS)));
 const dir = arg("dir", ".sold-tracker");
 const searchesPath = arg("searches", SEARCHES_DOC);
-const filePath = path.join(dir, "sold-listings", `${CURRENT_LEAGUE}.json`);
+const statePath = path.join(dir, "state", `${CURRENT_LEAGUE}.json`);
+const pagePath = path.join(dir, "sold-listings", `${CURRENT_LEAGUE}.json`);
+const archiveDir = path.join(dir, "ended", CURRENT_LEAGUE);
 
 function readSearches(): TrackedSearch[] {
   const searches = parseSearchesDoc(readFileSync(searchesPath, "utf8"));
@@ -65,27 +82,47 @@ function readSearches(): TrackedSearch[] {
   );
 }
 
-function loadFile(): SoldTrackerFile {
-  if (!existsSync(filePath)) return emptyTrackerFile(CURRENT_LEAGUE);
-  const file = JSON.parse(readFileSync(filePath, "utf8")) as SoldTrackerFile;
-  return file.version === 1 && file.league === CURRENT_LEAGUE ? file : emptyTrackerFile(CURRENT_LEAGUE);
+function loadState(): TrackerState {
+  if (!existsSync(statePath)) return emptyTrackerState(CURRENT_LEAGUE);
+  const state = JSON.parse(readFileSync(statePath, "utf8")) as TrackerState;
+  return state.version === 2 && state.league === CURRENT_LEAGUE ? state : emptyTrackerState(CURRENT_LEAGUE);
 }
 
-function saveFile(
-  file: SoldTrackerFile,
+function writeJson(file: string, data: unknown) {
+  mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(data));
+  renameSync(tmp, file);
+}
+
+/** Appends newly ended listings to the archive, by the month they ended. */
+function archive(ended: TrackedListing[]) {
+  if (ended.length === 0) return;
+  mkdirSync(archiveDir, { recursive: true });
+  const byMonth = new Map<string, string[]>();
+  for (const t of ended) {
+    const month = (t.endedAt ?? new Date().toISOString()).slice(0, 7);
+    byMonth.set(month, [...(byMonth.get(month) ?? []), JSON.stringify(t)]);
+  }
+  for (const [month, lines] of byMonth) appendFileSync(path.join(archiveDir, `${month}.jsonl`), lines.join("\n") + "\n");
+}
+
+/** Saves the state and the page's file, dropping ended listings the state no longer needs. */
+function save(
+  state: TrackerState,
   listings: Map<string, TrackedListing>,
   statuses: Map<string, TrackedSearchStatus>,
   atCapacity: boolean
 ) {
-  file.updatedAt = new Date().toISOString();
-  if (atCapacity) file.atCapacity = true;
-  else delete file.atCapacity;
-  file.searches = [...statuses.values()];
-  file.listings = [...listings.values()];
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmp = `${filePath}.tmp`;
-  writeFileSync(tmp, JSON.stringify(file));
-  renameSync(tmp, filePath);
+  const now = new Date().toISOString();
+  for (const id of endedToDrop(listings.values(), now)) listings.delete(id);
+  state.updatedAt = now;
+  if (atCapacity) state.atCapacity = true;
+  else delete state.atCapacity;
+  state.searches = [...statuses.values()];
+  state.listings = [...listings.values()];
+  writeJson(statePath, state);
+  writeJson(pagePath, buildSoldListingsFile(state, listings.values(), now));
 }
 
 function log(message: string) {
@@ -94,9 +131,9 @@ function log(message: string) {
 
 async function main() {
   const searches = readSearches();
-  const file = loadFile();
-  const listings = new Map(file.listings.map((t) => [t.id, t]));
-  const previous = new Map(file.searches.map((s) => [s.label, s]));
+  const state = loadState();
+  const listings = new Map(state.listings.map((t) => [t.id, t]));
+  const previous = new Map(state.searches.map((s) => [s.label, s]));
   const statuses = new Map<string, TrackedSearchStatus>(
     searches.map((s) => {
       const prev = previous.get(s.label);
@@ -110,7 +147,7 @@ async function main() {
   const active = searches.filter((s) => s.query);
   log(`${active.length} searches, ${listings.size} listings on file, running ${minutes} min, league ${CURRENT_LEAGUE}`);
 
-  const client = new TradeApiClient();
+  const client = new TradeApiClient({ fetch: fetchPaceMs });
   const deadline = Date.now() + minutes * 60 * 1000;
   let lastSave = Date.now();
   let stopping = false;
@@ -120,7 +157,7 @@ async function main() {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
-  let atCapacity = file.atCapacity ?? false;
+  let atCapacity = state.atCapacity ?? false;
   const listedCount = () => {
     let n = 0;
     for (const t of listings.values()) if (t.status === "listed") n++;
@@ -137,8 +174,8 @@ async function main() {
       let missed = false;
       // Every one of the newest 100 is new: the page likely cut off listings since the last run.
       // Fetch the oldest 100 of that window too (limited to the last day or 3 days, as the gap
-      // allows), which covers up to 200 new listings per run - the per-search limit averages ~86 a
-      // day. Skipped for a search that's over the limit, which admitNewListings pauses anyway.
+      // allows), which covers up to 200 new listings per run - the per-search limit averages ~110
+      // per 6 hours. Skipped for a search that's over the limit, which admitNewListings pauses anyway.
       if (ids.length >= SEARCH_RESULT_CAP && ids.every((id) => !listings.has(id)) && total <= MAX_LISTINGS_PER_SEARCH) {
         const sinceMs = status.lastRun ? Date.now() - Date.parse(status.lastRun) : Infinity;
         const window = sinceMs <= 24 * 3600e3 ? "1day" : sinceMs <= 72 * 3600e3 ? "3days" : "1week";
@@ -222,19 +259,19 @@ async function main() {
         await check(due);
         didWork = true;
       }
-      settleListings(listings.values(), new Date().toISOString());
+      archive(settleListings(listings.values(), new Date().toISOString()));
       if (Date.now() - lastSave >= SAVE_EVERY_MS) {
-        saveFile(file, listings, statuses, atCapacity);
+        save(state, listings, statuses, atCapacity);
         lastSave = Date.now();
       }
       if (!didWork) await new Promise((r) => setTimeout(r, Math.min(IDLE_SLEEP_MS, Math.max(0, deadline - Date.now()))));
     }
   } finally {
-    settleListings(listings.values(), new Date().toISOString());
-    saveFile(file, listings, statuses, atCapacity);
+    archive(settleListings(listings.values(), new Date().toISOString()));
+    save(state, listings, statuses, atCapacity);
     const counts = { listed: 0, sold: 0, unsold: 0 };
     for (const t of listings.values()) counts[t.status]++;
-    log(`saved ${filePath}: ${counts.listed} listed, ${counts.sold} sold, ${counts.unsold} unsold`);
+    log(`saved ${dir}: ${counts.listed} listed, ${counts.sold} sold, ${counts.unsold} unsold (last ${STATE_DAYS_LABEL})`);
   }
 }
 

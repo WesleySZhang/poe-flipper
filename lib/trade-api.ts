@@ -58,9 +58,14 @@ interface Window {
 class EndpointLimiter {
   private windows: Window[];
   private blockedUntil = 0;
+  private lastSent = 0;
   private queue: Promise<void> = Promise.resolve();
 
-  constructor(rules: Rule[]) {
+  /** `paceMs`: at least this long between requests, on top of the rate limit (0 = full speed). */
+  constructor(
+    rules: Rule[],
+    private readonly paceMs = 0
+  ) {
     this.windows = rules.map((rule) => ({ rule, sent: [] }));
   }
 
@@ -77,7 +82,7 @@ class EndpointLimiter {
           await sleep(this.blockedUntil - now);
           continue;
         }
-        let waitMs = 0;
+        let waitMs = Math.max(0, this.lastSent + this.paceMs - now);
         for (const w of this.windows) {
           const windowMs = w.rule.windowSeconds * 1000;
           w.sent = w.sent.filter((t) => now - t < windowMs);
@@ -92,6 +97,7 @@ class EndpointLimiter {
         await sleep(waitMs);
       }
       const now = Date.now();
+      this.lastSent = now;
       for (const w of this.windows) w.sent.push(now);
     });
     this.queue = turn.catch(() => undefined);
@@ -165,10 +171,16 @@ export class TradeApiError extends Error {
 }
 
 export class TradeApiClient {
-  private limiters: Record<Endpoint, EndpointLimiter> = {
-    search: new EndpointLimiter(DEFAULT_RULES.search),
-    fetch: new EndpointLimiter(DEFAULT_RULES.fetch),
-  };
+  private limiters: Record<Endpoint, EndpointLimiter>;
+
+  /** `pace`: minimum milliseconds between requests per endpoint, to spread a long job's requests
+   *  out instead of spending the limit in bursts. Default: full speed within the limits. */
+  constructor(pace: Partial<Record<Endpoint, number>> = {}) {
+    this.limiters = {
+      search: new EndpointLimiter(DEFAULT_RULES.search, pace.search),
+      fetch: new EndpointLimiter(DEFAULT_RULES.fetch, pace.fetch),
+    };
+  }
 
   private async request(endpoint: Endpoint, url: string, init?: RequestInit): Promise<unknown> {
     for (let attempt = 0; ; attempt++) {

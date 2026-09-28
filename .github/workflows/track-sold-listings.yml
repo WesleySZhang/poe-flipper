@@ -1,17 +1,20 @@
 name: Track sold listings
 
-# Runs the sold listing tracker (scripts/track-sold-listings.ts) once a day for ~45 minutes, then
-# publishes its file to the "sold-tracker" branch for the Sold Listings page (lib/sold-listings.ts).
-# Not the "data" branch: the daily job rebuilds that from scratch every run.
+# Runs the sold listing tracker (scripts/track-sold-listings.ts) for ~5.5 hours, every 6 hours, then
+# publishes its files to the "sold-tracker" branch (not "data": the daily job rebuilds that from
+# scratch every run):
+#   state/<League>.json          the tracker's state, restored at the start of the next run
+#   sold-listings/<League>.json  what the Sold Listings page reads (lib/sold-listings.ts)
+#   ended/<League>/<YYYY-MM>.jsonl  every listing that ended - the full history
 #
-# The page's data changes only when this last step publishes - all at once, at the end of a run.
-# The tracker saves its state every few minutes while it runs, and the publish step runs even when
-# tracking fails partway, so a failed run still publishes what it got.
+# The page's data changes only when the last step publishes - all at once, at the end of a run.
+# The tracker saves every few minutes while it runs, and the publish step runs even when tracking
+# fails partway, so a failed run still publishes what it got.
 #
-# Once a day is enough: each run checks every tracked listing once (~15 minutes of the rate limit
-# for 1,000), a sale is confirmed when a listing is gone on two runs in a row, and times on the page
-# are accurate to about a day. GitHub starts scheduled runs late (the daily job here has started
-# 4-5 hours late); that just shifts the day. The concurrency group keeps two runs from overlapping.
+# Why this schedule: the trade site allows ~7,000 listing checks per 6 hours at the tracker's 70%
+# margin, so running (nearly) all the time is what lets it check up to 6,000 listings every 6 hours.
+# Fetches are paced across the run rather than spent in bursts. GitHub starts scheduled runs late;
+# the concurrency group keeps a late run and the next one from overlapping.
 #
 # Untested from GitHub's runners: whether pathofexile.com lets their IPs through. If it doesn't, the
 # run fails with a 403 "blocked before reaching the API" - run the tracker somewhere else instead
@@ -19,12 +22,12 @@ name: Track sold listings
 
 on:
   schedule:
-    - cron: "40 2 * * *"
+    - cron: "20 */6 * * *"
   workflow_dispatch:
     inputs:
       minutes:
         description: "How long to run, in minutes"
-        default: "45"
+        default: "330"
 
 permissions:
   contents: write
@@ -36,7 +39,7 @@ concurrency:
 jobs:
   track:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 350
     steps:
       - name: Check out master
         uses: actions/checkout@v4
@@ -53,24 +56,28 @@ jobs:
         run: |
           mkdir -p .sold-tracker
           if git fetch --depth=1 origin sold-tracker; then
-            git archive FETCH_HEAD sold-listings | tar -x -C .sold-tracker || echo "No sold-listings/ on the branch yet."
+            git archive FETCH_HEAD | tar -x -C .sold-tracker
           else
             echo "No sold-tracker branch yet - starting fresh."
           fi
 
       - name: Track
-        run: npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '45' }}" --dir .sold-tracker
+        run: npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '330' }}" --dir .sold-tracker
 
       # Runs even when tracking failed partway, so the state saved so far isn't lost.
       - name: Publish to the sold-tracker branch
         if: always()
         run: |
           set -e
-          if [ ! -d .sold-tracker/sold-listings ]; then
+          if [ ! -d .sold-tracker/state ]; then
             echo "Nothing to publish."
             exit 0
           fi
-          cp -r .sold-tracker/sold-listings /tmp/sold-listings
+          rm -rf /tmp/sold-tracker && mkdir -p /tmp/sold-tracker
+          for d in state sold-listings ended; do
+            if [ -d ".sold-tracker/$d" ]; then cp -r ".sold-tracker/$d" "/tmp/sold-tracker/$d"; fi
+          done
+          find /tmp/sold-tracker -name '*.tmp' -delete
           cp vercel.json /tmp/vercel.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -79,9 +86,10 @@ jobs:
           # "never deploy this branch" rule from the pushed commit itself.
           git checkout --orphan sold-tracker-publish
           git rm -rf . > /dev/null
-          rm -rf sold-listings .sold-tracker
-          cp -r /tmp/sold-listings sold-listings
+          rm -rf state sold-listings ended .sold-tracker
+          cp -r /tmp/sold-tracker/. .
           cp /tmp/vercel.json vercel.json
-          git add -f sold-listings vercel.json
+          git add -f state sold-listings vercel.json
+          if [ -d ended ]; then git add -f ended; fi
           git commit -m "Update sold listings"
           git push --force origin sold-tracker-publish:sold-tracker

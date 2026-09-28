@@ -12,37 +12,44 @@ import type { TradeItem, TradeListing, TradeMod } from "./trade-api";
  * it's reopened. The one false positive left: an item taken off the market for good looks the same
  * as a sale.
  *
- * The tracker runs once a day (the "Track sold listings" workflow), so every listed listing is
- * checked once per run, and times (sold, how long it was up) are accurate to about a day.
+ * The tracker runs ~5.5 hours every 6 hours (the "Track sold listings" workflow) and checks every
+ * listed listing once per run, so times (sold, how long it was up) are accurate to about 6 hours.
  */
 /**
- * Limits on how much the tracker takes in. A daily run re-checks MAX_TRACKED_LISTINGS listings in
- * ~15 minutes of the fetch limit (10 per request, ~35 requests per 5 minutes at lib/trade-api.ts's
- * margin). Enforced twice, from these same numbers:
+ * Limits on how much the tracker takes in, set by the trade site's fetch limit: 1,000 fetches (of 10
+ * listings each) per 6 hours, of which lib/trade-api.ts uses 70% - ~7,000 listing checks per 6
+ * hours. Checking every listing each 6 hours, plus fetching new ones, fits ~6,750; the cap leaves
+ * room for GitHub's late starts. Enforced twice, from these same numbers:
  *  - before merge: scripts/check-sold-searches.ts (the "Check sold tracker searches" PR check) runs
  *    every search and fails if one matches more than MAX_LISTINGS_PER_SEARCH, the searches together
  *    more than MAX_TRACKED_LISTINGS, or there are more than MAX_SEARCHES;
  *  - while running (the market can grow after a search was approved, e.g. at a league start):
  *    admitNewListings below pauses an oversized search and stops taking new listings at capacity.
  */
-export const MAX_TRACKED_LISTINGS = 1000;
-export const MAX_LISTINGS_PER_SEARCH = 600;
+export const MAX_TRACKED_LISTINGS = 6000;
+export const MAX_LISTINGS_PER_SEARCH = 3000;
 /** Each search costs up to 2 trade searches per discovery (see scripts/track-sold-listings.ts). */
 export const MAX_SEARCHES = 20;
-/**
- * How long a listing must be gone before it counts as sold - long enough for a relist to show up.
- * With a daily run this means gone on two runs in a row: GitHub's start time drifts by an hour or
- * more, so 24 would often just miss the next day's check and take a third run.
- */
+/** How long a listing must be gone before it counts as sold - long enough for a relist to show up
+ *  (about three 6-hourly checks in a row). */
 export const SOLD_AFTER_MISSING_HOURS = 12;
 /** A listing still up this long after it was listed is recorded as unsold and no longer checked. */
 export const LISTING_MAX_AGE_DAYS = 7;
-// Within one run, each listing is checked once (the run is shorter than this); a daily run finds
-// every listing overdue. Missing ones wait longer, for the next run.
-export const RECHECK_LISTED_MINUTES = 60;
-export const RECHECK_MISSING_MINUTES = 120;
+// Once per run: a listing checked early in a 5.5-hour run isn't due again until the next run.
+export const RECHECK_LISTED_MINUTES = 330;
+export const RECHECK_MISSING_MINUTES = 330;
+/** Fetches are spread over the run instead of spent at full speed: ~6,000 listings' 600-odd fetches
+ *  take ~4.3 hours at this pace, and GGG's servers see a steady trickle rather than bursts. */
+export const FETCH_PACE_MS = 25_000;
 export const DISCOVERY_MINUTES = 30;
 export const MIN_DISCOVERY_MINUTES = 5;
+/** Ended listings stay in the tracker's state this long (so a relist is recognised), then live
+ *  only in the archive. */
+export const STATE_KEEP_ENDED_DAYS = 7;
+/** What the page's file holds: sales from the last SOLD_PAGE_DAYS, unsold from the last
+ *  UNSOLD_PAGE_DAYS, and listings gone but not yet counted sold. Everything is in the archive. */
+export const SOLD_PAGE_DAYS = 30;
+export const UNSOLD_PAGE_DAYS = 7;
 /** A search returns at most this many ids (newest first here), so a run that finds this many new
  *  listings has likely missed some. */
 export const SEARCH_RESULT_CAP = 100;
@@ -112,7 +119,7 @@ export interface TrackedSearchStatus {
   total?: number;
   /** New listings found at the last run. */
   newListings?: number;
-  /** The last run found SEARCH_RESULT_CAP new listings, so it likely missed some. */
+  /** The last run found more new listings than it could fetch (see scripts/track-sold-listings.ts). */
   missedListings?: boolean;
   /** Minutes until the next run - shortened when a search gets busy. */
   intervalMinutes?: number;
@@ -122,9 +129,14 @@ export interface TrackedSearchStatus {
   paused?: string;
 }
 
-/** The tracker's whole state, and the file the page reads (sold-listings/<League>.json). */
-export interface SoldTrackerFile {
-  version: 1;
+/**
+ * The tracker's own state (state/<League>.json on the sold-tracker branch): every listed listing,
+ * plus ended ones from the last STATE_KEEP_ENDED_DAYS. Ended listings are also appended to the
+ * archive (ended/<League>/<YYYY-MM>.jsonl, one listing per line; a relisted one that ends again
+ * appears twice - the later line wins).
+ */
+export interface TrackerState {
+  version: 2;
   league: string;
   updatedAt: string;
   /** The tracker was at MAX_TRACKED_LISTINGS at its last save, so new listings were being skipped. */
@@ -133,8 +145,59 @@ export interface SoldTrackerFile {
   listings: TrackedListing[];
 }
 
-export function emptyTrackerFile(league: string): SoldTrackerFile {
-  return { version: 1, league, updatedAt: new Date(0).toISOString(), searches: [], listings: [] };
+/** The file the Sold Listings page reads (sold-listings/<League>.json) - a slice of the state small
+ *  enough to download whole: see SOLD_PAGE_DAYS. */
+export interface SoldListingsFile {
+  version: 2;
+  league: string;
+  updatedAt: string;
+  atCapacity?: boolean;
+  /** Listings being followed right now. */
+  trackedCount: number;
+  searches: TrackedSearchStatus[];
+  listings: TrackedListing[];
+}
+
+export function emptyTrackerState(league: string): TrackerState {
+  return { version: 2, league, updatedAt: new Date(0).toISOString(), searches: [], listings: [] };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function buildSoldListingsFile(state: TrackerState, listings: Iterable<TrackedListing>, now: string): SoldListingsFile {
+  const nowMs = Date.parse(now);
+  const within = (iso: string | undefined, days: number) => iso !== undefined && nowMs - Date.parse(iso) <= days * DAY_MS;
+  const page: TrackedListing[] = [];
+  let trackedCount = 0;
+  for (const t of listings) {
+    if (t.status === "listed") trackedCount++;
+    if (
+      (t.status === "sold" && within(t.endedAt, SOLD_PAGE_DAYS)) ||
+      (t.status === "unsold" && within(t.endedAt, UNSOLD_PAGE_DAYS)) ||
+      (t.status === "listed" && t.missingSince)
+    ) {
+      page.push(t);
+    }
+  }
+  return {
+    version: 2,
+    league: state.league,
+    updatedAt: now,
+    ...(state.atCapacity ? { atCapacity: true } : {}),
+    trackedCount,
+    searches: state.searches,
+    listings: page,
+  };
+}
+
+/** Ended listings old enough to leave the state (they're already in the archive). */
+export function endedToDrop(listings: Iterable<TrackedListing>, now: string): string[] {
+  const nowMs = Date.parse(now);
+  const out: string[] = [];
+  for (const t of listings) {
+    if (t.status !== "listed" && t.endedAt && nowMs - Date.parse(t.endedAt) > STATE_KEEP_ENDED_DAYS * DAY_MS) out.push(t.id);
+  }
+  return out;
 }
 
 /**
@@ -235,19 +298,24 @@ export function recordMissing(t: TrackedListing, now: string) {
   t.missingSince ??= now;
 }
 
-/** Moves listings that have been gone long enough to sold, and ones listed too long to unsold. */
-export function settleListings(listings: Iterable<TrackedListing>, now: string) {
+/** Moves listings that have been gone long enough to sold, and ones listed too long to unsold.
+ *  Returns the ones that ended, for the archive. */
+export function settleListings(listings: Iterable<TrackedListing>, now: string): TrackedListing[] {
   const nowMs = Date.parse(now);
+  const ended: TrackedListing[] = [];
   for (const t of listings) {
     if (t.status !== "listed") continue;
     if (t.missingSince && nowMs - Date.parse(t.missingSince) >= SOLD_AFTER_MISSING_HOURS * HOUR_MS) {
       t.status = "sold";
       t.endedAt = t.missingSince;
+      ended.push(t);
     } else if (!t.missingSince && nowMs - Date.parse(t.listedAt) >= LISTING_MAX_AGE_DAYS * 24 * HOUR_MS) {
       t.status = "unsold";
       t.endedAt = now;
+      ended.push(t);
     }
   }
+  return ended;
 }
 
 /** Listed ids due a check, most overdue first. */

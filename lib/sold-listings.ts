@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
-import type { SoldTrackerFile } from "./sold-tracker";
+import type { SoldListingsFile } from "./sold-tracker";
 
 /**
- * Reads the sold listing tracker's file for the Sold Listings page. The tracker
+ * Reads the sold listing tracker's page file (recent sales and unsold - see buildSoldListingsFile)
+ * for the Sold Listings page. The tracker
  * (scripts/track-sold-listings.ts, run by the "Track sold listings" workflow) publishes it to its own
  * "sold-tracker" branch - not "data", which the daily job rebuilds from scratch every run.
  *
@@ -16,12 +17,18 @@ const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated wi
 // The workflow publishes at the end of each run (every few hours), so a few minutes' cache is plenty.
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-let cache: { league: string; data: SoldTrackerFile | null; expiresAt: number } | undefined;
+let cache: { league: string; data: SoldListingsFile | null; expiresAt: number } | undefined;
 
-function isTrackerFile(value: unknown): value is SoldTrackerFile {
+function isSoldListingsFile(value: unknown): value is SoldListingsFile {
   if (!value || typeof value !== "object") return false;
-  const v = value as Partial<SoldTrackerFile>;
-  return v.version === 1 && typeof v.league === "string" && Array.isArray(v.listings) && Array.isArray(v.searches);
+  const v = value as Partial<SoldListingsFile>;
+  return (
+    v.version === 2 &&
+    typeof v.league === "string" &&
+    typeof v.trackedCount === "number" &&
+    Array.isArray(v.listings) &&
+    Array.isArray(v.searches)
+  );
 }
 
 async function readTrackerFile(league: string): Promise<unknown> {
@@ -35,12 +42,12 @@ async function readTrackerFile(league: string): Promise<unknown> {
   return res.ok ? res.json() : null;
 }
 
-export async function getSoldListings(league: string): Promise<SoldTrackerFile | null> {
+export async function getSoldListings(league: string): Promise<SoldListingsFile | null> {
   if (cache && cache.league === league && cache.expiresAt > Date.now()) return cache.data;
-  let data: SoldTrackerFile | null = null;
+  let data: SoldListingsFile | null = null;
   try {
     const parsed = await readTrackerFile(league);
-    if (isTrackerFile(parsed) && parsed.league === league) data = parsed;
+    if (isSoldListingsFile(parsed) && parsed.league === league) data = parsed;
   } catch {
     // Missing branch/file, network error or malformed JSON - the page says there's no data yet.
   }

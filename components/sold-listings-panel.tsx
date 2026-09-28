@@ -18,12 +18,14 @@ import {
   LISTING_MAX_AGE_DAYS,
   MAX_TRACKED_LISTINGS,
   SOLD_AFTER_MISSING_HOURS,
+  SOLD_PAGE_DAYS,
+  UNSOLD_PAGE_DAYS,
   currentPrice,
   formatSearchTotal,
   listedDurationMs,
   type ListingPrice,
   type ListingStatus,
-  type SoldTrackerFile,
+  type SoldListingsFile,
   type TrackedListing,
 } from "@/lib/sold-tracker";
 
@@ -31,11 +33,18 @@ const PAGE_SIZE = 25;
 
 type SortKey = "ended" | "listed" | "price" | "duration";
 
-const STATUS_LABEL: Record<ListingStatus, string> = { sold: "Sold", unsold: "Unsold", listed: "Listed" };
+// The page file holds only listings that ended recently, plus listed ones that have gone missing
+// but aren't counted sold yet ("Gone") - see buildSoldListingsFile.
+const STATUS_LABEL: Record<ListingStatus, string> = { sold: "Sold", unsold: "Unsold", listed: "Gone" };
+const STATUS_TITLE: Record<ListingStatus, string> = {
+  sold: `Last ${SOLD_PAGE_DAYS} days`,
+  unsold: `Still up after ${LISTING_MAX_AGE_DAYS} days; ended in the last ${UNSOLD_PAGE_DAYS} days`,
+  listed: `Not listed any more; counted sold after ${SOLD_AFTER_MISSING_HOURS}h gone`,
+};
 // The date column means something different per tab.
-const ENDED_LABEL: Record<ListingStatus, string> = { sold: "Sold", unsold: "Expired", listed: "Last seen" };
+const ENDED_LABEL: Record<ListingStatus, string> = { sold: "Sold", unsold: "Expired", listed: "Gone since" };
 
-async function fetchSoldListings(): Promise<SoldTrackerFile | null> {
+async function fetchSoldListings(): Promise<SoldListingsFile | null> {
   const res = await fetch("/api/sold-listings");
   if (!res.ok) return null;
   return res.json();
@@ -76,7 +85,7 @@ function formatDuration(ms: number): string {
 }
 
 function endedAt(t: TrackedListing): string {
-  return t.endedAt ?? t.lastSeen;
+  return t.endedAt ?? t.missingSince ?? t.lastSeen;
 }
 
 function itemName(t: TrackedListing): string {
@@ -126,7 +135,7 @@ function ItemSummary({ t, className }: { t: TrackedListing; className?: string }
  * how a sale is decided and scripts/track-sold-listings.ts for the tracker itself.
  */
 export function SoldListingsPanel() {
-  const [file, setFile] = useState<SoldTrackerFile | null>(null);
+  const [file, setFile] = useState<SoldListingsFile | null>(null);
   const [status, setStatus] = useState<ListingStatus>("sold");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(0);
@@ -213,7 +222,7 @@ export function SoldListingsPanel() {
           <Tabs value={status} onValueChange={(value) => changeStatus(value as ListingStatus)}>
             <TabsList>
               {(["sold", "unsold", "listed"] as const).map((s) => (
-                <TabsTrigger key={s} value={s}>
+                <TabsTrigger key={s} value={s} title={STATUS_TITLE[s]}>
                   {STATUS_LABEL[s]} {counts[s]}
                 </TabsTrigger>
               ))}
@@ -228,7 +237,7 @@ export function SoldListingsPanel() {
               className="text-xs text-muted-foreground"
               title={`Instant buyout, listed in the last week. Sold = gone ${SOLD_AFTER_MISSING_HOURS}h+. Unsold = still up after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
             >
-              Instant buyout · updated {formatDate(file.updatedAt)}
+              Tracking {file.trackedCount.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
             </p>
             {file.atCapacity && (
               <p className="flex items-center gap-1.5 text-xs text-destructive">

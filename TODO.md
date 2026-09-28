@@ -89,8 +89,9 @@ forecast days (see Done), but:
 
 **Built** (`scripts/track-sold-listings.ts`, the "Track sold listings" workflow, `/sold-listings`;
 see the README). Searches come from trade site links in `sold-tracker/searches.md`, starting with
-Watcher's Eye. No price floor of its own; volume is capped at 600 listings per search, 1,000 in
-total and 20 searches, checked on every PR and enforced while running. Still open:
+Watcher's Eye. Runs ~5.5 hours every 6 hours, checking every listing each run. No price floor of
+its own; volume is capped at 3,000 listings per search, 6,000 in total and 20 searches, checked on
+every PR and enforced while running. Still open:
 
 - **First run from GitHub's runners.** Untested whether pathofexile.com lets their IPs through. If
   the workflow fails with a 403, run the tracker from an always-on machine instead.

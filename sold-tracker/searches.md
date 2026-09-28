@@ -11,17 +11,17 @@ own rules on top, whatever the link says:
 - listed in the last week (a shorter age filter in the link wins);
 - the current league, whatever league the link was made in.
 
-**Limits** (`lib/sold-tracker.ts`) - what the trade site's rate limit comfortably covers in the
-tracker's daily run:
+**Limits** (`lib/sold-tracker.ts`) - what the trade site's rate limit covers with every listing
+checked each 6 hours:
 
-- at most **600 listings per search**;
-- at most **1,000 listings** across all searches;
+- at most **3,000 listings per search**;
+- at most **6,000 listings** across all searches;
 - at most **20 searches**.
 
 A PR that changes this file runs the "Check sold tracker searches" check: it counts each search's
 listings on the trade site today and fails if they're over the limits (`npm run sold:check` does the
 same locally). A price range is the usual way to bring a search down. While running, the tracker
-also pauses a search that has grown past 600, and stops taking new listings at 1,000 - both show on
+also pauses a search that has grown past 3,000, and stops taking new listings at 6,000 - both show on
 the Sold Listings page.
 
 ## Searches

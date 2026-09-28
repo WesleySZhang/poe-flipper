@@ -58,9 +58,9 @@ async function main() {
     try {
       const { total } = await client.search(CURRENT_LEAGUE, s.query, { indexed: "desc" });
       if (total > MAX_LISTINGS_PER_SEARCH) {
-        rows.push({ label: s.label, total, result: "fail", note: `Over the ${MAX_LISTINGS_PER_SEARCH}-listing limit per search - narrow it` });
+        rows.push({ label: s.label, total, result: "fail", note: `Over the ${MAX_LISTINGS_PER_SEARCH.toLocaleString("en-US")}-listing limit per search - narrow it` });
       } else if (total > MAX_LISTINGS_PER_SEARCH * WARN_FRACTION) {
-        rows.push({ label: s.label, total, result: "warn", note: `Near the ${MAX_LISTINGS_PER_SEARCH}-listing limit; a busier league may pause it` });
+        rows.push({ label: s.label, total, result: "warn", note: `Near the ${MAX_LISTINGS_PER_SEARCH.toLocaleString("en-US")}-listing limit; a busier league may pause it` });
       } else {
         rows.push({ label: s.label, total, result: "ok", note: "" });
       }
@@ -90,7 +90,7 @@ async function main() {
     } |`,
     "",
     ...problems.map((p) => `- ❌ ${p}`),
-    `Limits: ${MAX_LISTINGS_PER_SEARCH} listings per search, ${MAX_TRACKED_LISTINGS} in total, ${MAX_SEARCHES} searches (lib/sold-tracker.ts).`,
+    `Limits: ${MAX_LISTINGS_PER_SEARCH.toLocaleString("en-US")} listings per search, ${MAX_TRACKED_LISTINGS.toLocaleString("en-US")} in total, ${MAX_SEARCHES} searches (lib/sold-tracker.ts).`,
   ];
   const report = lines.join("\n");
   console.log(report);
