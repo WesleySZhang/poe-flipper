@@ -50,10 +50,17 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   `misc_filters.ilvl.min`, `socket_filters.links.min`. A link with the query in it,
   `/trade/search/<League>?q=<json>`, runs the search in the user's browser (`lib/trade-site.ts`).
   `[verified]` (2026-09-28)
+- A search returns at most 100 result ids (cheapest first) plus `total`. `GET /api/trade/fetch/<up to
+  10 ids>` returns the listings; `?query=<search id>` is optional. Each has `item` (full mods, ilvl,
+  ...) and `listing` (`indexed` = listed/last changed, `price` {type `~b/o`/`~price`, amount,
+  currency}, `account` {name, online}, `stash` {name, x, y}, `method: "psapi"`). The result id equals
+  `item.id`. A fetched id that's no longer listed comes back as `null` in its slot - a cheap
+  "still listed?" check. `[verified]` (2026-09-27)
 - **Trade API rate limits are per IP and punish overruns** with a timeout (the third number). Every
   response reports them: `X-Rate-Limit-Rules: Ip`, `X-Rate-Limit-Ip: max:window:timeout,...`,
   `X-Rate-Limit-Ip-State: used:window:activeTimeout,...`. Search: `5:10:60,15:60:300,30:300:1800,
-  600:21600:3600`; bulk exchange: `5:15:60,10:90:300,30:300:1800` (2026-09-28). Read them from the
+  600:21600:3600`; fetch: `12:4:10,16:12:300,50:300:300,1000:21600:1800` (2026-09-27); bulk
+  exchange: `5:15:60,10:90:300,30:300:1800` (2026-09-28). Read them from the
   headers, don't hard-code them; they differ per endpoint and can change. `Retry-After` on a 429.
   Every user of a server-side caller shares the server's IP - prefer links (the search runs in the
   user's browser). `[verified]`
@@ -107,4 +114,7 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 ## Gaps
 
 - No documented rate-limit numbers for poe.ninja or GGG's endpoints.
-- The official trade API and its OAuth requirement are not covered.
+- GGG's public stash API (`GET /public-stash-tabs`, scope `service:psapi`, 5-minute delay) is the
+  official feed of every stash change, but its docs say "We are currently unable to process new
+  applications" (2026-09-27). The trade site API isn't in GGG's docs, which call reverse-engineering
+  undocumented endpoints a Terms of Use (7i) breach. See TODO.md's sold item tracker. `[verified]`

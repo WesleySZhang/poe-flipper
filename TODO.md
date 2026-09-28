@@ -12,6 +12,7 @@ ordered by importance.
 | 3 | [Live price vs history for items with several poe.ninja lines](#3-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
 | 4 | [Holes in past-league history](#4-holes-in-past-league-history) | Open |
 | 5 | [Small follow-ups](#5-small-follow-ups) | Open |
+| 6 | [Sold item tracker](#6-sold-item-tracker) | Researched, not started |
 | – | [Done](#done) | – |
 
 ---
@@ -83,6 +84,79 @@ forecast days (see Done), but:
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
   table on the previous value until release, then waits for a live calculation.
+
+## 6. Sold item tracker
+
+**Goal:** list items that sold on the trade site: the item and its mods, price, when it sold and how
+long it was listed. A job polls the trade site every few minutes, and a listing that disappears is
+assumed sold.
+
+**Verdict: feasible for a small watchlist, not for the whole market.** The limit is a few dozen
+watched searches or a few hundred listings, at 5-30 minute resolution. Findings (probed 2026-09-27):
+
+- **The official route is closed.** GGG's public stash API (`service:psapi`, the feed poe.ninja
+  uses, with a 5-minute delay) reports every stash change. That's how you'd see removals across the
+  whole market. But GGG's developer docs say "We are currently unable to process new applications."
+- **The trade site API is undocumented.** GGG's docs say reverse-engineering endpoints outside their
+  documentation is against the Terms of Use (7i), and they revoke access for exceeding rate limits.
+  Price-check tools use it at a user's click. A server polling around the clock is a heavier pattern
+  and a real risk, though no login is involved. Use a descriptive `User-Agent` either way.
+- **Per-IP limits** (from the response headers):
+
+  | Endpoint | Limits (requests:seconds) | Sustained |
+  | --- | --- | --- |
+  | Search | `5:10`, `15:60`, `30:300`, `600:21600` | ~100/hour |
+  | Fetch | `12:4`, `16:12`, `50:300`, `1000:21600` | ~167/hour, 10 listings each |
+
+  Going over a limit locks the IP out for the penalty in the header (up to 1 hour).
+- **What the API gives:**
+  - A search returns at most 100 listing ids, cheapest first, plus a `total`. Kaom's Heart had 3,448
+    listings.
+  - A fetch returns each listing:
+    - the item: full mods, ilvl, sockets, corruption;
+    - `price`: amount, currency, `~b/o` or `~price`;
+    - account name and whether they're online;
+    - stash tab name and position;
+    - `indexed`: when it was listed or last changed.
+  - The listing id equals the item's own id, so a repriced item keeps its id.
+  - **A fetch of a listing that's gone returns `null`** in its slot, and fetch doesn't need the
+    search id. That makes it a cheap way to check whether a listing is still up, 10 per request.
+- **Traps:**
+  - *Gone isn't sold.* A listing also disappears when the seller moves the item to a private tab,
+    removes its price or uses it. Treat an id as sold only once it's been missing for 2+ checks
+    and hasn't reappeared.
+  - *Offline sellers.* Search with status `any`. With `online`, a seller logging off looks like a
+    sale.
+  - *Bait.* The cheapest listings are often weeks-old 1c bait from offline accounts (Kaom's Heart:
+    1c listings from August). Set a minimum price near the market price, e.g. half poe.ninja's.
+  - *Only the cheapest 100.* Narrow each search (price range, filters) until `total` ≤ 100. Then
+    an id missing from the results is really gone (or repriced out of range; one fetch tells which).
+- **Timing is approximate:**
+  - Sold time falls between the last check that saw the listing and the first that didn't, plus up
+    to ~5 minutes of trade-site indexing delay.
+  - "How long it was up" = sold time minus `indexed`. `indexed` probably resets when the price
+    changes (unchecked), so also store when the tracker first saw the listing.
+- **Budget:** plan on half the sustained limits (~50 searches and ~80 fetches an hour). That's about
+  12 watched searches every 15 minutes, or 25 every 30.
+  - The search itself shows which ids are still up. Fetch only new ids (for their details) and ids
+    that dropped out of the results.
+  - Use one shared, queuing rate limiter per endpoint: before each request, wait until every window
+    has room. Update the windows from the `X-Rate-Limit-Ip`/`-State` headers after every response,
+    and on a 429 honour `Retry-After`.
+- **Where it runs:**
+  - *GitHub Actions cron* has a 5-minute minimum and starts runs late (the daily job here has run
+    hours late). That's poor for sale timing, and every run has to commit its state somewhere.
+  - *Vercel cron* depends on the plan; Hobby allows once a day.
+  - *An always-on worker* (a small VM or container, or a home machine) is the reliable choice.
+  - Storage for listings and sales needs a small database (e.g. Postgres or KV) rather than CSVs on
+    the `data` branch, since it changes every few minutes.
+  - Unchecked: whether pathofexile.com blocks datacenter IPs (GitHub runners, Vercel). Test with one
+    search from the chosen host first.
+
+**Suggested first step:**
+1. Build a local script with one watched search (a single unique, price-floored) that polls every
+   10 minutes for a day and logs gone/reappeared ids.
+2. Use the log to measure false "sales" (reappearances) before building storage and a page.
 
 ---
 
