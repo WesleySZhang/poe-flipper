@@ -14,7 +14,7 @@ ordered by importance.
 | 5 | [Small follow-ups](#5-small-follow-ups) | Open |
 | 6 | [Sold item tracker](#6-sold-item-tracker) | Built; first live run pending |
 | 7 | [Trade site links don't always match the item](#7-trade-site-links-dont-always-match-the-item) | Open |
-| 8 | [Take DuckDB out of the deployed app](#8-take-duckdb-out-of-the-deployed-app) | Undecided |
+| 8 | [Should DuckDB stay in the deployed app?](#8-should-duckdb-stay-in-the-deployed-app) | Discovery |
 | – | [Done](#done) | – |
 
 ---
@@ -241,9 +241,9 @@ Find every gap like corruption, and add the matching trade filter (e.g.
 `misc_filters.corrupted: false` for an uncorrupted line). Check a sample of links from each page
 against the trade site's results.
 
-## 8. Take DuckDB out of the deployed app
+## 8. Should DuckDB stay in the deployed app?
 
-Production still ships `db/history.duckdb` (~72 MB, Git LFS) and DuckDB's native library in the
+Not decided - find out whether it's actually costing anything first. Production still ships `db/history.duckdb` (~72 MB, Git LFS) and DuckDB's native library in the
 Vercel function. The main Flip Predictions table doesn't need it (it reads `precompute-data`), but
 these routes query it live:
 
@@ -254,7 +254,7 @@ these routes query it live:
 | `/api/predict-item`, `/api/item-names` | League tester | Same, one item |
 | `/api/mirage-simulation` | Mirage simulator | A past league replayed day by day |
 
-**Why drop it:** a lighter function (no 72 MB file or native library, so no
+**Possible reasons to drop it:** a lighter function (no 72 MB file or native library, so no
 `serverExternalPackages`/`outputFileTracingIncludes` workarounds in `next.config.ts`), no LFS
 pointer risk on Vercel, and no LFS storage/bandwidth use (every DB rebuild is kept; every build
 downloads it).
@@ -264,14 +264,30 @@ precomputed. Past-league history only changes at a league ingest, so publishing 
 gains little over files built at ingest and shipped with the app, and adds a runtime fetch from
 `raw.githubusercontent.com`.
 
-**Plan:**
+**Discovery** (answer these, then decide):
+1. **Is it a problem today?** Vercel function size and cold-start time for the DuckDB routes vs
+   the others; `/api/price-history` response time (first call and warm); build time spent pulling
+   LFS. None measured yet.
+2. **What does LFS cost?** GitHub LFS storage and bandwidth used this month (repo/account billing
+   page) against the plan's allowance, and how many builds a month pull the file.
+3. **Are the testing tools used in production?** Vercel logs/analytics for `/api/predict-item`,
+   `/api/item-names`, `/api/mirage-simulation`, and `/api/flip-suggestions` calls that miss the
+   precomputed file. If nobody uses them there, they can be local-only.
+4. **How big would static chart files be?** Export every item's past-league series once and
+   measure total size, file count and the largest single item, sharded by item. Compare with the
+   72 MB DB.
+5. **Middle options:** DuckDB reading a Parquet export over HTTP (from a data branch or blob
+   storage) instead of a bundled file; keeping DuckDB but dropping LFS (a release asset or blob
+   storage fetched at build/start). Check whether either removes the costs found in 1-2 without
+   losing the testing tools.
+6. Write the findings and a recommendation here.
+
+**If the answer is to take it out:**
 1. At ingest (`scripts/ingest-history.ts`), export each item's past-league chart series to small
-   static JSON files, sharded so a chart loads one item, not all ~25k. Point `/api/price-history`
-   at them. This covers every everyday page.
-2. Decide whether the League tester, the Mirage simulator and the >30-day live fallback must run in
-   production. **Local-only:** production drops DuckDB, LFS and the `next.config.ts` workarounds.
-   **Must stay live:** keep DuckDB for those routes only.
-3. Update README (deploy notes, LFS), the `new-league` and `precompute-check` skills.
+   static JSON files. Point `/api/price-history` at them. This covers every everyday page.
+2. Make the testing tools local-only, or keep DuckDB for those routes only (per discovery step 3).
+3. Remove the `next.config.ts` workarounds and LFS if nothing in production needs DuckDB; update
+   README (deploy notes, LFS) and the `new-league` and `precompute-check` skills.
 
 ---
 
