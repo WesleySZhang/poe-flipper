@@ -15,7 +15,6 @@ ordered by importance.
 | 6 | [Sold item tracker](#6-sold-item-tracker) | Built; first live run pending |
 | 7 | [Trade site links don't always match the item](#7-trade-site-links-dont-always-match-the-item) | Open |
 | 8 | [Should DuckDB stay in the deployed app?](#8-should-duckdb-stay-in-the-deployed-app) | Discovery |
-| 9 | [Keep the sold tracker's files small](#9-keep-the-sold-trackers-files-small) | Open |
 | – | [Done](#done) | – |
 
 ---
@@ -290,31 +289,14 @@ gains little over files built at ingest and shipped with the app, and adds a run
 3. Remove the `next.config.ts` workarounds and LFS if nothing in production needs DuckDB; update
    README (deploy notes, LFS) and the `new-league` and `precompute-check` skills.
 
-## 9. Keep the sold tracker's files small
-
-A listing with full item details is ~3.5 KB, about half of it the base64 in-game item text
-(`detail.text`). Two files grow with it:
-
-- **The archive** (`ended/<League>/<YYYY-MM>.jsonl`) gets every ended listing and is never trimmed.
-  At 6,000 tracked turning over weekly that's ~25k listings, ~90 MB a month (estimate, not
-  measured). GitHub rejects files over 100 MB, so every publish would fail and the page would stop
-  updating.
-- **The page file** (`sold-listings/<League>.json`) now holds every listing still up: ~20 MB at the
-  6,000 cap, downloaded on each visit.
-
-**To do:**
-1. Leave `detail.text` out of the page file and the archive (keep it in `state/`). The item
-   dialog's **"Copy item text" button uses it**: fetch it on click (e.g. a small API route reading
-   `state/`), or rebuild the text from the stored mods/properties, or drop the button.
-2. Split the archive by day or week (`ended/<League>/<YYYY-MM-DD>.jsonl`) instead of by month, so
-   no single file nears 100 MB. Keep appends idempotent, as now.
-3. Update the `sold-tracker` skill ("Page slow to load"), README's data-branch file table, and the
-   script's file list.
-
 ---
 
 ## Done
 
+- **Sold tracker files kept small.** The item text and flavour text aren't stored (half of each
+  listing; the detail dialog and its "Copy item text" button were removed), and the archive is one
+  file per day, so none nears GitHub's 100 MB limit. A listing is ~1.7 KB, so the page file is ~10 MB
+  at the 6,000 cap.
 - **Trade site links.** Uniques (and Vaal Aspects) link to an official trade site search - on every
   table that lists them, the item page, and card flips' unique rewards. (A live bulk-exchange search
   behind the Exchange Price button was tried and removed: the trade site's bulk exchange is nearly
