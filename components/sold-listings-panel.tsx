@@ -3,11 +3,10 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
 import { cn } from "cn";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
@@ -310,35 +309,11 @@ export function SoldListingsPanel() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
-        <CardTitle className="flex items-center gap-2">
-          Sold Listings
-          {isPending && (
-            <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Loading...
-            </span>
-          )}
-        </CardTitle>
-        <div className="flex flex-col gap-1.5">
-          <Label>Show</Label>
-          <Tabs value={tab} onValueChange={(value) => changeTab(value as Tab)}>
-            <TabsList>
-              {(["sold", "unsold"] as const).map((s) => (
-                <TabsTrigger key={s} value={s} title={TAB_TITLE[s]}>
-                  {TAB_LABEL[s]} {counts[s]}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {file && file.searches.length > 0 && (
-          // The tracked searches, as filters: none picked = all listings.
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-muted-foreground">Searches</span>
-            <div className="flex flex-wrap gap-2">
+      <CardContent className="flex flex-col gap-3">
+        {/* Searches (as filters: none picked = all) on the left, Sold/Unsold on the right. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {file && file.searches.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 aria-pressed={pickedSearches.size === 0}
@@ -383,8 +358,22 @@ export function SoldListingsPanel() {
                 );
               })}
             </div>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-3">
+            {isPending && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Loading" />}
+            <Tabs value={tab} onValueChange={(value) => changeTab(value as Tab)}>
+              <TabsList>
+                {(["sold", "unsold"] as const).map((s) => (
+                  <TabsTrigger key={s} value={s} title={TAB_TITLE[s]}>
+                    {TAB_LABEL[s]} {counts[s]}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
           </div>
-        )}
+        </div>
         {file && (
           <div className="flex flex-col gap-2">
             <p

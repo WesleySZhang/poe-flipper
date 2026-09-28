@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -202,15 +202,14 @@ export function MirageSimulatorPanel() {
     <Card>
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="flex flex-col gap-4">
-          <CardTitle className="flex items-center gap-2">
-            Mirage league simulator
-            {isPending && (
-              <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" />
-                Predicting...
-              </span>
-            )}
-          </CardTitle>
+          {isPending ? (
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Predicting...
+            </span>
+          ) : (
+            <span />
+          )}
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="currentDay">Current day</Label>
@@ -244,7 +243,7 @@ export function MirageSimulatorPanel() {
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-4">
-          <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
             <Label>Prices in</Label>
             <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
               <TabsList>

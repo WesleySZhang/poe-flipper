@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -107,17 +107,16 @@ export function CurrentLeagueTesterPanel() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <CardTitle className="flex items-center gap-2">
-          Spot-check a prediction
-          {isPending && (
-            <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Loading...
-            </span>
-          )}
-        </CardTitle>
-        <div className="flex flex-col gap-1.5">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+        {isPending ? (
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Loading...
+          </span>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
           <Label>Prices in</Label>
           <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
             <TabsList>

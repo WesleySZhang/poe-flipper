@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,7 +18,7 @@ import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { DustValueRow } from "@/lib/dust-value";
 import type { LiquidityTier } from "@/lib/liquidity";
-import { DUST_ASSUMED_QUALITY, DUST_MAX_ITEM_LEVEL, dustFor } from "@/lib/dust";
+import { DUST_MAX_ITEM_LEVEL, dustFor } from "@/lib/dust";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { formatItemDisplayName } from "@/lib/poe-ninja";
@@ -151,33 +151,7 @@ export function DustValuePanel() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <CardTitle className="flex items-center gap-2">
-          Dust Value
-          {isPending && (
-            <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Loading...
-            </span>
-          )}
-        </CardTitle>
-        <div className="flex flex-col gap-1.5">
-          <Label>Prices in</Label>
-          <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
-            <TabsList>
-              <TabsTrigger value="chaos">Chaos</TabsTrigger>
-              <TabsTrigger value="divine">Divine</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-      </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <p
-          className="text-xs text-muted-foreground"
-          title="Kingsmarch disenchanting. Dust values from poedb; prices from poe.ninja. Quality adds 2% dust per point."
-        >
-          Thaumaturgic Dust per {priceUnit === "chaos" ? "chaos" : "divine"} spent, at {DUST_ASSUMED_QUALITY}% quality
-        </p>
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search uniques..." />
           <NumericRangeFilter key={priceUnit} label={`price (${unit})`} onChange={changePriceRange} />
@@ -194,6 +168,15 @@ export function DustValuePanel() {
               onChange={(e) => setItemLevelText(e.target.value)}
               className="w-20"
             />
+          </div>
+          <div className="ml-auto flex flex-col gap-1.5">
+            <Label>Prices in</Label>
+            <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
+              <TabsList>
+                <TabsTrigger value="chaos">Chaos</TabsTrigger>
+                <TabsTrigger value="divine">Divine</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
         </div>
         {isPending && (
