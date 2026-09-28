@@ -16,7 +16,7 @@
  *
  * Files under --dir (see lib/sold-tracker.ts for each one's shape):
  *   state/<League>.json          the tracker's state: listed listings, recently ended ones, searches
- *   sold-listings/<League>.json  the page's file: recent sales and unsold
+ *   sold-listings/<League>.json  the page's file: recent sales, unsold and listings still up
  *   ended/<League>/<YYYY-MM>.jsonl  every ended listing, one per line - the full history
  *
  * Each loop:

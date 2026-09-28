@@ -112,7 +112,8 @@ Uniques ranked by how much Thaumaturgic Dust they give when disenchanted in King
 What happened to the trade site listings the [sold listing tracker](#the-sold-listing-tracker)
 followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold-tracker/searches.md).
 
-- **Tabs:** Sold (last 30 days) and Unsold (still up a week after listing; last 7 days).
+- **Tabs:** Sold (last 30 days) and Unsold: every listing still up (badged "Still listed", with
+  when the tracker last saw it) plus those that expired a week after listing (last 7 days).
 - **Each row:** the item drawn like the game's own tooltip (`components/poe-item-tooltip.tsx`; the
   game's dark look in dark mode, black and white in light mode),
   taking most of the width, with the listing's facts stacked beside it (under it on a phone):
@@ -243,7 +244,7 @@ rebuilds from scratch):
 | File | What it is |
 | --- | --- |
 | `state/<League>.json` | The tracker's state: listed listings, ones that ended in the last week, search status |
-| `sold-listings/<League>.json` | What the Sold Listings page reads (`lib/sold-listings.ts`): sales from the last 30 days, unsold from the last 7 |
+| `sold-listings/<League>.json` | What the Sold Listings page reads (`lib/sold-listings.ts`): sales from the last 30 days, unsold from the last 7, every listing still up |
 | `ended/<League>/<YYYY-MM>.jsonl` | Every listing that ended, one per line - the full history |
 
 - **Published as it goes:** every 30 minutes during a run, and once more at its end (even if
