@@ -112,11 +112,13 @@ Uniques ranked by how much Thaumaturgic Dust they give when disenchanted in King
 What happened to the trade site listings the [sold listing tracker](#the-sold-listing-tracker)
 followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold-tracker/searches.md).
 
-- **Tabs:** Sold, Unsold (still up after a week) and Listed (still being checked; "Gone" marks one
-  that has disappeared but not for long enough yet to count as sold).
-- **Each row:** the item drawn like the game's own tooltip (`components/poe-item-tooltip.tsx`), the
-  price (`135d → 95d` when it changed; hover for every price and when it was seen), when it was
-  listed, when it sold or expired, how long it was up, and the search that found it.
+- **Tabs:** Sold (last 30 days) and Unsold (still up a week after listing; last 7 days).
+- **Each row:** the item drawn like the game's own tooltip (`components/poe-item-tooltip.tsx`; the
+  game's dark look in dark mode, a parchment version in light mode),
+  taking most of the width, with the listing's facts stacked beside it (under it on a phone):
+  every price it had, earlier ones struck through, each with how long it stood at that price; when
+  it was listed; when it sold or expired; how long it was up; the search that found it. Sort by
+  sold/expired time, listed time, price or time up.
 - **Click an item** for everything recorded about it: every mod with its roll range (e.g.
   `60% increased Lightning Damage while affected by Wrath (40–60)`), properties, item level,
   influences, relic/foil, corruption, flavour text, the full price history, and a "Copy item text"
@@ -124,8 +126,7 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   details were kept get them at their next check.
 - **The searches** are listed at the top with how many listings each matches now. "paused" means a
   search grew past the per-search limit; a warning icon means it failed or got more than 200 new
-  listings between runs (so it missed some). Tabs: Sold (last 30 days), Unsold (last 7) and Gone
-  (not listed any more, not yet counted sold). A red line above them means the tracking limit is
+  listings between runs (so it missed some). A red line above them means the tracking limit is
   reached and new listings are being skipped.
 
 ### Item detail page
@@ -238,7 +239,7 @@ rebuilds from scratch):
 | File | What it is |
 | --- | --- |
 | `state/<League>.json` | The tracker's state: listed listings, ones that ended in the last week, search status |
-| `sold-listings/<League>.json` | What the Sold Listings page reads (`lib/sold-listings.ts`): sales from the last 30 days, unsold from the last 7, listings gone but not yet counted sold |
+| `sold-listings/<League>.json` | What the Sold Listings page reads (`lib/sold-listings.ts`): sales from the last 30 days, unsold from the last 7 |
 | `ended/<League>/<YYYY-MM>.jsonl` | Every listing that ended, one per line - the full history |
 
 - **Published as it goes:** every 30 minutes during a run, and once more at its end (even if
@@ -259,9 +260,10 @@ rebuilds from scratch):
   that and the search is flagged as having missed some.
 - **Deciding a sale:** every listing is checked by its item id once per run. A fetch by id ignores
   the search's filters, and the id survives a price change, so a price drop (even out of the
-  search's price range) is recorded as a new price, not a sale. A listing counts as sold once it's
-  been gone for 12 hours (about three checks in a row), and is reopened if it shows up again. One
-  still up after a week counts as unsold. Times on the page are accurate to about 6 hours.
+  search's price range) is recorded as a new price, not a sale (repricing happens in place). A
+  listing counts as sold at the first check that finds it gone - pulling an item to relist it later
+  is rare - and is reopened, marked Relisted, if it does come back. One still up after a week counts
+  as unsold. Times on the page are accurate to about 6 hours.
 - **Rate limits:** GGG limits the trade API per IP. `lib/trade-api.ts` queues every request until
   each limit window has room, keeps to 70% of each limit, and follows the limits and usage the
   site reports on every response. The fetch limit (1,000 per 6 hours, 10 listings each) is the

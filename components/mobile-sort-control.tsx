@@ -22,6 +22,9 @@ export interface MobileSortOption<K extends string> {
  * Also the mobile home for the table header's tier filter (Confidence/Liquidity badges), which
  * disappears with the header too: pass it as `filter` (+ its `filterLabel`) and it renders as a
  * second row under the sort row.
+ *
+ * `allWidths` keeps it visible on desktop too, for a page with no sortable table header (Sold
+ * Listings' stacked rows).
  */
 export function MobileSortControl<K extends string>({
   options,
@@ -29,15 +32,17 @@ export function MobileSortControl<K extends string>({
   onSort,
   filter,
   filterLabel,
+  allWidths = false,
 }: {
   options: MobileSortOption<K>[];
   sort: SortState<K>;
   onSort: (key: K) => void;
   filter?: ReactNode;
   filterLabel?: string;
+  allWidths?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2 sm:hidden">
+    <div className={allWidths ? "flex flex-col gap-2 sm:max-w-xs" : "flex flex-col gap-2 sm:hidden"}>
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">Sort by</span>
         <Select value={sort.key} onValueChange={(value) => onSort(value as K)}>

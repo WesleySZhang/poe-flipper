@@ -56,6 +56,15 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   currency}, `account` {name, online}, `stash` {name, x, y}, `method: "psapi"`). The result id equals
   `item.id`. A fetched id that's no longer listed comes back as `null` in its slot - a cheap
   "still listed?" check. `[verified]` (2026-09-27)
+- A fetched listing's `item` carries far more than names and mod text (2026-09-28):
+  - each mod as `{description, hash, mods: [{magnitudes: [{min, max}]}]}` - `min`/`max` is the
+    **roll range** of each number in the mod (a Watcher's Eye "60% increased Lightning Damage while
+    affected by Wrath" has 40-60; a fixed mod has min = max);
+  - `properties` / `requirements` as `{name, values: [[text, displayType]]}` ("Limited to", [["1",0]]);
+  - `sockets`, `influences`, `corrupted`, `mirrored`, `fractured`, `synthesised`, `isRelic`,
+    `foilVariation` (a number - the foil's name is only in the item text), `flavourText`;
+  - `extended.text`: the in-game item text (what Ctrl+C copies), base64 - pastes into Path of
+    Building. See the `poe-item-display` skill for rendering it. `[verified]`
 - Repricing keeps the listing id. A Watcher's Eye lowered from 100d to 50d kept its id. A fetch
   returned the new price, with `indexed` reset to the time of the change and the gold `fee`
   unchanged. The change reached the trade site ~6 minutes later (the original listing took ~9).

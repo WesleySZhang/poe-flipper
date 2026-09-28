@@ -4,33 +4,43 @@ import { stripGameMarkup, type ListingMod, type SoldListingItem } from "@/lib/so
 /**
  * An item drawn like Path of Exile's own item tooltip (the in-game / trade site box): coloured
  * header with name and base type, sections split by thin rules, grey property labels with white
- * values, blue mods, red "Corrupted", the price note at the bottom. Always dark, like the game's.
- * Colours are the game's own. Pure; works for any item the sold listing tracker stored - listings
- * recorded before details were kept fall back to the short mod lists.
+ * values, blue mods, red "Corrupted", the price note at the bottom. Pure; works for any item the
+ * sold listing tracker stored - listings recorded before details were kept fall back to the short
+ * mod lists.
+ *
+ * Dark mode is the game's own look and colours; light mode keeps the layout on a parchment
+ * background with the colours darkened to stay readable. The palettes are CSS variables on
+ * `.poe-tooltip` in app/globals.css; only the rarity colour is set per item, here.
  */
 
-// The game's frame colours by rarity (name text / header tint).
-const RARITY_COLOUR: Record<string, string> = {
-  Normal: "#c8c8c8",
-  Magic: "#8888ff",
-  Rare: "#ffff77",
-  Unique: "#af6025",
-  Gem: "#1ba29b",
-  Currency: "#aa9e82",
-  "Divination Card": "#0ebaff",
+// Rarity (name text / header tint): [light mode, dark mode = the game's own].
+const RARITY_COLOUR: Record<string, [string, string]> = {
+  Normal: ["#555555", "#c8c8c8"],
+  Magic: ["#3a3ab8", "#8888ff"],
+  Rare: ["#8a7400", "#ffff77"],
+  Unique: ["#8a4a16", "#af6025"],
+  Gem: ["#137a74", "#1ba29b"],
+  Currency: ["#7a6c4c", "#aa9e82"],
+  "Divination Card": ["#0a7fb0", "#0ebaff"],
 };
 const MOD_COLOUR: Record<ListingMod["kind"], string> = {
-  enchant: "#b4b4ff",
-  implicit: "#8888ff",
-  fractured: "#a29162",
-  explicit: "#8888ff",
-  crafted: "#b4b4ff",
-  crucible: "#ffab3d",
-  scourge: "#ff6e25",
+  enchant: "var(--poe-mod-soft)",
+  implicit: "var(--poe-mod)",
+  fractured: "var(--poe-fractured)",
+  explicit: "var(--poe-mod)",
+  crafted: "var(--poe-mod-soft)",
+  crucible: "#c27a17",
+  scourge: "#d0561a",
 };
-const LABEL = "#7f7f7f";
-const VALUE = "#ffffff";
-const CORRUPTED = "#d20000";
+const RARITY = "var(--poe-rarity)";
+const LABEL = "var(--poe-label)";
+const VALUE = "var(--poe-value)";
+const CORRUPTED = "var(--poe-corrupted)";
+
+/** The rarity colour at `percent` opacity - for the header tint, border and rules. */
+function rarityMix(percent: number): string {
+  return `color-mix(in srgb, var(--poe-rarity) ${percent}%, transparent)`;
+}
 
 function formatRanges(ranges: ListingMod["ranges"]): string | undefined {
   if (!ranges?.length) return undefined;
@@ -41,8 +51,8 @@ function formatRanges(ranges: ListingMod["ranges"]): string | undefined {
   return `(${shown.map((r) => (r.min < 0 ? `${r.min} to ${r.max}` : `${r.min}–${r.max}`)).join(", ")})`;
 }
 
-function Separator({ colour }: { colour: string }) {
-  return <div className="mx-auto my-1.5 h-px w-4/5" style={{ background: `linear-gradient(to right, transparent, ${colour}, transparent)` }} />;
+function Separator() {
+  return <div className="mx-auto my-1.5 h-px w-4/5" style={{ background: `linear-gradient(to right, transparent, ${RARITY}, transparent)` }} />;
 }
 
 /** "Limited to: 1" -> grey label, white value. Lines without a colon (templated ones) stay white. */
@@ -73,7 +83,7 @@ export function PoeItemTooltip({
   className?: string;
 }) {
   const rarity = item.rarity ?? "Normal";
-  const colour = RARITY_COLOUR[rarity] ?? RARITY_COLOUR.Normal;
+  const [lightColour, darkColour] = RARITY_COLOUR[rarity] ?? RARITY_COLOUR.Normal;
   const detail = item.detail;
   const twoLineHeader = !!item.name && (rarity === "Unique" || rarity === "Rare");
   const mods: ListingMod[] =
@@ -130,25 +140,33 @@ export function PoeItemTooltip({
     );
   }
   const statusLines = [
-    ...(detail?.tags ?? []).map((t) => ({ text: t, colour: t.startsWith("Foil") || t === "Relic" ? "#82ad6a" : VALUE })),
+    ...(detail?.tags ?? []).map((t) => ({ text: t, colour: t.startsWith("Foil") || t === "Relic" ? "var(--poe-special)" : VALUE })),
     ...(item.corrupted ? [{ text: "Corrupted", colour: CORRUPTED }] : []),
   ];
   if (statusLines.length > 0) {
     sections.push(statusLines.map((l) => <div key={l.text} style={{ color: l.colour }}>{l.text}</div>));
   }
   if (showRanges && detail?.flavourText) {
-    sections.push(<div className="whitespace-pre-line italic" style={{ color: colour }}>{detail.flavourText}</div>);
+    sections.push(<div className="whitespace-pre-line italic" style={{ color: RARITY }}>{detail.flavourText}</div>);
   }
-  if (price) sections.push(<div style={{ color: "#d3c3a8" }}>{price}</div>);
+  if (price) sections.push(<div style={{ color: "var(--poe-price)" }}>{price}</div>);
 
   return (
     <div
-      className={cn("overflow-hidden rounded-sm border text-center text-[13px] leading-snug", className)}
-      style={{ borderColor: `${colour}99`, background: "rgba(0,0,0,0.92)", fontFamily: "var(--font-poe), 'Palatino Linotype', Georgia, serif" }}
+      className={cn("poe-tooltip overflow-hidden rounded-sm border text-center text-[13px] leading-snug", className)}
+      style={
+        {
+          "--poe-rarity-light": lightColour,
+          "--poe-rarity-dark": darkColour,
+          borderColor: rarityMix(60),
+          background: "var(--poe-bg)",
+          fontFamily: "var(--font-poe), 'Palatino Linotype', Georgia, serif",
+        } as React.CSSProperties
+      }
     >
       <div
         className="px-3 py-1 text-[15px]"
-        style={{ color: colour, background: `linear-gradient(to bottom, ${colour}40, ${colour}14)`, borderBottom: `1px solid ${colour}66` }}
+        style={{ color: RARITY, background: `linear-gradient(to bottom, ${rarityMix(25)}, ${rarityMix(8)})`, borderBottom: `1px solid ${rarityMix(40)}` }}
       >
         {twoLineHeader ? (
           <>
@@ -162,7 +180,7 @@ export function PoeItemTooltip({
       <div className="px-3 py-1.5">
         {sections.map((section, i) => (
           <div key={i}>
-            {i > 0 && <Separator colour={colour} />}
+            {i > 0 && <Separator />}
             {section}
           </div>
         ))}

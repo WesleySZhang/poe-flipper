@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
+import { cn } from "cn";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -11,22 +11,20 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
-import { SearchInput } from "@/components/search-input";
-import { SortableHeader } from "@/components/sortable-header";
-import { TradeSiteLink } from "@/components/trade-site-link";
 import { PoeItemTooltip } from "@/components/poe-item-tooltip";
+import { SearchInput } from "@/components/search-input";
+import { TradeSiteLink } from "@/components/trade-site-link";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
   LISTING_MAX_AGE_DAYS,
   MAX_TRACKED_LISTINGS,
-  SOLD_AFTER_MISSING_HOURS,
   SOLD_PAGE_DAYS,
   UNSOLD_PAGE_DAYS,
   currentPrice,
   formatSearchTotal,
   listedDurationMs,
+  priceSpans,
   type ListingPrice,
-  type ListingStatus,
   type SoldListingsFile,
   type TrackedListing,
 } from "@/lib/sold-tracker";
@@ -34,17 +32,16 @@ import {
 const PAGE_SIZE = 25;
 
 type SortKey = "ended" | "listed" | "price" | "duration";
+// The page file holds listings that ended recently - see buildSoldListingsFile.
+type Tab = "sold" | "unsold";
 
-// The page file holds only listings that ended recently, plus listed ones that have gone missing
-// but aren't counted sold yet ("Gone") - see buildSoldListingsFile.
-const STATUS_LABEL: Record<ListingStatus, string> = { sold: "Sold", unsold: "Unsold", listed: "Gone" };
-const STATUS_TITLE: Record<ListingStatus, string> = {
+const TAB_LABEL: Record<Tab, string> = { sold: "Sold", unsold: "Unsold" };
+const TAB_TITLE: Record<Tab, string> = {
   sold: `Last ${SOLD_PAGE_DAYS} days`,
   unsold: `Still up after ${LISTING_MAX_AGE_DAYS} days; ended in the last ${UNSOLD_PAGE_DAYS} days`,
-  listed: `Not listed any more; counted sold after ${SOLD_AFTER_MISSING_HOURS}h gone`,
 };
-// The date column means something different per tab.
-const ENDED_LABEL: Record<ListingStatus, string> = { sold: "Sold", unsold: "Expired", listed: "Gone since" };
+// The end date means something different per tab.
+const ENDED_LABEL: Record<Tab, string> = { sold: "Sold", unsold: "Expired" };
 
 async function fetchSoldListings(): Promise<SoldListingsFile | null> {
   const res = await fetch("/api/sold-listings");
@@ -58,17 +55,6 @@ function formatPrice(p: ListingPrice | undefined): string {
   if (!p) return "—";
   const short = CURRENCY_SHORT[p.currency];
   return short ? `${p.amount}${short}` : `${p.amount} ${p.currency}`;
-}
-
-/** "100d → 50d" when the price changed, else just the price. */
-function formatPriceHistory(t: TrackedListing): string {
-  if (t.prices.length <= 1) return formatPrice(currentPrice(t));
-  const first = t.prices[0];
-  return `${formatPrice(first)} → ${formatPrice(currentPrice(t))}`;
-}
-
-function priceTitle(t: TrackedListing): string {
-  return t.prices.map((p) => `${formatPrice(p)} from ${formatDate(p.at)}`).join("\n");
 }
 
 function formatDate(iso: string | undefined): string {
@@ -87,7 +73,7 @@ function formatDuration(ms: number): string {
 }
 
 function endedAt(t: TrackedListing): string {
-  return t.endedAt ?? t.missingSince ?? t.lastSeen;
+  return t.endedAt ?? t.lastSeen;
 }
 
 function itemName(t: TrackedListing): string {
@@ -99,31 +85,72 @@ function matchesSearch(t: TrackedListing, text: string): boolean {
   return [itemName(t), ...t.searches, ...t.item.implicits, ...t.item.mods].some((s) => s.toLowerCase().includes(text));
 }
 
-/** Item name, base, and every mod - the part of a listing that says what sold. */
 /** The price as the item's note reads on the trade site, e.g. "~b/o 100 divine". */
 function priceNote(t: TrackedListing): string | undefined {
   const p = currentPrice(t);
   return p ? `${p.type ?? "~b/o"} ${p.amount} ${p.currency}` : undefined;
 }
 
-/** The item as the trade site shows it, plus the tracker's own flags. */
-function ItemCell({ t }: { t: TrackedListing }) {
+/** Every price the listing had, oldest first: earlier ones struck through, each with how long it
+ *  stood at that price. The last is the price it sold (or expired) at. */
+function PriceTimeline({ t, now }: { t: TrackedListing; now: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <PoeItemTooltip item={t.item} price={priceNote(t)} />
-      {((t.missingSince && t.status === "listed") || t.reappeared) && (
-        <div className="flex flex-wrap gap-1">
-          {t.missingSince && t.status === "listed" && (
-            <Badge variant="outline" title={`Not listed since ${formatDate(t.missingSince)}. Counted sold after ${SOLD_AFTER_MISSING_HOURS}h gone.`}>
-              Gone
-            </Badge>
-          )}
-          {t.reappeared && (
-            <Badge variant="outline" title="Counted sold once, then listed again">
-              Relisted
-            </Badge>
-          )}
-        </div>
+    <ul className="flex flex-col">
+      {priceSpans(t, now).map((s) => (
+        <li key={s.price.at} className="flex items-baseline justify-between gap-3" title={`From ${formatDate(s.price.at)}`}>
+          <span className={cn(s.current ? "text-base font-semibold" : "text-sm text-muted-foreground line-through")}>
+            {formatPrice(s.price)}
+          </span>
+          <span className="text-xs text-muted-foreground">{formatDuration(s.durationMs)}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-right">{children}</span>
+    </div>
+  );
+}
+
+function SearchLinks({ t, searchLinks }: { t: TrackedListing; searchLinks: Map<string, string> }) {
+  return (
+    <>
+      {t.searches.map((label) => (
+        <span key={label} className="inline-flex items-center gap-1">
+          {label}
+          {searchLinks.get(label) && <TradeSiteLink href={searchLinks.get(label)!} className="size-3.5" />}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** The listing's own facts, stacked: price history, then listed / sold / time up / search. */
+function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string; searchLinks: Map<string, string> }) {
+  const tab: Tab = t.status === "unsold" ? "unsold" : "sold";
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <span className="text-xs text-muted-foreground">Price · time at price</span>
+        <PriceTimeline t={t} now={now} />
+      </div>
+      <div className="flex flex-col gap-0.5 border-t border-border pt-2">
+        <Field label="Listed">{formatDate(t.listedAt)}</Field>
+        <Field label={ENDED_LABEL[tab]}>{formatDate(endedAt(t))}</Field>
+        <Field label="Time up">{formatDuration(listedDurationMs(t, now))}</Field>
+        <Field label="Search">
+          <SearchLinks t={t} searchLinks={searchLinks} />
+        </Field>
+      </div>
+      {t.reappeared && (
+        <Badge variant="outline" className="self-start" title="Counted sold once, then listed again">
+          Relisted
+        </Badge>
       )}
     </div>
   );
@@ -148,38 +175,9 @@ function ListingDetailDialog({
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         {t && (
           <>
-            <DialogTitle className="sr-only">{t.item.name ? `${t.item.name} ${t.item.typeLine}` : t.item.typeLine}</DialogTitle>
+            <DialogTitle className="sr-only">{itemName(t)}</DialogTitle>
             <PoeItemTooltip item={t.item} price={priceNote(t)} showRanges className="mt-6" />
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Status</dt>
-              <dd>
-                {t.status === "listed" && t.missingSince ? "Gone - not counted sold yet" : STATUS_LABEL[t.status]}
-                {t.reappeared && " (relisted once)"}
-              </dd>
-              <dt className="text-muted-foreground">Listed</dt>
-              <dd>{formatDate(t.listedAt)}</dd>
-              <dt className="text-muted-foreground">{ENDED_LABEL[t.status]}</dt>
-              <dd>{formatDate(endedAt(t))}</dd>
-              <dt className="text-muted-foreground">Time up</dt>
-              <dd>{formatDuration(listedDurationMs(t, loadedAt))}</dd>
-              <dt className="text-muted-foreground">Prices</dt>
-              <dd>
-                {t.prices.map((p) => (
-                  <div key={p.at}>
-                    {formatPrice(p)} <span className="text-muted-foreground">from {formatDate(p.at)}</span>
-                  </div>
-                ))}
-              </dd>
-              <dt className="text-muted-foreground">Found by</dt>
-              <dd>
-                {t.searches.map((label) => (
-                  <span key={label} className="flex items-center gap-1">
-                    {label}
-                    {searchLinks.get(label) && <TradeSiteLink href={searchLinks.get(label)!} className="size-3.5" />}
-                  </span>
-                ))}
-              </dd>
-            </dl>
+            <ListingFacts t={t} now={loadedAt} searchLinks={searchLinks} />
             {text && (
               <Button
                 variant="outline"
@@ -203,18 +201,20 @@ function ListingDetailDialog({
 
 /**
  * Listings the sold listing tracker followed, by what happened to them - see lib/sold-tracker.ts for
- * how a sale is decided and scripts/track-sold-listings.ts for the tracker itself.
+ * how a sale is decided and scripts/track-sold-listings.ts for the tracker itself. One row per item:
+ * the item drawn like the game's tooltip, and its listing facts stacked beside it (under it on a
+ * phone). Clicking a row opens the item with its roll ranges.
  */
 export function SoldListingsPanel() {
   const [file, setFile] = useState<SoldListingsFile | null>(null);
-  const [status, setStatus] = useState<ListingStatus>("sold");
+  const [tab, setTab] = useState<Tab>("sold");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<SortState<SortKey>>({ key: "ended", direction: "desc" });
   const [isPending, startTransition] = useTransition();
   // The listing whose details are open.
   const [selected, setSelected] = useState<TrackedListing | null>(null);
-  // Durations of still-listed items count up to "now"; fixed per load so renders stay pure.
+  // Durations count up to "now" for anything still open; fixed per load so renders stay pure.
   const [loadedAt, setLoadedAt] = useState(() => new Date(0).toISOString());
 
   useEffect(() => {
@@ -227,8 +227,8 @@ export function SoldListingsPanel() {
 
   const listings = useMemo(() => file?.listings ?? [], [file]);
   const counts = useMemo(() => {
-    const c: Record<ListingStatus, number> = { sold: 0, unsold: 0, listed: 0 };
-    for (const t of listings) c[t.status]++;
+    const c: Record<Tab, number> = { sold: 0, unsold: 0 };
+    for (const t of listings) if (t.status === "sold" || t.status === "unsold") c[t.status]++;
     return c;
   }, [listings]);
 
@@ -236,7 +236,7 @@ export function SoldListingsPanel() {
   const visible = useMemo(
     () =>
       sortByKey(
-        listings.filter((t) => t.status === status && matchesSearch(t, normalizedSearch)),
+        listings.filter((t) => t.status === tab && matchesSearch(t, normalizedSearch)),
         sort,
         (t, key) => {
           switch (key) {
@@ -254,15 +254,14 @@ export function SoldListingsPanel() {
           }
         }
       ),
-    [listings, status, normalizedSearch, sort, loadedAt]
+    [listings, tab, normalizedSearch, sort, loadedAt]
   );
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
   const paged = visible.slice(pageStart, pageStart + PAGE_SIZE);
-  const endedLabel = ENDED_LABEL[status];
 
-  function changeStatus(value: ListingStatus) {
-    setStatus(value);
+  function changeTab(value: Tab) {
+    setTab(value);
     setPage(0);
   }
 
@@ -299,11 +298,11 @@ export function SoldListingsPanel() {
         </CardTitle>
         <div className="flex flex-col gap-1.5">
           <Label>Show</Label>
-          <Tabs value={status} onValueChange={(value) => changeStatus(value as ListingStatus)}>
+          <Tabs value={tab} onValueChange={(value) => changeTab(value as Tab)}>
             <TabsList>
-              {(["sold", "unsold", "listed"] as const).map((s) => (
-                <TabsTrigger key={s} value={s} title={STATUS_TITLE[s]}>
-                  {STATUS_LABEL[s]} {counts[s]}
+              {(["sold", "unsold"] as const).map((s) => (
+                <TabsTrigger key={s} value={s} title={TAB_TITLE[s]}>
+                  {TAB_LABEL[s]} {counts[s]}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -315,7 +314,7 @@ export function SoldListingsPanel() {
           <div className="flex flex-col gap-2">
             <p
               className="text-xs text-muted-foreground"
-              title={`Instant buyout, listed in the last week. Sold = gone ${SOLD_AFTER_MISSING_HOURS}h+. Unsold = still up after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
+              title={`Instant buyout, listed in the last week. Sold = no longer listed. Unsold = still up after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
             >
               Tracking {file.trackedCount.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
             </p>
@@ -336,10 +335,7 @@ export function SoldListingsPanel() {
                   {s.total !== undefined && <span className="text-muted-foreground">· {formatSearchTotal(s.total)} listed</span>}
                   {s.paused && <span className="text-destructive">· paused</span>}
                   {(s.error || s.missedListings) && (
-                    <AlertTriangle
-                      className="size-3.5 text-destructive"
-                      aria-label={s.error ? "Search failed" : "Missed listings"}
-                    />
+                    <AlertTriangle className="size-3.5 text-destructive" aria-label={s.error ? "Search failed" : "Missed listings"} />
                   )}
                   <TradeSiteLink href={s.url} className="size-3.5" />
                 </span>
@@ -347,7 +343,22 @@ export function SoldListingsPanel() {
             </div>
           </div>
         )}
-        <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search items or mods..." />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search items or mods..." />
+          {!isPending && file && listings.length > 0 && (
+            <MobileSortControl
+              allWidths
+              options={[
+                { key: "ended", label: ENDED_LABEL[tab] },
+                { key: "listed", label: "Listed" },
+                { key: "price", label: "Price" },
+                { key: "duration", label: "Time up" },
+              ]}
+              sort={sort}
+              onSort={handleSort}
+            />
+          )}
+        </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="size-6 animate-spin" />
@@ -355,21 +366,9 @@ export function SoldListingsPanel() {
           </div>
         )}
         {!isPending && !file && <p className="text-sm text-muted-foreground">No tracker data yet.</p>}
-        {!isPending && file && listings.length > 0 && (
-          <MobileSortControl
-            options={[
-              { key: "ended", label: endedLabel },
-              { key: "listed", label: "Listed" },
-              { key: "price", label: "Price" },
-              { key: "duration", label: "Time up" },
-            ]}
-            sort={sort}
-            onSort={handleSort}
-          />
-        )}
         {!isPending && file && (
-          // -mx-4 cancels CardContent's own px-4, same as the other panels' mobile card lists.
-          <div className="-mx-4 flex flex-col gap-2 sm:hidden">
+          // -mx-4 on phones cancels CardContent's own px-4, same as the other panels' card lists.
+          <div className="-mx-4 flex flex-col gap-2 sm:mx-0">
             {paged.map((t) => (
               <div
                 key={t.id}
@@ -377,71 +376,17 @@ export function SoldListingsPanel() {
                 tabIndex={0}
                 onClick={() => setSelected(t)}
                 onKeyDown={(e) => openOnKey(e, t)}
-                className="flex cursor-pointer flex-col gap-2 rounded-lg border border-border p-2 active:bg-muted/50"
+                className="grid cursor-pointer grid-cols-1 gap-3 rounded-lg border border-border p-2 hover:bg-muted/40 active:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_15rem] sm:p-3"
               >
-                <ItemCell t={t} />
-                <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1.5">
-                  {[
-                    { label: "Listed", value: formatDate(t.listedAt) },
-                    { label: endedLabel, value: formatDate(endedAt(t)) },
-                    { label: "Time up", value: formatDuration(listedDurationMs(t, loadedAt)) },
-                  ].map((f) => (
-                    <div key={f.label} className="flex flex-col">
-                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{f.label}</span>
-                      <span className="text-xs text-muted-foreground">{f.value}</span>
-                    </div>
-                  ))}
-                  <div className="ml-auto flex flex-col items-end">
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Price</span>
-                    <span className="text-sm font-bold" title={priceTitle(t)}>
-                      {formatPriceHistory(t)}
-                    </span>
-                  </div>
-                </div>
+                <PoeItemTooltip item={t.item} price={priceNote(t)} />
+                <ListingFacts t={t} now={loadedAt} searchLinks={searchLinks} />
               </div>
             ))}
           </div>
         )}
-        {!isPending && file && listings.length > 0 && (
-          <Table className="hidden sm:table">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Item</TableHead>
-                <SortableHeader label="Price" sortKey="price" sort={sort} onSort={handleSort} />
-                <SortableHeader label="Listed" sortKey="listed" sort={sort} onSort={handleSort} />
-                <SortableHeader label={endedLabel} sortKey="ended" sort={sort} onSort={handleSort} />
-                <SortableHeader label="Time up" sortKey="duration" sort={sort} onSort={handleSort} />
-                <TableHead>Search</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paged.map((t) => (
-                <TableRow key={t.id} tabIndex={0} onClick={() => setSelected(t)} onKeyDown={(e) => openOnKey(e, t)} className="cursor-pointer align-top">
-                  <TableCell className="w-[440px] max-w-[440px] whitespace-normal">
-                    <ItemCell t={t} />
-                  </TableCell>
-                  <TableCell className="text-right font-medium" title={priceTitle(t)}>
-                    {formatPriceHistory(t)}
-                  </TableCell>
-                  <TableCell className="text-right">{formatDate(t.listedAt)}</TableCell>
-                  <TableCell className="text-right">{formatDate(endedAt(t))}</TableCell>
-                  <TableCell className="text-right">{formatDuration(listedDurationMs(t, loadedAt))}</TableCell>
-                  <TableCell className="whitespace-normal text-xs text-muted-foreground">
-                    {t.searches.map((label) => (
-                      <span key={label} className="flex items-center gap-1">
-                        {label}
-                        {searchLinks.get(label) && <TradeSiteLink href={searchLinks.get(label)!} className="size-3" />}
-                      </span>
-                    ))}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
         {!isPending && file && visible.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            {listings.length === 0 ? "No listings tracked yet." : `No ${STATUS_LABEL[status].toLowerCase()} listings match.`}
+            {listings.length === 0 ? "No listings tracked yet." : `No ${TAB_LABEL[tab].toLowerCase()} listings match.`}
           </p>
         )}
         <Pagination page={Math.min(page, pageCount - 1)} pageCount={pageCount} totalRows={visible.length} onPageChange={setPage} />
