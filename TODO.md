@@ -12,7 +12,7 @@ ordered by importance.
 | 3 | [Live price vs history for items with several poe.ninja lines](#3-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
 | 4 | [Holes in past-league history](#4-holes-in-past-league-history) | Open |
 | 5 | [Small follow-ups](#5-small-follow-ups) | Open |
-| 6 | [Sold item tracker](#6-sold-item-tracker) | Researched, not started |
+| 6 | [Sold item tracker](#6-sold-item-tracker) | Built; first live run pending |
 | – | [Done](#done) | – |
 
 ---
@@ -86,6 +86,23 @@ forecast days (see Done), but:
   table on the previous value until release, then waits for a live calculation.
 
 ## 6. Sold item tracker
+
+**Built** (`scripts/track-sold-listings.ts`, the "Track sold listings" workflow, `/sold-listings`;
+see the README). Searches come from trade site links in `sold-tracker/searches.md`, starting with
+Watcher's Eye. Still open:
+
+- **First run from GitHub's runners.** Untested whether pathofexile.com lets their IPs through. If
+  the workflow fails with a 403, run the tracker from an always-on machine instead.
+- **Terms of Use.** The trade API isn't in GGG's docs (see below). The tracker keeps to 70% of the
+  rate limits, but it's still steady automated use.
+- **First run only sees the newest 100 per search.** Older listings already up aren't picked up.
+  Price-sliced searches could backfill them.
+- **Withdrawn vs sold.** Measure from real data how often a "sale" is really a withdrawal, e.g. by
+  how many sold listings come back as Relisted.
+- **A fresh league's volume** is unmeasured. Check each search's listing count in the first days and
+  narrow searches (or raise the price floor) if the total heads past ~1,000.
+
+The research this was built on:
 
 **Goal:** list items that sold on the trade site: the item and its mods, price, when it sold and how
 long it was listed. A job polls the trade site every few minutes, and a listing that disappears is

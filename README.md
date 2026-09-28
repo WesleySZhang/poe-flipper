@@ -10,6 +10,7 @@ learned model. Prices come from [poe.ninja](https://poe.ninja) and GGG's Currenc
 - [Pages](#pages)
 - [How predictions work](#how-predictions-work)
 - [The daily data job](#the-daily-data-job)
+- [The sold listing tracker](#the-sold-listing-tracker)
 - [Setup](#setup)
 - [Updating data and the model](#updating-data-and-the-model)
 - [Deploying](#deploying)
@@ -29,6 +30,7 @@ See [`TODO.md`](TODO.md) for open ideas and known gaps.
 | **Currency Exchange Flip** | `/currency_exchange_flip` | Live buy/sell spreads on GGG's Currency Exchange, for flipping today. |
 | **Divination Card Flips** | `/divination-cards` | Cards whose full stack costs less than the reward it turns into. |
 | **Dust Value** | `/dust-value` | Uniques ranked by Thaumaturgic Dust per chaos, for disenchanting in Kingsmarch. |
+| **Sold Listings** | `/sold-listings` | Trade site listings the sold listing tracker followed: what sold, at what price, after how long. |
 | **Item detail** | `/item/<category>/<Item_Name>` | Everything the app knows about one item. |
 | **Mirage league simulator** | `/mirage-simulator` | Replays a finished league to compare predictions with what happened. |
 | **League tester** | `/current-league-tester` | Applies an item's historical growth to a price you type in. |
@@ -104,6 +106,20 @@ Uniques ranked by how much Thaumaturgic Dust they give when disenchanted in King
 - **Confidence** is the seller count on poe.ninja (High 20+, Medium 5+).
 - **Left out:** Foulborn (mutated) uniques, since it's unchecked whether they give their base's dust;
   corruption and influence bonuses.
+
+### Sold Listings
+
+What happened to the trade site listings the [sold listing tracker](#the-sold-listing-tracker)
+followed: instant buyout, 100d+, from the searches in
+[`sold-tracker/searches.md`](sold-tracker/searches.md).
+
+- **Tabs:** Sold, Unsold (still up after a week) and Listed (still being checked; "Gone" marks one
+  that has disappeared but not for long enough yet to count as sold).
+- **Each row:** the item and its mods, the price (`135d → 95d` when it changed; hover for every
+  price and when it was seen), when it was listed, when it sold or expired, how long it was up, and
+  the search that found it.
+- **The searches** are listed at the top with how many listings each matches now. A warning icon
+  means the search failed or got more than 100 new listings between runs (so it missed some).
 
 ### Item detail page
 
@@ -202,6 +218,38 @@ How the app uses them:
 - **Caching.** The app re-checks the predictions and history files every 2 minutes and the price
   snapshot every 30 minutes, so a new day is picked up quickly. The predictions endpoint is also
   cached at Vercel's CDN for 2 minutes (`s-maxage=120`), so repeat visits don't run the function.
+
+---
+
+## The sold listing tracker
+
+`scripts/track-sold-listings.ts` follows trade site listings and records which ones sell. The
+"Track sold listings" workflow (`.github/workflows/track-sold-listings.yml`) runs it for ~5.5 hours
+every 6 hours and publishes its file, `sold-listings/<League>.json`, to the **`sold-tracker`
+branch** (not `data`, which the daily job rebuilds from scratch). The Sold Listings page reads it
+from there (`lib/sold-listings.ts`).
+
+- **What it tracks:** the searches in [`sold-tracker/searches.md`](sold-tracker/searches.md). Add
+  one by pasting a trade site link as a list item; the link's id is the search itself, gzipped
+  (`lib/trade-query.ts`), so reading it costs no request. The tracker adds its own rules to every
+  search: instant buyout only (no offline sellers or bait), 100d or more, listed in the last week,
+  current league.
+- **Finding listings:** each search runs newest-first every 30 minutes (sooner when busy). A search
+  returns at most 100 listings, so a first run only picks up the newest 100.
+- **Deciding a sale:** every listing is then checked by its item id about once an hour. A fetch by
+  id ignores the search's filters, and the id survives a price change, so a price drop (even below
+  100d) is recorded as a new price, not a sale. A listing counts as sold once it has been gone for
+  24 hours, and is reopened if it shows up again. A listing still up after a week counts as unsold.
+- **Rate limits:** GGG limits the trade API per IP. `lib/trade-api.ts` queues every request until
+  each limit window has room, keeps to 70% of each limit, and follows the limits and usage the
+  site reports on every response. That covers about 1,000 tracked listings; past that, checks fall
+  behind.
+- **Run it locally:** `npm run sold:track -- --minutes 60` (state in `.sold-tracker/`, which it
+  resumes from). To see a local run on the page, start the dev server with
+  `SOLD_LISTINGS_FILE=.sold-tracker/sold-listings/<League>.json`.
+- **Caveats:** a seller pulling an item for good looks the same as a sale. The trade API isn't in
+  GGG's developer docs, and it's untested whether pathofexile.com accepts requests from GitHub's
+  runners; if the workflow fails with a 403, run the tracker elsewhere. See `TODO.md`.
 
 ---
 
@@ -324,7 +372,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 - **Project skills** in `.claude/skills/`:
   - `verify-ui` runs the app and checks a change at desktop and phone width;
   - `precompute-check` checks or reruns the daily job;
-  - `new-league` is the checklist for a league launch or end.
+  - `new-league` is the checklist for a league launch or end;
+  - `sold-tracker` covers adding searches to, running and debugging the sold listing tracker.
 - **Path of Exile knowledge skills** in `poe-knowledge/` (economy, data sources, divination cards,
   league lifecycle, item categories), kept generic for use in other projects. See
   [`poe-knowledge/README.md`](poe-knowledge/README.md).
@@ -345,6 +394,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
   Settings → Actions → "Allow GitHub Actions to create and approve pull requests"). Choosing to
   train on a finished league means starting the Retrain model workflow and reviewing its PR.
 - **Currency Exchange data is about 2 hours old** and gold costs are hand-transcribed.
+- **The sold listing tracker uses the trade site's API,** which isn't in GGG's developer docs, and
+  can't tell a sale from a seller taking an item off the market.
 - **One item, several poe.ninja lines.** Base types have one line per item level or influence.
   The live price uses the first line while history averages them, so the two can differ.
 
@@ -358,7 +409,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `app/page.tsx` | Flip Predictions (renders `components/dashboard.tsx`; code/routes still say "flip-suggestions") |
 | `app/item/[category]/[key]/` | Item detail page |
-| `app/currency_exchange_flip/`, `app/divination-cards/`, `app/dust-value/`, `app/mirage-simulator/`, `app/current-league-tester/` | Other pages |
+| `app/currency_exchange_flip/`, `app/divination-cards/`, `app/dust-value/`, `app/sold-listings/`, `app/mirage-simulator/`, `app/current-league-tester/` | Other pages |
 | `app/api/*/route.ts` | Read-only JSON endpoints (Route Handlers, not Server Actions) |
 | `proxy.ts`, `lib/site-auth.ts` | Password gate |
 
@@ -399,6 +450,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/exchange-route.ts` | Picking a flip's buy/sell markets, and which currency to show profit in |
 | `lib/liquidity.ts` | Liquidity tiers (exchange volume, and poe.ninja seller count for uniques) |
 | `lib/trade-site.ts` | Official trade site search links |
+| `lib/trade-query.ts`, `lib/trade-api.ts` | Trade site links decoded to their queries; the rate-limited trade API client (tracker only) |
+| `lib/sold-tracker.ts`, `lib/sold-listings.ts` | The sold listing tracker's data model and sale rules; reading its file for the page |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
 | `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |
@@ -412,6 +465,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | Path | What it is |
 | --- | --- |
 | `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
+| `scripts/track-sold-listings.ts`, `sold-tracker/searches.md` | The sold listing tracker and the searches it follows |
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
 | `scripts/check-current-league.ts`, `sync-current-league.ts` | League-swap check and fix |
 | `scripts/check-new-items.ts` | Daily check for new items and poe.ninja categories (see [New items and categories](#new-items-and-categories)) |

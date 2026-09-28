@@ -65,3 +65,7 @@ __pycache__/
 # Same idea, for scripts/precompute-price-history.ts's growing per-league CSV pair - also only
 # meaningful on the "data" branch.
 /history/
+
+# The sold listing tracker's working state from a local run (scripts/track-sold-listings.ts). The
+# workflow publishes the real one to the sold-tracker branch.
+/.sold-tracker/

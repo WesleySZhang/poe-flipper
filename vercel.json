@@ -3,6 +3,7 @@
   "git": {
     "deploymentEnabled": {
       "data": false,
+      "sold-tracker": false,
       "master": false
     }
   }

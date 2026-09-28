@@ -1,0 +1,83 @@
+name: Track sold listings
+
+# Runs the sold listing tracker (scripts/track-sold-listings.ts) for ~5.5 hours per run, starting
+# every 6 hours, and publishes its file to the "sold-tracker" branch for the Sold Listings page
+# (lib/sold-listings.ts). Not the "data" branch: the daily job rebuilds that from scratch every run.
+#
+# GitHub starts scheduled runs late (the daily job here has started 4-5 hours late), so there can be
+# gaps of hours between runs. That's fine for this: sales are confirmed only after a listing has
+# been gone for a day, and a gap just delays the next check - the state carries over between runs.
+# The concurrency group keeps two runs from overlapping.
+#
+# Untested from GitHub's runners: whether pathofexile.com lets their IPs through. If it doesn't, the
+# run fails with a 403 "blocked before reaching the API" - run the tracker somewhere else instead
+# (`npm run sold:track`; see the README).
+
+on:
+  schedule:
+    - cron: "20 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to run, in minutes"
+        default: "330"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sold-tracker
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Restore the tracker's state from the sold-tracker branch
+        run: |
+          mkdir -p .sold-tracker
+          if git fetch --depth=1 origin sold-tracker; then
+            git archive FETCH_HEAD sold-listings | tar -x -C .sold-tracker || echo "No sold-listings/ on the branch yet."
+          else
+            echo "No sold-tracker branch yet - starting fresh."
+          fi
+
+      - name: Track
+        run: npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '330' }}" --dir .sold-tracker
+
+      # Runs even when tracking failed partway, so the state saved so far isn't lost.
+      - name: Publish to the sold-tracker branch
+        if: always()
+        run: |
+          set -e
+          if [ ! -d .sold-tracker/sold-listings ]; then
+            echo "Nothing to publish."
+            exit 0
+          fi
+          cp -r .sold-tracker/sold-listings /tmp/sold-listings
+          cp vercel.json /tmp/vercel.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # A fresh orphan commit each run, force-pushed, like the data branch: the branch holds the
+          # latest files, not a history of every run. vercel.json is re-added so Vercel reads its
+          # "never deploy this branch" rule from the pushed commit itself.
+          git checkout --orphan sold-tracker-publish
+          git rm -rf . > /dev/null
+          rm -rf sold-listings .sold-tracker
+          cp -r /tmp/sold-listings sold-listings
+          cp /tmp/vercel.json vercel.json
+          git add -f sold-listings vercel.json
+          git commit -m "Update sold listings"
+          git push --force origin sold-tracker-publish:sold-tracker
