@@ -16,7 +16,7 @@
  *
  * Files under --dir (see lib/sold-tracker.ts for each one's shape):
  *   state/<League>.json          the tracker's state: listed listings, recently ended ones, searches
- *   sold-listings/<League>.json  the page's file: recent sales and unsold, listings gone but pending
+ *   sold-listings/<League>.json  the page's file: recent sales and unsold
  *   ended/<League>/<YYYY-MM>.jsonl  every ended listing, one per line - the full history
  *
  * Each loop:
@@ -245,7 +245,6 @@ async function main() {
         const t = listings.get(id);
         if (t?.status === "listed") {
           t.lastSeen = now;
-          delete t.missingSince;
           if (!t.searches.includes(search.label)) t.searches.push(search.label);
         }
       }
@@ -287,12 +286,14 @@ async function main() {
   async function check(ids: string[]) {
     const fetched = await client.fetchListings(ids);
     const now = new Date().toISOString();
+    const sold: TrackedListing[] = [];
     ids.forEach((id, i) => {
       const l = fetched[i];
       const t = listings.get(id)!;
       if (l) recordListing(listings, l, now);
-      else recordMissing(t, now);
+      else sold.push(recordMissing(t, now));
     });
+    archive(sold);
   }
 
   try {

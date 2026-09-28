@@ -134,3 +134,36 @@
     @apply font-sans;
   }
 }
+/* Item tooltips (components/poe-item-tooltip.tsx). Dark mode is the game's own tooltip; light mode
+   keeps its layout in black and white, to match the rest of the light theme. Each tooltip sets
+   --poe-rarity-dark for its item's rarity (used in dark mode only). */
+.poe-tooltip {
+  --poe-rarity: #0a0a0a;
+  --poe-bg: #ffffff;
+  --poe-label: #737373;
+  --poe-value: #0a0a0a;
+  --poe-mod: #0a0a0a;
+  --poe-mod-soft: #262626;
+  --poe-fractured: #262626;
+  --poe-corrupted: #0a0a0a;
+  --poe-special: #262626;
+  --poe-price: #262626;
+  --poe-header-bg: transparent;
+}
+.dark .poe-tooltip {
+  --poe-rarity: var(--poe-rarity-dark);
+  --poe-bg: rgba(0, 0, 0, 0.92);
+  --poe-label: #7f7f7f;
+  --poe-value: #ffffff;
+  --poe-mod: #8888ff;
+  --poe-mod-soft: #b4b4ff;
+  --poe-fractured: #a29162;
+  --poe-corrupted: #d20000;
+  --poe-special: #82ad6a;
+  --poe-price: #d3c3a8;
+  --poe-header-bg: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--poe-rarity) 25%, transparent),
+    color-mix(in srgb, var(--poe-rarity) 8%, transparent)
+  );
+}

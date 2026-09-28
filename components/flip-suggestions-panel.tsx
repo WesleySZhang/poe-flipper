@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -266,18 +266,17 @@ export function FlipSuggestionsPanel() {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
+      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-4">
-          <CardTitle className="flex items-center gap-2">
-            Flip predictions
-            {isPending && (
-              <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" />
-                Loading...
-              </span>
-            )}
-          </CardTitle>
-          <div className="flex flex-col gap-1.5">
+          {isPending ? (
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Loading...
+            </span>
+          ) : (
+            <span />
+          )}
+          <div className="flex flex-wrap items-center gap-3">
             {/* Not htmlFor/id-linked to a <Label> - Base UI's Slider nests the real, focusable
                 <input type="range"> inside its Thumb, not on the root div an id here would land on,
                 so aria-label on the slider itself is the association that's actually guaranteed to
@@ -315,15 +314,14 @@ export function FlipSuggestionsPanel() {
             {/* inputValue, not durationDays - so this appears/disappears live while dragging too,
                 instead of waiting for release like the actual fetch does. */}
             {inputValue > PRECOMPUTED_MAX_DURATION_DAYS && (
-              <p className="text-xs text-muted-foreground">
+              <p className="basis-full text-xs text-muted-foreground">
                 Past {PRECOMPUTED_MAX_DURATION_DAYS} days - loads can be slower.
               </p>
             )}
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label>Prices in</Label>
+          <div className="flex items-center gap-2">
             <Tabs value={priceUnit} onValueChange={(value) => changePriceUnit(value as PriceUnit)}>
               <TabsList>
                 <TabsTrigger value="chaos">Chaos</TabsTrigger>

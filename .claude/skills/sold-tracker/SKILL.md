@@ -55,14 +55,33 @@ fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) i
   some sell or expire. Narrow or remove searches.
 - **PR check fails with "Couldn't measure":** the trade site refused or failed - it fails closed.
   Re-run it; if it's a 403 from GitHub's runners, see the workflow's comments.
-- **A "sale" that wasn't:** a seller pulling an item for good looks the same. One that's relisted
-  under the same item id is reopened and marked "Relisted".
-- The rules (gone 12 h+ = sold; 7 days = unsold; each listing checked once per 6-hour run; fetches
+- **A "sale" that wasn't:** a listing counts as sold at the first check that finds it gone (the
+  owner's call: pulling an item to relist it later is rare, and repricing happens in place). A
+  seller pulling an item for good looks the same. One relisted under the same item id is reopened
+  and marked "Relisted".
+- The rules (gone = sold; 7 days = unsold; each listing checked once per 6-hour run; fetches
   paced 25 s apart) and limits are constants in `lib/sold-tracker.ts`; the rate-limit margin (70%)
   is in `lib/trade-api.ts`.
 - **Checks falling behind** (listings not re-checked each run): the tracked count is near what one
   run's fetch budget covers (~6,750), or runs were short/skipped. Lower `MAX_TRACKED_LISTINGS` or
   narrow searches.
+
+## The page
+
+- The searches head the page as filter chips (none picked = All; counts are the current tab's).
+- One row per item: `components/poe-item-tooltip.tsx` draws the item like the game's tooltip (see the
+  `poe-item-display` skill for its colours, markup and sections); beside it, the listing's facts -
+  a price timeline (earlier prices struck through, time at each; `priceSpans` in
+  `lib/sold-tracker.ts`), listed / sold or expired / time up / search. Clicking opens the item with
+  roll ranges, and "Copy item text".
+- Item stats come from the tracker's `SoldListingItem.detail` (every mod with roll ranges,
+  properties, requirements, sockets, influences, relic/foil, flavour, the in-game item text).
+  Listings stored before details existed show only their mod lines until their next check.
+- **Previewing the UI with no real data:** build a fixture of real items (fetch ids with
+  `TradeApiClient.fetchListings`, run them through `recordListing`, set statuses/times by hand) and
+  either fulfil `/api/sold-listings` with it from Playwright (`page.route`) or point
+  `SOLD_LISTINGS_FILE` at it. The local-only `preview/sold-listings-mock` branch does this with 40
+  real Watcher's Eyes - never merge it.
 
 Trade API facts (limits, listing fields, repricing keeps the id) are in the `poe-data-sources`
 skill.

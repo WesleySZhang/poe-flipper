@@ -72,8 +72,8 @@ forecast days (see Done), but:
   value at ilvl 84). Another formula in circulation gives exactly 1.25× that from ilvl 68 up (×2500
   at 84) and a gentler slope below 68 (poedb bottoms out at 65). Settle it with one in-game
   disenchant of a unique with a known item level. The ranking doesn't change either way, only the
-  dust shown. Also unconfirmed: quality is counted at +2% per point (the in-game text; poedb's
-  formula says +1%), with every item assumed at 20%.
+  dust shown. Also unconfirmed: quality would count +2% per point (the in-game text; poedb's
+  formula says +1%) if assumed above 0% - the page assumes every item is unqualified.
 - **poe.ninja's single-request price feed, on hold.** `/poe1/api/economy/current/dense/overviews`
   returns every category in one response (~366 KB, ~0.3 s) instead of the ~48 requests the app and
   daily job make. Not a drop-in: lines carry only name, variant, price and 7-day graph (no seller
@@ -236,7 +236,7 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
   empty since the in-game Currency Exchange.)
 - **Liquidity from poe.ninja's exchange volume.** Divination Card Flips rate a leg with no GGG market
   this hour by poe.ninja's exchange volume (same chaos scale) instead of calling it Low.
-- **Dust Value assumes 20% quality.**
+- **Dust Value assumes 0% quality** (unqualified, as most disenchant fodder actually is).
 - **Dust Value page** (`/dust-value`). Uniques ranked by Thaumaturgic Dust per chaos for Kingsmarch
   disenchanting: poedb's dust values (generated into `lib/disenchant-values.ts`) against poe.ninja's
   cheapest trusted line per unique, with an item-level input and the usual price, confidence and

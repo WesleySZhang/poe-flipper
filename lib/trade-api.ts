@@ -141,7 +141,19 @@ export interface TradeListing {
   item: TradeItem;
 }
 
-export type TradeMod = string | { description?: string };
+/**
+ * A mod as the fetch returns it: its text, plus each stat's roll range in `mods[].magnitudes` (a
+ * Watcher's Eye "60% increased Lightning Damage while affected by Wrath" comes with min 40, max 60).
+ * A plain string in older responses. (Checked 2026-09-28.)
+ */
+export type TradeMod = string | { description?: string; mods?: Array<{ magnitudes?: Array<{ min?: string; max?: string }> }> };
+
+/** "Limited to: 1", "Level: 70", ... - `values` pairs are [text, display type]. */
+export interface TradeProperty {
+  name: string;
+  values?: Array<[string, number]>;
+  displayMode?: number;
+}
 
 export interface TradeItem {
   id: string;
@@ -152,13 +164,29 @@ export interface TradeItem {
   frameType?: number;
   ilvl?: number;
   icon?: string;
+  identified?: boolean;
   corrupted?: boolean;
+  mirrored?: boolean;
+  fractured?: boolean;
+  synthesised?: boolean;
+  duplicated?: boolean;
+  split?: boolean;
   mutated?: boolean;
+  isRelic?: boolean;
+  influences?: Record<string, boolean>;
+  sockets?: Array<{ group: number; sColour?: string }>;
+  properties?: TradeProperty[];
+  requirements?: TradeProperty[];
   enchantMods?: TradeMod[];
   implicitMods?: TradeMod[];
   fracturedMods?: TradeMod[];
   explicitMods?: TradeMod[];
   craftedMods?: TradeMod[];
+  crucibleMods?: TradeMod[];
+  scourgeMods?: TradeMod[];
+  flavourText?: string[];
+  /** `text`: the in-game item text (what Ctrl+C copies), base64. */
+  extended?: { text?: string };
 }
 
 export class TradeApiError extends Error {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
@@ -168,26 +168,23 @@ export function CurrencyExchangeFlipPanel() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Currency Exchange Flip
-          {isPending && (
-            <span className="flex items-center gap-1.5 text-sm font-normal text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Loading...
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {isStaleLeagueDay && (
-          <p className="text-xs font-medium text-red-600 dark:text-red-500">
-            Warning: Day-{currentDay} is late in the league - flips may not be achievable.
-          </p>
+        {isPending && (
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Loading...
+          </span>
         )}
-        <div className="flex flex-wrap items-end gap-4">
-          <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search items..." />
-          <NumericRangeFilter label="buy price (c)" onChange={changeBuyRange} />
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search items..." />
+            <NumericRangeFilter label="buy price (c)" onChange={changeBuyRange} />
+          </div>
+          {isStaleLeagueDay && (
+            <p className="text-[11px] text-red-600 dark:text-red-500" title={`Day-${currentDay} is late in the league - flips may not be achievable.`}>
+              Day-{currentDay} is late - flips may not be achievable
+            </p>
+          )}
         </div>
         {isPending && (
           <div className="flex h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
