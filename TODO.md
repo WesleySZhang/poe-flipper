@@ -95,6 +95,10 @@ forecast days (see Done), but:
 
 ## Done
 
+- **Divination Card Flips: instant buy could read cheaper than a buy order.** Cost used poe.ninja's
+  card price and instant the exchange hour's top - different sources and times, so 13 of 33 cards
+  (Divine Beauty, The Doctor, ...) had instant below Cost. Both now come from the exchange hour
+  (bottom / top), with poe.ninja only for cards with no exchange market.
 - **Per-item detail page** (`app/item/[category]/[key]/`). Linked from every item name and from
   search. Slider, big chart, overview, historical performance, momentum, Currency Exchange and card
   flip data, poewiki and poe.ninja links.

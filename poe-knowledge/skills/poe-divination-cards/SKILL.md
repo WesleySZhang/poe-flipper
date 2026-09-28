@@ -33,16 +33,17 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 - Prices stay live for flips; poe.ninja files cards under `DivinationCard`, and history stores
   them as category "item" (see `poe-item-categories`).
 - Table and detail page: `components/divination-flips-panel.tsx`, `components/item-detail-panel.tsx`.
-- Divine mode buys the cards on their own Divine market (hour midpoint), not a chaos price
-  converted; the reward stays at its chaos price, converted (the owner's call). Few cards have a
+- Divine mode buys the cards on their own Divine market, not a chaos price converted; the reward stays at its chaos price, converted (the owner's call). Few cards have a
   Divine market in a given hour - 11 of 76 priceable cards on 2026-09-27, mostly expensive ones
   (The Doctor, The Soul, History, House of Mirrors) - so Divine mode shows a short list.
   `[verified]` (`lib/divination-flips.ts`)
-- Instant-buy cost (taking other players' sell orders; the table's Instant buy button) = the top of
-  the card's hour trade range on the exchange × stack size; the plain Cost is a buy order. poe.ninja's card price isn't always
-  inside the exchange range: on 2026-09-27, 7 of 31 cards with an exchange market had poe.ninja's
-  price above the hour's high (The Doctor: 460c vs 401c), so instant cost can read lower than Cost.
-  Divine ratios are coarse, so in Divine mode instant cost often equals Cost. `[verified]`
+- Buy costs come from the card's last closed exchange hour: a buy order (Cost) = the bottom of the
+  range × stack size, an instant buy = the top. poe.ninja's card price is only used for a card with
+  no exchange market. Don't mix the two sources: poe.ninja's price is its own estimate at a
+  different time, and on 2026-09-27 it sat above the exchange hour's top for 13 of 33 cards
+  (Divine Beauty 203.7c vs 200-202c; The Doctor 577c vs 401c), which made the instant buy read
+  cheaper than the buy order. Many cards trade at a single price in an hour, so instant often
+  equals Cost. `[verified]` (`lib/divination-flips.ts`)
 - Nothing says a full stack can be bought at the Min/Max price: the exchange API has no stock per
   price. The one quantity check is the hour's highest listed card stock vs the stack size - on
   2026-09-27, 8 of 34 exchange-traded cards never had a full stack listed (The Soul 0-5 for a stack
