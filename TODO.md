@@ -13,6 +13,8 @@ ordered by importance.
 | 4 | [Holes in past-league history](#4-holes-in-past-league-history) | Open |
 | 5 | [Small follow-ups](#5-small-follow-ups) | Open |
 | 6 | [Sold item tracker](#6-sold-item-tracker) | Built; first live run pending |
+| 7 | [Trade site links don't always match the item](#7-trade-site-links-dont-always-match-the-item) | Open |
+| 8 | [Take DuckDB out of the deployed app](#8-take-duckdb-out-of-the-deployed-app) | Undecided |
 | – | [Done](#done) | – |
 
 ---
@@ -225,6 +227,51 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
    - how many "sales" reappear (withdrawn, not sold);
    - how much re-check budget overpriced listings use.
 3. Use those numbers to set the poll interval and price floor, then build storage and a page.
+
+## 7. Trade site links don't always match the item
+
+The cart-icon links (`tradeSearchUrl` in `lib/trade-site.ts`) search by name, plus a few filters
+(Foulborn, 5/6 links, item level on Dust Value), so the results can include items that aren't what
+the row prices. Example: the filter doesn't exclude corrupted items when the item isn't corrupted,
+so corrupted copies (often cheaper or pricier) show up mixed in.
+
+**To do:** go through what poe.ninja's line for an item actually describes (variant, links,
+corruption, base type, gem level/quality, influence, ...) and check each against the link's filters.
+Find every gap like corruption, and add the matching trade filter (e.g.
+`misc_filters.corrupted: false` for an uncorrupted line). Check a sample of links from each page
+against the trade site's results.
+
+## 8. Take DuckDB out of the deployed app
+
+Production still ships `db/history.duckdb` (~72 MB, Git LFS) and DuckDB's native library in the
+Vercel function. The main Flip Predictions table doesn't need it (it reads `precompute-data`), but
+these routes query it live:
+
+| Route | Used by | Needs |
+| --- | --- | --- |
+| `/api/price-history` | Every price chart (row expand, item detail page) | One item's past-league daily prices |
+| `/api/flip-suggestions` (live path) | Durations outside the precomputed 1–30; League tester's day override | Growth ratios for any day pair |
+| `/api/predict-item`, `/api/item-names` | League tester | Same, one item |
+| `/api/mirage-simulation` | Mirage simulator | A past league replayed day by day |
+
+**Why drop it:** a lighter function (no 72 MB file or native library, so no
+`serverExternalPackages`/`outputFileTracingIncludes` workarounds in `next.config.ts`), no LFS
+pointer risk on Vercel, and no LFS storage/bandwidth use (every DB rebuild is kept; every build
+downloads it).
+
+**Costs:** the testing tools work for any day/duration the user picks, which can't all be
+precomputed. Past-league history only changes at a league ingest, so publishing it to a data branch
+gains little over files built at ingest and shipped with the app, and adds a runtime fetch from
+`raw.githubusercontent.com`.
+
+**Plan:**
+1. At ingest (`scripts/ingest-history.ts`), export each item's past-league chart series to small
+   static JSON files, sharded so a chart loads one item, not all ~25k. Point `/api/price-history`
+   at them. This covers every everyday page.
+2. Decide whether the League tester, the Mirage simulator and the >30-day live fallback must run in
+   production. **Local-only:** production drops DuckDB, LFS and the `next.config.ts` workarounds.
+   **Must stay live:** keep DuckDB for those routes only.
+3. Update README (deploy notes, LFS), the `new-league` and `precompute-check` skills.
 
 ---
 
