@@ -120,11 +120,10 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   every price it had, earlier ones struck through, each with how long it stood at that price; when
   it was listed; when it sold or expired; how long it was up; the search that found it. Sort by
   sold/expired time, listed time, price or time up.
-- **Click an item** for everything recorded about it: every mod with its roll range (e.g.
+- **Each item shows** every mod with its roll range (e.g.
   `60% increased Lightning Damage while affected by Wrath (40–60)`), properties, item level,
-  influences, relic/foil, corruption, flavour text, the full price history, and a "Copy item text"
-  button (the in-game text, for Path of Building or the trade site). Listings recorded before
-  details were kept get them at their next check.
+  influences, relic/foil and corruption. Rows don't open anything, so text can be selected. Listings
+  recorded before details were kept get them at their next check.
 - **The searches** are listed first, as filters: pick one or more to see only the listings they
   found (All = every search); each shows how many of the current tab's listings it found, and its
   hover shows how many listings it matches on the trade site now. "paused" means a
@@ -246,7 +245,7 @@ rebuilds from scratch):
 | --- | --- |
 | `state/<League>.json` | The tracker's state: listed listings, ones that ended in the last week, search status |
 | `sold-listings/<League>.json` | What the Sold Listings page reads (`lib/sold-listings.ts`): sales from the last 30 days, unsold from the last 7, every listing still up |
-| `ended/<League>/<YYYY-MM>.jsonl` | Every listing that ended, one per line - the full history |
+| `ended/<League>/<YYYY-MM-DD>.jsonl` | Every listing that ended, by the day it ended, one per line - the full history |
 
 - **Published as it goes:** every 30 minutes during a run, and once more at its end (even if
   tracking failed partway), `scripts/publish-sold-tracker.sh` force-pushes a full snapshot of the

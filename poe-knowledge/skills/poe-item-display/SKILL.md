@@ -52,8 +52,8 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   Cinzel as `--font-poe`; the light/dark palettes are CSS variables on `.poe-tooltip` in
   `app/globals.css`.
 - `lib/sold-tracker.ts` (`toListingDetail`, `stripGameMarkup`) turns a trade API item into the stored
-  detail: mods with ranges, properties, requirements, sockets, tags (influences, relic, foil), item
-  text.
+  detail: mods with ranges, properties, requirements, sockets, tags (influences, relic, foil). The
+  item text is read for the foil name but not stored.
 
 ## Sources
 

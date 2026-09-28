@@ -17,7 +17,8 @@
  * Files under --dir (see lib/sold-tracker.ts for each one's shape):
  *   state/<League>.json          the tracker's state: listed listings, recently ended ones, searches
  *   sold-listings/<League>.json  the page's file: recent sales, unsold and listings still up
- *   ended/<League>/<YYYY-MM>.jsonl  every ended listing, one per line - the full history
+ *   ended/<League>/<YYYY-MM-DD>.jsonl  every ended listing, by the day it ended, one per line - the
+ *                                      full history (a file per day keeps each far under GitHub's 100 MB)
  *
  * Each loop:
  *  1. Discovery, per search, every DISCOVERY_MINUTES (shorter when a search is busy): the newest
@@ -36,7 +37,7 @@
  * week per search; after that, new listings are caught as they come.
  */
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
 import { TradeApiClient, TradeApiError } from "../lib/trade-api";
@@ -52,6 +53,7 @@ import {
   STATE_KEEP_ENDED_DAYS,
   admitNewListings,
   buildSoldListingsFile,
+  dropUnusedDetail,
   emptyTrackerState,
   endedToDrop,
   listingsDueForCheck,
@@ -97,7 +99,9 @@ function readSearches(): TrackedSearch[] {
 function loadState(): TrackerState {
   if (!existsSync(statePath)) return emptyTrackerState(CURRENT_LEAGUE);
   const state = JSON.parse(readFileSync(statePath, "utf8")) as TrackerState;
-  return state.version === 2 && state.league === CURRENT_LEAGUE ? state : emptyTrackerState(CURRENT_LEAGUE);
+  if (state.version !== 2 || state.league !== CURRENT_LEAGUE) return emptyTrackerState(CURRENT_LEAGUE);
+  state.listings.forEach(dropUnusedDetail);
+  return state;
 }
 
 function writeJson(file: string, data: unknown) {
@@ -107,14 +111,14 @@ function writeJson(file: string, data: unknown) {
   renameSync(tmp, file);
 }
 
-// What each month's archive file already holds, as "<id>|<endedAt>" - read once per month per run.
+// What each day's archive file already holds, as "<id>|<endedAt>" - read once per day per run.
 const archived = new Map<string, Set<string>>();
 
-function archivedKeys(month: string): Set<string> {
-  let keys = archived.get(month);
+function archivedKeys(day: string): Set<string> {
+  let keys = archived.get(day);
   if (!keys) {
     keys = new Set();
-    const file = path.join(archiveDir, `${month}.jsonl`);
+    const file = path.join(archiveDir, `${day}.jsonl`);
     if (existsSync(file)) {
       for (const line of readFileSync(file, "utf8").split("\n")) {
         if (!line.trim()) continue;
@@ -122,13 +126,13 @@ function archivedKeys(month: string): Set<string> {
         keys.add(`${t.id}|${t.endedAt}`);
       }
     }
-    archived.set(month, keys);
+    archived.set(day, keys);
   }
   return keys;
 }
 
 /**
- * Appends newly ended listings to the archive, by the month they ended - skipping any already
+ * Appends newly ended listings to the archive, by the day they ended - skipping any already
  * there, so it's idempotent: if a run stopped after archiving but before saving its state, the
  * next run settles the same listing again and this adds nothing. (A relisted listing that ends
  * again has a new endedAt, so it's a new line.)
@@ -136,16 +140,29 @@ function archivedKeys(month: string): Set<string> {
 function archive(ended: TrackedListing[]) {
   if (ended.length === 0) return;
   mkdirSync(archiveDir, { recursive: true });
-  const byMonth = new Map<string, string[]>();
+  const byDay = new Map<string, string[]>();
   for (const t of ended) {
-    const month = (t.endedAt ?? new Date().toISOString()).slice(0, 7);
-    const keys = archivedKeys(month);
+    const day = (t.endedAt ?? new Date().toISOString()).slice(0, 10);
+    const keys = archivedKeys(day);
     const key = `${t.id}|${t.endedAt}`;
     if (keys.has(key)) continue;
     keys.add(key);
-    byMonth.set(month, [...(byMonth.get(month) ?? []), JSON.stringify(t)]);
+    byDay.set(day, [...(byDay.get(day) ?? []), JSON.stringify(t)]);
   }
-  for (const [month, lines] of byMonth) appendFileSync(path.join(archiveDir, `${month}.jsonl`), lines.join("\n") + "\n");
+  for (const [day, lines] of byDay) appendFileSync(path.join(archiveDir, `${day}.jsonl`), lines.join("\n") + "\n");
+}
+
+/** The archive was once one file per month (YYYY-MM.jsonl): moves any into day files, slimmed. */
+function splitMonthArchives() {
+  if (!existsSync(archiveDir)) return;
+  for (const name of readdirSync(archiveDir)) {
+    if (!/^\d{4}-\d{2}\.jsonl$/.test(name)) continue;
+    const file = path.join(archiveDir, name);
+    const lines = readFileSync(file, "utf8").split("\n").filter((l) => l.trim());
+    archive(lines.map((l) => dropUnusedDetail(JSON.parse(l) as TrackedListing)));
+    unlinkSync(file);
+    log(`archive: split ${name} (${lines.length} listings) into day files`);
+  }
 }
 
 /** Runs --publish-cmd (see the module doc). Never throws: a failure waits for the next publish. */
@@ -184,6 +201,7 @@ function log(message: string) {
 async function main() {
   const searches = readSearches();
   const state = loadState();
+  splitMonthArchives();
   const listings = new Map(state.listings.map((t) => [t.id, t]));
   const previous = new Map(state.searches.map((s) => [s.label, s]));
   const statuses = new Map<string, TrackedSearchStatus>(

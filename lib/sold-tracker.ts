@@ -108,9 +108,6 @@ export interface SoldListingDetail {
   tags: string[];
   /** Every mod, in game order, with roll ranges. */
   mods: ListingMod[];
-  flavourText?: string;
-  /** The in-game item text (what Ctrl+C copies) - pastes into Path of Building or the trade site. */
-  text?: string;
 }
 
 export interface TrackedListing {
@@ -157,7 +154,7 @@ export interface TrackedSearchStatus {
 /**
  * The tracker's own state (state/<League>.json on the sold-tracker-data branch): every listed listing,
  * plus ended ones from the last STATE_KEEP_ENDED_DAYS. Ended listings are also appended to the
- * archive (ended/<League>/<YYYY-MM>.jsonl, one listing per line; a relisted one that ends again
+ * archive (ended/<League>/<YYYY-MM-DD>.jsonl by the day each ended, one listing per line; a relisted one that ends again
  * appears twice - the later line wins).
  */
 export interface TrackerState {
@@ -300,6 +297,10 @@ function decodeBase64(b64: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+/**
+ * The item text (base64 in the fetch) is read only for the foil name, not stored: at ~1.7 KB it was
+ * half of each stored listing. Flavour text isn't stored either - nothing shows it.
+ */
 function toListingDetail(item: TradeItem): SoldListingDetail {
   const text = item.extended?.text ? decodeBase64(item.extended.text).replace(/\r\n/g, "\n").trim() : undefined;
   const tags = [
@@ -317,7 +318,6 @@ function toListingDetail(item: TradeItem): SoldListingDetail {
   if (foil) tags.push(`Foil: ${foil}`);
   const groups = new Map<number, string[]>();
   for (const s of item.sockets ?? []) groups.set(s.group, [...(groups.get(s.group) ?? []), s.sColour ?? "?"]);
-  const flavour = (item.flavourText ?? []).join("").replace(/\r/g, "\n").trim();
   return {
     properties: (item.properties ?? []).map(propertyText),
     requirements: (item.requirements ?? []).map(propertyText),
@@ -330,8 +330,6 @@ function toListingDetail(item: TradeItem): SoldListingDetail {
         return t ? [{ kind, text: t, ...(ranges ? { ranges } : {}) }] : [];
       })
     ),
-    ...(flavour ? { flavourText: flavour } : {}),
-    ...(text ? { text } : {}),
   };
 }
 
@@ -349,6 +347,16 @@ export function toListingItem(item: TradeItem): SoldListingItem {
     mods: [...modList(item.fracturedMods, " (fractured)"), ...modList(item.explicitMods), ...modList(item.craftedMods, " (crafted)")],
     detail: toListingDetail(item),
   };
+}
+
+/** Drops what older tracker versions stored but nothing reads (item text, flavour text). */
+export function dropUnusedDetail(t: TrackedListing): TrackedListing {
+  const detail = t.item.detail as (SoldListingDetail & { text?: string; flavourText?: string }) | undefined;
+  if (detail) {
+    delete detail.text;
+    delete detail.flavourText;
+  }
+  return t;
 }
 
 /** The listing's current (or final) price. */

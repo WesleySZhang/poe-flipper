@@ -75,9 +75,13 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - The rules (gone = sold; 7 days = unsold; each listing checked once per 6-hour run; fetches
   paced 25 s apart) and limits are constants in `lib/sold-tracker.ts`; the rate-limit margin (70%)
   is in `lib/trade-api.ts`.
-- **Page slow to load:** the page file holds every listing still up, ~3.5 KB each with item details
-  (about half of that is the base64 item text). Near the 6,000 cap that's ~20 MB. Drop `detail.text`
-  from the page file (keep it in state/archive) or load details per item on click.
+- **Page slow to load:** the page file holds every listing still up, ~1.7 KB each with item details
+  - ~10 MB near the 6,000 cap. Next step if needed: load item details per row as they scroll into
+  view, rather than in the page file.
+- **File sizes:** GitHub rejects files over 100 MB, which would fail every publish. The archive is
+  one file per day (`ended/<League>/<YYYY-MM-DD>.jsonl`) to stay far under it; the tracker splits
+  any old month file (`YYYY-MM.jsonl`) into day files at start. `dropUnusedDetail` strips fields
+  older versions stored (item text, flavour text) from the state as it loads.
 - **Checks falling behind** (listings not re-checked each run): the tracked count is near what one
   run's fetch budget covers (~6,750), or runs were short/skipped. Lower `MAX_TRACKED_LISTINGS` or
   narrow searches.
@@ -88,10 +92,11 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - One row per item: `components/poe-item-tooltip.tsx` draws the item like the game's tooltip (see the
   `poe-item-display` skill for its colours, markup and sections); beside it, the listing's facts -
   a price timeline (earlier prices struck through, time at each; `priceSpans` in
-  `lib/sold-tracker.ts`), listed / sold or expired / time up / search. Clicking opens the item with
-  roll ranges, and "Copy item text".
+  `lib/sold-tracker.ts`), listed / sold or expired / time up / search. Mods show their roll
+  ranges. Rows don't open anything (the owner dropped the detail dialog so text can be selected).
 - Item stats come from the tracker's `SoldListingItem.detail` (every mod with roll ranges,
-  properties, requirements, sockets, influences, relic/foil, flavour, the in-game item text).
+  properties, requirements, sockets, influences, relic/foil). The in-game item text and flavour
+  text aren't stored: nothing shows them, and the item text was half of each listing's size.
   Listings stored before details existed show only their mod lines until their next check.
 - **Previewing the UI with no real data:** build a fixture of real items (fetch ids with
   `TradeApiClient.fetchListings`, run them through `recordListing`, set statuses/times by hand) and

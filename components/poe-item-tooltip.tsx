@@ -146,9 +146,6 @@ export function PoeItemTooltip({
   if (statusLines.length > 0) {
     sections.push(statusLines.map((l) => <div key={l.text} style={{ color: l.colour }}>{l.text}</div>));
   }
-  if (showRanges && detail?.flavourText) {
-    sections.push(<div className="whitespace-pre-line italic" style={{ color: RARITY }}>{detail.flavourText}</div>);
-  }
   if (price) sections.push(<div style={{ color: "var(--poe-price)" }}>{price}</div>);
 
   return (
