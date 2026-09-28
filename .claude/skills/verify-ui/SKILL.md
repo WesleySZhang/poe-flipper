@@ -12,13 +12,21 @@ AGENTS.md: a UI change isn't done until it works at 1280px **and** ~390px.
    node process and restart.
 2. **Login.** Password is `SITE_PASSWORD` in `.env.local`. API: `POST /api/login` with
    `{"password": "..."}`; keep the cookie. In Playwright, fill the password input on `/` and press Enter.
-3. **Drive it.** Write a scratch Playwright script (`.cjs`) in the scratchpad dir, or the repo root
-   and delete it after. Repo eslint flags `require()` in `.js/.ts`, so never leave one in the repo.
+3. **Drive it.** Write a scratch Playwright script (`.cjs`) in the repo root (so `require("playwright")`
+   resolves from the repo's `node_modules`) and delete it and its screenshots after. Repo eslint
+   flags `require()` in `.js/.ts`, so never leave one in the repo. On Windows, give `node` a Windows
+   path (`C:\...`), not a Git Bash `/c/...` one - `require` of the latter fails.
    - Desktop viewport 1280x900, then phone 390x844 (use `hasTouch`/`isMobile` for gesture changes).
    - Pages to hit for shared-row changes: `/` (Flip Predictions), Mirage simulator, Currency
-     Exchange Flip, Divination Card Flips, and `/item/<category>/<Name_With_Underscores>`.
+     Exchange Flip, Divination Card Flips, Dust Value, and `/item/<category>/<Name_With_Underscores>`.
+     Sold Listings (`/sold-listings`) needs data: use the `preview/sold-listings-mock` branch or a
+     `page.route` fixture (see the `sold-tracker` skill).
    - Interact for real: click/tap the thing you changed, expand a row, drag the slider.
+   - Colour changes: screenshot light **and** dark (`page.emulateMedia({ colorScheme })`, or toggle
+     the theme button), and confirm the mode you weren't asked to change looks the same.
 4. **Look at the screenshots.** Check for horizontal scroll, clipped text, misclicks, empty charts.
+   Layout: one page title (the header's - no card title under it) and the panel's controls in one
+   wrapping row (see the `new-page` skill).
 5. **Also run** `npx tsc --noEmit -p .` and `npx eslint <changed files>`.
 6. Report what you saw at each width. Say so if you did not verify something.
 

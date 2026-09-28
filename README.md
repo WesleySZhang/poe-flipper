@@ -413,9 +413,11 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
   - `verify-ui` runs the app and checks a change at desktop and phone width;
   - `precompute-check` checks or reruns the daily job;
   - `new-league` is the checklist for a league launch or end;
-  - `sold-tracker` covers adding searches to, running and debugging the sold listing tracker.
+  - `sold-tracker` covers adding searches to, running, changing and debugging the sold listing
+    tracker, and the mock-data preview;
+  - `new-page` wires up a new page and holds the panel layout rules.
 - **Path of Exile knowledge skills** in `poe-knowledge/` (economy, data sources, divination cards,
-  league lifecycle, item categories), kept generic for use in other projects. See
+  league lifecycle, item categories, item tooltips, disenchanting), kept generic for use in other projects. See
   [`poe-knowledge/README.md`](poe-knowledge/README.md).
 
 ---

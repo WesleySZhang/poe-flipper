@@ -1,6 +1,6 @@
 ---
 name: sold-tracker
-description: Use when adding or changing the trade searches the sold listing tracker follows, running it locally, or working out why the Sold Listings page is empty, stale or shows odd sales.
+description: Use when adding or changing the trade searches the sold listing tracker follows, running it locally, changing what it stores, previewing the Sold Listings page with mock data, or working out why that page is empty, stale or shows odd sales.
 ---
 
 # The sold listing tracker
@@ -36,6 +36,19 @@ SOLD_LISTINGS_FILE=.sold-tracker/sold-listings/Allflame.json npm run dev   # pag
 
 Only one `next dev` can run per project; stop the other one first. For UI work without a real run,
 fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) instead.
+
+## Change what it stores
+
+The workflows only run the script from master, so a change to `lib/sold-tracker.ts` or the script
+goes live on merge - no workflow edit (check `git diff master <branch> -- .github/workflows/`).
+Keep the stored shape backward compatible, since `state/` on `sold-tracker-data` carries over:
+
+- New fields optional (`detail?`). `recordListing` rebuilds `item` on every check, so listed
+  listings pick a new item field up at their next check; ended ones keep what they had.
+- Dropped fields (e.g. `missingSince`) can stay in old JSON - nothing reads them.
+- Don't rename or re-mean a `status` value without migrating `state/` by hand.
+- `lib/trade-api.ts` types are what we read of GGG's fetch response; the response already carries
+  mods with roll ranges, properties, item text etc., so reading more of it needs no new request.
 
 ## When something looks wrong
 
@@ -81,7 +94,15 @@ fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) i
   `TradeApiClient.fetchListings`, run them through `recordListing`, set statuses/times by hand) and
   either fulfil `/api/sold-listings` with it from Playwright (`page.route`) or point
   `SOLD_LISTINGS_FILE` at it. The local-only `preview/sold-listings-mock` branch does this with 40
-  real Watcher's Eyes - never merge it.
+  real Watcher's Eyes - never merge it or push it.
+- **Mock preview not showing?** Usually one of:
+  - The checkout isn't `preview/sold-listings-mock` (only that branch's `lib/sold-listings.ts`
+    returns the fixture). `git checkout preview/sold-listings-mock`; the dev server picks it up.
+  - The branch is behind: `git merge master` (or the feature branch) into it to see the latest UI.
+  - Cache: its route caches under `"sold-listings-preview"` so real data cached under
+    `"sold-listings"` on another branch can't be served in its place. Keep that key distinct.
+  - Check: `curl` `/api/sold-listings` (logged in) should return league `"Allflame"`, 187 tracked.
+  Make UI changes on a feature branch, then merge that into the preview branch.
 
 Trade API facts (limits, listing fields, repricing keeps the id) are in the `poe-data-sources`
 skill.
