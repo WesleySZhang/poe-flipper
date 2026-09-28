@@ -24,8 +24,9 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   `[unsure]` - from memory of the game/community renderers, checked against a trade site screenshot
   by eye only.
 - **On a light page** the game's dark box looks out of place. This app draws it in black and white
-  there (white background, near-black text, grey labels and rules) with the same layout, and keeps
-  the game's colours for dark mode. `[owner]` (2026-09-28)
+  there (white background, grey labels and rules) with the same layout, and keeps the game's
+  colours for dark mode. Name and mod text use the page's own foreground colour (`#0a0a0a` here) -
+  softer greys for mods read as washed out next to the rest of the page. `[owner]` (2026-09-28)
 - **The font** is Fontin SmallCaps (small caps, full-height digits). A serif fallback with
   `font-variant: small-caps` gets old-style digits on Windows (Palatino, Georgia) that look tiny;
   Cinzel (Google Fonts) is a close free stand-in. `[verified]` (2026-09-28)

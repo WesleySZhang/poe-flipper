@@ -153,6 +153,8 @@ On desktop the chart and Overview take the left 70%, and the other cards stack o
 - **Header:** app name, page links (a menu button on narrower screens), theme toggle and a
   **global search** box. Search suggests any item poe.ninja currently prices as you type, and
   opens its detail page. On a phone it's an icon that opens a full-width search.
+- **Page layout:** the page title is the header's alone - panels have no title of their own. Each
+  panel's controls (search, filters, Chaos/Divine toggle) share one wrapping row at its top.
 - **Mobile:** tables become stacked cards, with a "Sort by" control and the confidence/liquidity
   filter above them. Nothing needs horizontal scrolling. The league tester doesn't have this yet.
 - **Charts:** the current league has its own solid line up to today, joining the dotted forecast.
