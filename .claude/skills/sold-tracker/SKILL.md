@@ -68,6 +68,7 @@ fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) i
 
 ## The page
 
+- The searches head the page as filter chips (none picked = All; counts are the current tab's).
 - One row per item: `components/poe-item-tooltip.tsx` draws the item like the game's tooltip (see the
   `poe-item-display` skill for its colours, markup and sections); beside it, the listing's facts -
   a price timeline (earlier prices struck through, time at each; `priceSpans` in

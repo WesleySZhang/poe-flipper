@@ -124,7 +124,9 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   influences, relic/foil, corruption, flavour text, the full price history, and a "Copy item text"
   button (the in-game text, for Path of Building or the trade site). Listings recorded before
   details were kept get them at their next check.
-- **The searches** are listed at the top with how many listings each matches now. "paused" means a
+- **The searches** are listed first, as filters: pick one or more to see only the listings they
+  found (All = every search); each shows how many of the current tab's listings it found, and its
+  hover shows how many listings it matches on the trade site now. "paused" means a
   search grew past the per-search limit; a warning icon means it failed or got more than 200 new
   listings between runs (so it missed some). A red line above them means the tracking limit is
   reached and new listings are being skipped.

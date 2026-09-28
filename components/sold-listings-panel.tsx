@@ -232,11 +232,23 @@ export function SoldListingsPanel() {
     return c;
   }, [listings]);
 
+  // Searches picked as filters at the top; empty = every search.
+  const [pickedSearches, setPickedSearches] = useState<Set<string>>(() => new Set());
+  const tabListings = useMemo(() => listings.filter((t) => t.status === tab), [listings, tab]);
+  // How many of this tab's listings each search found.
+  const searchCounts = useMemo(() => {
+    const c = new Map<string, number>();
+    for (const t of tabListings) for (const label of t.searches) c.set(label, (c.get(label) ?? 0) + 1);
+    return c;
+  }, [tabListings]);
+
   const normalizedSearch = searchText.trim().toLowerCase();
   const visible = useMemo(
     () =>
       sortByKey(
-        listings.filter((t) => t.status === tab && matchesSearch(t, normalizedSearch)),
+        tabListings.filter(
+          (t) => (pickedSearches.size === 0 || t.searches.some((l) => pickedSearches.has(l))) && matchesSearch(t, normalizedSearch)
+        ),
         sort,
         (t, key) => {
           switch (key) {
@@ -254,7 +266,7 @@ export function SoldListingsPanel() {
           }
         }
       ),
-    [listings, tab, normalizedSearch, sort, loadedAt]
+    [tabListings, pickedSearches, normalizedSearch, sort, loadedAt]
   );
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
@@ -263,6 +275,18 @@ export function SoldListingsPanel() {
   function changeTab(value: Tab) {
     setTab(value);
     setPage(0);
+  }
+
+  function changePickedSearches(next: Set<string>) {
+    setPickedSearches(next);
+    setPage(0);
+  }
+
+  function toggleSearch(label: string) {
+    const next = new Set(pickedSearches);
+    if (next.has(label)) next.delete(label);
+    else next.add(label);
+    changePickedSearches(next);
   }
 
   function changeSearchText(text: string) {
@@ -310,6 +334,57 @@ export function SoldListingsPanel() {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {file && file.searches.length > 0 && (
+          // The tracked searches, as filters: none picked = all listings.
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-muted-foreground">Searches</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-pressed={pickedSearches.size === 0}
+                onClick={() => changePickedSearches(new Set())}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm",
+                  pickedSearches.size === 0 ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                )}
+              >
+                All <span className="opacity-70">{tabListings.length}</span>
+              </button>
+              {file.searches.map((s) => {
+                const on = pickedSearches.has(s.label);
+                return (
+                  <div
+                    key={s.label}
+                    className={cn(
+                      "flex items-center rounded-md border text-sm",
+                      on ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleSearch(s.label)}
+                      title={
+                        s.error ??
+                        s.paused ??
+                        `${s.total !== undefined ? `${formatSearchTotal(s.total)} listed now. ` : ""}${s.lastRun ? `Last run ${formatDate(s.lastRun)}` : "Not run yet"}`
+                      }
+                      className="flex h-8 items-center gap-1.5 pl-2.5 pr-1"
+                    >
+                      {s.label}
+                      <span className="opacity-70">{searchCounts.get(s.label) ?? 0}</span>
+                      {s.paused && <span className={on ? "" : "text-destructive"}>· paused</span>}
+                      {(s.error || s.missedListings) && (
+                        <AlertTriangle className="size-3.5" aria-label={s.error ? "Search failed" : "Missed listings"} />
+                      )}
+                    </button>
+                    <TradeSiteLink href={s.url} className="mr-2 size-3.5" />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {file && (
           <div className="flex flex-col gap-2">
             <p
@@ -324,23 +399,6 @@ export function SoldListingsPanel() {
                 Tracking limit ({MAX_TRACKED_LISTINGS}) reached - new listings skipped
               </p>
             )}
-            <div className="flex flex-wrap gap-2">
-              {file.searches.map((s) => (
-                <span
-                  key={s.label}
-                  className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs"
-                  title={s.error ?? s.paused ?? (s.lastRun ? `Last run ${formatDate(s.lastRun)}` : "Not run yet")}
-                >
-                  {s.label}
-                  {s.total !== undefined && <span className="text-muted-foreground">· {formatSearchTotal(s.total)} listed</span>}
-                  {s.paused && <span className="text-destructive">· paused</span>}
-                  {(s.error || s.missedListings) && (
-                    <AlertTriangle className="size-3.5 text-destructive" aria-label={s.error ? "Search failed" : "Missed listings"} />
-                  )}
-                  <TradeSiteLink href={s.url} className="size-3.5" />
-                </span>
-              ))}
-            </div>
           </div>
         )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
