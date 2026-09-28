@@ -42,8 +42,9 @@ export const MIN_DISCOVERY_MINUTES = 5;
 /** Ended listings stay in the tracker's state this long (so a relist is recognised), then live
  *  only in the archive. */
 export const STATE_KEEP_ENDED_DAYS = 7;
-/** What the page's file holds: sales from the last SOLD_PAGE_DAYS and unsold from the last
- *  UNSOLD_PAGE_DAYS. Everything is in the archive. */
+/** What the page's file holds: sales from the last SOLD_PAGE_DAYS, unsold from the last
+ *  UNSOLD_PAGE_DAYS, and every listing still up (the page counts those as unsold). Everything
+ *  ended is in the archive. */
 export const SOLD_PAGE_DAYS = 30;
 export const UNSOLD_PAGE_DAYS = 7;
 /** A search returns at most this many ids (newest first here), so a run that finds this many new
@@ -196,6 +197,7 @@ export function buildSoldListingsFile(state: TrackerState, listings: Iterable<Tr
   for (const t of listings) {
     if (t.status === "listed") trackedCount++;
     if (
+      t.status === "listed" ||
       (t.status === "sold" && within(t.endedAt, SOLD_PAGE_DAYS)) ||
       (t.status === "unsold" && within(t.endedAt, UNSOLD_PAGE_DAYS))
     ) {

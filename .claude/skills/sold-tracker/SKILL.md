@@ -8,7 +8,7 @@ description: Use when adding or changing the trade searches the sold listing tra
 `scripts/track-sold-listings.ts` follows trade site listings (instant buyout, listed in the last
 week) matched by the links in `sold-tracker/searches.md`, and records which sell. The "Track sold
 listings" workflow runs it ~5.5 h every 6 h, then force-pushes `state/`, `sold-listings/` (the
-page's file: recent sales/unsold) and `ended/` (the full history, JSONL by month) to the
+page's file: recent sales/unsold and every listing still up, which the page shows as unsold) and `ended/` (the full history, JSONL by month) to the
 `sold-tracker-data` branch; `/sold-listings` reads `sold-listings/<League>.json` (`lib/sold-listings.ts`,
 5-min cache). Publishing (`scripts/publish-sold-tracker.sh`, a full snapshot force-pushed as one
 commit) happens every 30 min during a run and once at its end, so the page lags by up to ~35 min.
@@ -75,6 +75,9 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - The rules (gone = sold; 7 days = unsold; each listing checked once per 6-hour run; fetches
   paced 25 s apart) and limits are constants in `lib/sold-tracker.ts`; the rate-limit margin (70%)
   is in `lib/trade-api.ts`.
+- **Page slow to load:** the page file holds every listing still up, ~3.5 KB each with item details
+  (about half of that is the base64 item text). Near the 6,000 cap that's ~20 MB. Drop `detail.text`
+  from the page file (keep it in state/archive) or load details per item on click.
 - **Checks falling behind** (listings not re-checked each run): the tracked count is near what one
   run's fetch budget covers (~6,750), or runs were short/skipped. Lower `MAX_TRACKED_LISTINGS` or
   narrow searches.

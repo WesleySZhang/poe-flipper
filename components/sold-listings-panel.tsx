@@ -31,16 +31,21 @@ import {
 const PAGE_SIZE = 25;
 
 type SortKey = "ended" | "listed" | "price" | "duration";
-// The page file holds listings that ended recently - see buildSoldListingsFile.
+// The page file holds recently ended listings and those still up - see buildSoldListingsFile.
 type Tab = "sold" | "unsold";
 
 const TAB_LABEL: Record<Tab, string> = { sold: "Sold", unsold: "Unsold" };
 const TAB_TITLE: Record<Tab, string> = {
   sold: `Last ${SOLD_PAGE_DAYS} days`,
-  unsold: `Still up after ${LISTING_MAX_AGE_DAYS} days; ended in the last ${UNSOLD_PAGE_DAYS} days`,
+  unsold: `Still listed, or expired (up ${LISTING_MAX_AGE_DAYS} days) in the last ${UNSOLD_PAGE_DAYS} days`,
 };
-// The end date means something different per tab.
-const ENDED_LABEL: Record<Tab, string> = { sold: "Sold", unsold: "Expired" };
+// The end date's sort label per tab; on Unsold it's the expiry, or the last check for one still up.
+const ENDED_LABEL: Record<Tab, string> = { sold: "Sold", unsold: "Last seen" };
+
+// Listings still up count as unsold.
+function tabOf(t: TrackedListing): Tab {
+  return t.status === "sold" ? "sold" : "unsold";
+}
 
 async function fetchSoldListings(): Promise<SoldListingsFile | null> {
   const res = await fetch("/api/sold-listings");
@@ -131,7 +136,7 @@ function SearchLinks({ t, searchLinks }: { t: TrackedListing; searchLinks: Map<s
 
 /** The listing's own facts, stacked: price history, then listed / sold / time up / search. */
 function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string; searchLinks: Map<string, string> }) {
-  const tab: Tab = t.status === "unsold" ? "unsold" : "sold";
+  const endedLabel = t.status === "sold" ? "Sold" : t.status === "unsold" ? "Expired" : "Last seen";
   return (
     <div className="flex flex-col gap-2">
       <div>
@@ -140,16 +145,25 @@ function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string;
       </div>
       <div className="flex flex-col gap-0.5 border-t border-border pt-2">
         <Field label="Listed">{formatDate(t.listedAt)}</Field>
-        <Field label={ENDED_LABEL[tab]}>{formatDate(endedAt(t))}</Field>
+        <Field label={endedLabel}>{formatDate(endedAt(t))}</Field>
         <Field label="Time up">{formatDuration(listedDurationMs(t, now))}</Field>
         <Field label="Search">
           <SearchLinks t={t} searchLinks={searchLinks} />
         </Field>
       </div>
-      {t.reappeared && (
-        <Badge variant="outline" className="self-start" title="Counted sold once, then listed again">
-          Relisted
-        </Badge>
+      {(t.status === "listed" || t.reappeared) && (
+        <div className="flex gap-1.5">
+          {t.status === "listed" && (
+            <Badge variant="secondary" title="Not sold yet; still on the trade site at the last check">
+              Still listed
+            </Badge>
+          )}
+          {t.reappeared && (
+            <Badge variant="outline" title="Counted sold once, then listed again">
+              Relisted
+            </Badge>
+          )}
+        </div>
       )}
     </div>
   );
@@ -227,13 +241,13 @@ export function SoldListingsPanel() {
   const listings = useMemo(() => file?.listings ?? [], [file]);
   const counts = useMemo(() => {
     const c: Record<Tab, number> = { sold: 0, unsold: 0 };
-    for (const t of listings) if (t.status === "sold" || t.status === "unsold") c[t.status]++;
+    for (const t of listings) c[tabOf(t)]++;
     return c;
   }, [listings]);
 
   // Searches picked as filters at the top; empty = every search.
   const [pickedSearches, setPickedSearches] = useState<Set<string>>(() => new Set());
-  const tabListings = useMemo(() => listings.filter((t) => t.status === tab), [listings, tab]);
+  const tabListings = useMemo(() => listings.filter((t) => tabOf(t) === tab), [listings, tab]);
   // How many of this tab's listings each search found.
   const searchCounts = useMemo(() => {
     const c = new Map<string, number>();
@@ -378,7 +392,7 @@ export function SoldListingsPanel() {
           <div className="flex flex-col gap-2">
             <p
               className="text-xs text-muted-foreground"
-              title={`Instant buyout, listed in the last week. Sold = no longer listed. Unsold = still up after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
+              title={`Instant buyout, listed in the last week. Sold = no longer listed. Unsold = still listed, or expired after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
             >
               Tracking {file.trackedCount.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
             </p>
