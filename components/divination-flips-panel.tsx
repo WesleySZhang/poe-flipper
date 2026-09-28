@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LiquidityTierFilter } from "@/components/liquidity-tier-filter";
-import { ExchangePriceButton } from "@/components/exchange-price-button";
+import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { TradeSiteLink } from "@/components/trade-site-link";
 import { tradeSearchUrl } from "@/lib/trade-site";
 import { ItemHistoryRow } from "@/components/item-history-row";
@@ -298,7 +298,7 @@ export function DivinationFlipsPanel() {
                           {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
                         </span>
                       ) : f.faustusTradeable ? (
-                        <ExchangePriceButton name={f.name} />
+                        <FaustusPriceButton name={f.name} priceUnit={priceUnit} />
                       ) : (
                         "—"
                       ),
@@ -367,7 +367,7 @@ export function DivinationFlipsPanel() {
                           {formatPriceValue(f.buyMaxChaosValue, f.buyMaxDivineValue, priceUnit)}
                         </span>
                       ) : f.faustusTradeable ? (
-                        <ExchangePriceButton name={f.name} />
+                        <FaustusPriceButton name={f.name} priceUnit={priceUnit} />
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

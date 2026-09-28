@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfidenceBadge } from "@/components/confidence-badge";
-import { ExchangePriceButton } from "@/components/exchange-price-button";
+import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { LEG_LABEL, fullStackListed, otherCurrencyTitle, profitUnit, stockRangeTitle } from "@/lib/exchange-route";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { humanizeCategoryName } from "@/lib/category-reliability";
@@ -426,7 +426,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Currency Exchange</CardTitle>
-                <ExchangePriceButton name={historyName} />
+                <FaustusPriceButton name={historyName} priceUnit="market" />
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <p className="text-xs text-muted-foreground">
@@ -497,7 +497,7 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
               <CardHeader className="flex flex-row items-center justify-between gap-4">
                 <CardTitle>Divination Card Flip</CardTitle>
                 <div className="flex items-center gap-2">
-                  {divinationFlip.faustusTradeable && <ExchangePriceButton name={historyName} />}
+                  {divinationFlip.faustusTradeable && <FaustusPriceButton name={historyName} priceUnit={priceUnit} />}
                   <Button
                     type="button"
                     size="sm"

@@ -1035,6 +1035,14 @@ export async function getFaustusPrices(league: string): Promise<Map<string, Faus
   return result;
 }
 
+/** Single-name convenience wrapper for the on-demand "Faustus Price" button - still goes through
+ *  the same cached, whole-league computation above rather than re-fetching per click. */
+export async function getFaustusPrice(name: string, league: string): Promise<FaustusPrice | undefined> {
+  if (!isFaustusTradeable(name)) return undefined;
+  const prices = await getFaustusPrices(league);
+  return prices.get(name);
+}
+
 export interface FaustusSpread {
   name: string;
   /** Which market to buy on and which to sell on (lib/exchange-route.ts's pickRoute). */

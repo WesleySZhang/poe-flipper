@@ -42,8 +42,6 @@ live calculation). Each row shows the current price, predicted price, change and
   the target day, and the model's day-by-day forecast as a dotted line.
 - **Click an item's name** to open its detail page. The small icon next to it opens poewiki; a cart
   icon on uniques opens a trade site search.
-- **Exchange Price** (Currency Exchange items): live listings from the trade site - see
-  [Shared across pages](#shared-across-pages).
 - **Filters:** category, price range, search, and confidence tier (Low is hidden by default).
 - **Chaos / Divine** toggle switches every price and ratio to that currency.
 
@@ -137,13 +135,6 @@ On desktop the chart and Overview take the left 70%, and the other cards stack o
   Aspects: the official trade site's search for that item (online or instant-buyout sellers,
   cheapest first, one listing per seller; link count when the row is a 5/6-link line). The search
   runs in your browser, not through this app (`lib/trade-site.ts`).
-- **Exchange Price** button, on items the Currency Exchange covers: live online listings from the
-  trade site's bulk exchange, as each price and the stock listed at it (e.g. `8c - 12 in stock`).
-  It runs a search from this app's server only when pressed. The trade API limits requests per IP
-  and every user shares the server's IP, so searches go through a rate limiter that follows the
-  limits the trade site reports and answers "Retry in Ns" rather than queueing
-  (`lib/trade-rate-limit.ts`); results are cached for 5 minutes per item. The bulk exchange is thin
-  since the in-game Currency Exchange, so few or no listings is common.
 
 ---
 
@@ -354,8 +345,6 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
   Settings → Actions → "Allow GitHub Actions to create and approve pull requests"). Choosing to
   train on a finished league means starting the Retrain model workflow and reviewing its PR.
 - **Currency Exchange data is about 2 hours old** and gold costs are hand-transcribed.
-- **Exchange Price searches are rate limited per server IP,** shared by every user, and the limiter's
-  state is per server instance (it re-syncs from the trade site's own counts on every response).
 - **One item, several poe.ninja lines.** Base types have one line per item level or influence.
   The live price uses the first line while history averages them, so the two can differ.
 
@@ -383,7 +372,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `item-detail-panel.tsx` | Item detail page content |
 | `*-panel.tsx` | Each page's main panel |
 | `mobile-sort-control.tsx` | Mobile sort and confidence/liquidity filter |
-| `exchange-price-button.tsx`, `trade-site-link.tsx` | Exchange Price button (live listings) and the trade site link icon |
+| `trade-site-link.tsx` | Trade site link icon |
 | `ui/` | shadcn components |
 
 ### Predictions
@@ -409,7 +398,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/faustus.ts`, `lib/faustus-gold.ts` | Currency Exchange client (Chaos and Divine markets per item) and gold costs |
 | `lib/exchange-route.ts` | Picking a flip's buy/sell markets, and which currency to show profit in |
 | `lib/liquidity.ts` | Liquidity tiers (exchange volume, and poe.ninja seller count for uniques) |
-| `lib/trade-site.ts`, `lib/trade-exchange.ts`, `lib/trade-rate-limit.ts` | Official trade site: search links, the Exchange Price bulk-exchange search, and its rate limiter |
+| `lib/trade-site.ts` | Official trade site search links |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `data` branch CSVs |
 | `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |

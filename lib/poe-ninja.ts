@@ -238,9 +238,6 @@ export interface CurrencyPrice {
   /** poe.ninja's exchange volume in chaos (see ExchangeOverviewLine.volumePrimaryValue) - live
    *  data only, not kept in the daily snapshot. */
   volumeChaos?: number;
-  /** The official trade site's id for this item ("the-doctor", "divine") - poe.ninja's exchange
-   *  ids are the trade site's (726 of 728 matched on 2026-09-28). Live data only. */
-  tradeId?: string;
 }
 
 // The stash-listing scrape (fetchCurrencyOverviewRaw) only ever returns rows for these two types -
@@ -321,13 +318,13 @@ export async function getAllCurrentCurrencyPrices(
       // For Currency specifically, exchange data replaces the stash value outright (see above) -
       // for every other type, only fill a gap the stash scrape left empty, so a type that DOES
       // still have working stash data isn't silently overridden by this fallback.
-      // Volume and trade id are still worth keeping - the stash scrape has neither.
+      // The volume is still worth keeping - the stash scrape has none.
       if (type !== "Currency" && existing) {
-        prices.set(name, { ...existing, volumeChaos: line.volumePrimaryValue, tradeId: line.id });
+        prices.set(name, { ...existing, volumeChaos: line.volumePrimaryValue });
         continue;
       }
       const spark = sparkPointsFrom(line.sparkline) ?? existing?.spark;
-      prices.set(name, { chaosValue: line.primaryValue, type, spark, volumeChaos: line.volumePrimaryValue, tradeId: line.id });
+      prices.set(name, { chaosValue: line.primaryValue, type, spark, volumeChaos: line.volumePrimaryValue });
     }
   });
 

@@ -36,7 +36,7 @@ interface UseItemHistoryExpandArgs {
  * Owns the expand/fetch state for one item's price-history chart - split out of ItemHistoryRow so
  * both the desktop table row and the mobile card (components/item-history-card.tsx) can drive the
  * same chart from the same lazy-fetched data, without duplicating the fetch logic in two places.
- * One hook call per item, same reasoning as ExchangePriceButton: React hooks need a component
+ * One hook call per item, same reasoning as FaustusPriceButton: React hooks need a component
  * instance per row, not an inline call inside a .map() callback.
  */
 export function useItemHistoryExpand({
@@ -58,7 +58,7 @@ export function useItemHistoryExpand({
     const next = !expanded;
     setExpanded(next);
     if (next) setHasExpandedOnce(true);
-    // Fetch once per row, on first expand - cached across collapse/re-expand like ExchangePriceButton
+    // Fetch once per row, on first expand - cached across collapse/re-expand like FaustusPriceButton
     // does, except a failed fetch is retried on the next expand rather than staying stuck on error.
     if (next && (state === undefined || state.status === "error")) {
       setState({ status: "loading" });

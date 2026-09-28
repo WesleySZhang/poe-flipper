@@ -52,7 +52,7 @@ export interface DivinationFlip {
   buyStock?: MarketStockRange;
   buyStockDivine?: MarketStockRange;
   /** Whether GGG's Currency Exchange covers this exact card at all - drives the on-demand
-   *  "Exchange Price" button (components/exchange-price-button.tsx), same as the main dashboard. */
+   *  "Exchange Price" button (components/faustus-price-button.tsx), same as the main dashboard. */
   faustusTradeable: boolean;
   rewardName: string;
   rewardKind: DivinationRewardKind;

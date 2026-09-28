@@ -88,11 +88,10 @@ forecast days (see Done), but:
 
 ## Done
 
-- **Trade site links and a live Exchange Price.** Uniques (and Vaal Aspects) link to an official
-  trade site search - on every table that lists them, the item page, and card flips' unique rewards.
-  The Exchange Price button now shows live bulk-exchange listings (price and stock per level), through
-  a rate limiter that follows the trade site's reported limits, refuses instead of queueing, and
-  caches per item for 5 minutes.
+- **Trade site links.** Uniques (and Vaal Aspects) link to an official trade site search - on every
+  table that lists them, the item page, and card flips' unique rewards. (A live bulk-exchange search
+  behind the Exchange Price button was tried and removed: the trade site's bulk exchange is nearly
+  empty since the in-game Currency Exchange.)
 - **Liquidity from poe.ninja's exchange volume.** Divination Card Flips rate a leg with no GGG market
   this hour by poe.ninja's exchange volume (same chaos scale) instead of calling it Low.
 - **Dust Value assumes 20% quality.**
