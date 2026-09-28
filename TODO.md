@@ -91,8 +91,39 @@ forecast days (see Done), but:
 long it was listed. A job polls the trade site every few minutes, and a listing that disappears is
 assumed sold.
 
-**Verdict: feasible for a small watchlist, not for the whole market.** The limit is a few dozen
-watched searches or a few hundred listings, at 5-30 minute resolution. Findings (probed 2026-09-27):
+**Scope chosen:** instant buyout only, priced at 100d or more, listed in the last week.
+
+**Verdict:** finding new listings is cheap. Spotting sales is the bottleneck, and the rate limit sets
+how often each tracked listing can be re-checked:
+
+| Listings tracked | Re-checked about every |
+| --- | --- |
+| ~20,500 (the whole scope) | ~1 day |
+| ~7,800 (uniques only) | ~9 hours |
+| ~2,000 | ~2 hours |
+| ~150 | ~10 minutes |
+
+So the whole scope is feasible only if a sale's time is known to within about a day. Minute-level
+timing needs a narrower scope, such as specific items. Findings (probed 2026-09-27):
+
+- **The scope, measured (2026-09-28, ~06:00 UTC):**
+  - Instant buyout is status `securable`. These listings have a gold `fee` and `online: null`
+    (the seller needn't be online), so offline sellers and bait are both handled.
+  - 100d+, instant buyout, last week: ~20,500 listings (100-150d: 6,978; 150-300d: 7,626; 300d+:
+    5,948). A search's `total` stops at 10,000, so count in price bands.
+    - Listed in the last day: 5,460.
+    - Uniques only: 7,837.
+  - Sorting by `indexed` descending works (newest first). At ~3.3 new or repriced listings a
+    minute (~4,700 a day), a newest-first search every 10 minutes catches every new listing with
+    room to spare. That's ~6 searches and ~30 fetches an hour.
+  - The rest of the fetch budget, ~900 listings an hour at a safe ~70% of the limit, goes to
+    re-checking listings. That budget is what the table above divides up.
+  - Search can't do the re-checking at this size either. Slicing 20k listings into ≤100-id searches
+    takes 200+ searches (~2+ hours of budget), and 7k listings sit at exactly 100d, which no price
+    slice can split.
+  - Listings still up after 7 days drop out as "unsold after a week".
+  - Overpriced listings that never sell still use re-check budget. For uniques, one fix is to skip
+    listings far above poe.ninja's price.
 
 - **The official route is closed.** GGG's public stash API (`service:psapi`, the feed poe.ninja
   uses, with a 5-minute delay) reports every stash change. That's how you'd see removals across the
@@ -125,10 +156,8 @@ watched searches or a few hundred listings, at 5-30 minute resolution. Findings 
   - *Gone isn't sold.* A listing also disappears when the seller moves the item to a private tab,
     removes its price or uses it. Treat an id as sold only once it's been missing for 2+ checks
     and hasn't reappeared.
-  - *Offline sellers.* Search with status `any`. With `online`, a seller logging off looks like a
-    sale.
-  - *Bait.* The cheapest listings are often weeks-old 1c bait from offline accounts (Kaom's Heart:
-    1c listings from August). Set a minimum price near the market price, e.g. half poe.ninja's.
+  - *Offline sellers and bait* (weeks-old 1c listings): gone with instant buyout only. Without it,
+    search with status `any`, since with `online` a seller logging off looks like a sale.
   - *Only the cheapest 100.* Narrow each search (price range, filters) until `total` ≤ 100. Then
     an id missing from the results is really gone (or repriced out of range; one fetch tells which).
 - **Timing is approximate:**
@@ -154,9 +183,13 @@ watched searches or a few hundred listings, at 5-30 minute resolution. Findings 
     search from the chosen host first.
 
 **Suggested first step:**
-1. Build a local script with one watched search (a single unique, price-floored) that polls every
-   10 minutes for a day and logs gone/reappeared ids.
-2. Use the log to measure false "sales" (reappearances) before building storage and a page.
+1. Build a local script for the chosen scope: a newest-first search every 10 minutes, and re-checks
+   as the budget allows. Run it for a day.
+2. From that log, measure:
+   - how long sold listings lasted;
+   - how many "sales" reappear (withdrawn, not sold);
+   - how much re-check budget overpriced listings use.
+3. Use those numbers to pick the final scope, then build storage and a page.
 
 ---
 

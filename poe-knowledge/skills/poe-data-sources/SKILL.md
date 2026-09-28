@@ -56,6 +56,10 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   currency}, `account` {name, online}, `stash` {name, x, y}, `method: "psapi"`). The result id equals
   `item.id`. A fetched id that's no longer listed comes back as `null` in its slot - a cheap
   "still listed?" check. `[verified]` (2026-09-27)
+- Status `securable` = instant buyout only; its listings carry a gold `fee` and `account.online:
+  null`. A search's `total` caps at 10,000. `sort: {"indexed": "desc"}` lists newest first. Filter
+  by listing age with `trade_filters.indexed` (`1day`, `1week`, ...) and by price with
+  `trade_filters.price` (`min`/`max`, `option: "divine"`). `[verified]` (2026-09-28)
 - **Trade API rate limits are per IP and punish overruns** with a timeout (the third number). Every
   response reports them: `X-Rate-Limit-Rules: Ip`, `X-Rate-Limit-Ip: max:window:timeout,...`,
   `X-Rate-Limit-Ip-State: used:window:activeTimeout,...`. Search: `5:10:60,15:60:300,30:300:1800,
