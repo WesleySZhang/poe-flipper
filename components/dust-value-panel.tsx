@@ -18,11 +18,12 @@ import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import type { DustValueRow } from "@/lib/dust-value";
 import type { LiquidityTier } from "@/lib/liquidity";
-import { DUST_MAX_ITEM_LEVEL, dustFor } from "@/lib/dust";
+import { DUST_ASSUMED_QUALITY, DUST_MAX_ITEM_LEVEL, dustFor } from "@/lib/dust";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
 import { currentLeagueDay } from "@/lib/league-day";
 import { formatItemDisplayName } from "@/lib/poe-ninja";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
+import { tradeSearchUrl } from "@/lib/trade-site";
 import { activePrice, formatPriceValue, priceUnitLabel, type PriceUnit } from "@/lib/price-unit";
 
 const PAGE_SIZE = 25;
@@ -171,8 +172,11 @@ export function DustValuePanel() {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <p className="text-xs text-muted-foreground" title="Kingsmarch disenchanting. Dust values from poedb; prices from poe.ninja.">
-          Thaumaturgic Dust per {priceUnit === "chaos" ? "chaos" : "divine"} spent on a unique
+        <p
+          className="text-xs text-muted-foreground"
+          title="Kingsmarch disenchanting. Dust values from poedb; prices from poe.ninja. Quality adds 2% dust per point."
+        >
+          Thaumaturgic Dust per {priceUnit === "chaos" ? "chaos" : "divine"} spent, at {DUST_ASSUMED_QUALITY}% quality
         </p>
         <div className="flex flex-wrap items-end gap-4">
           <SearchInput value={searchText} onChange={changeSearchText} placeholder="Search uniques..." />
@@ -225,6 +229,7 @@ export function DustValuePanel() {
                 currentDay={currentDay}
                 priceUnit={priceUnit}
                 expandable={false}
+                tradeUrl={tradeSearchUrl(r.name, r.variant, { minItemLevel: itemLevel })}
                 fields={[
                   {
                     label: "Confidence",
@@ -275,6 +280,7 @@ export function DustValuePanel() {
                   priceUnit={priceUnit}
                   colSpan={5}
                   expandable={false}
+                  tradeUrl={tradeSearchUrl(r.name, r.variant, { minItemLevel: itemLevel })}
                 >
                   <TableCell className="text-right">{formatPriceValue(r.chaosValue, r.divineValue, priceUnit)}</TableCell>
                   <TableCell className="text-right">{formatDust(r.dust)}</TableCell>

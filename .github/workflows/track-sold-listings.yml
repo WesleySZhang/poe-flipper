@@ -1,0 +1,75 @@
+name: Track sold listings
+
+# Runs the sold listing tracker (scripts/track-sold-listings.ts) for ~5.5 hours, every 6 hours, then
+# publishes its files to the "sold-tracker" branch (not "data": the daily job rebuilds that from
+# scratch every run):
+#   state/<League>.json          the tracker's state, restored at the start of the next run
+#   sold-listings/<League>.json  what the Sold Listings page reads (lib/sold-listings.ts)
+#   ended/<League>/<YYYY-MM>.jsonl  every listing that ended - the full history
+#
+# Published as it goes: the tracker publishes a full snapshot every 30 minutes, straight after a save
+# (scripts/publish-sold-tracker.sh), and the last step publishes once more - also when tracking
+# failed partway, so the last save isn't lost. Each publish replaces the branch with a complete,
+# consistent copy, so publishing again is harmless and a failed push leaves the previous copy.
+#
+# Why this schedule: the trade site allows ~7,000 listing checks per 6 hours at the tracker's 70%
+# margin, so running (nearly) all the time is what lets it check up to 6,000 listings every 6 hours.
+# Fetches are paced across the run rather than spent in bursts. GitHub starts scheduled runs late;
+# the concurrency group keeps a late run and the next one from overlapping.
+#
+# Untested from GitHub's runners: whether pathofexile.com lets their IPs through. If it doesn't, the
+# run fails with a 403 "blocked before reaching the API" - run the tracker somewhere else instead
+# (`npm run sold:track`; see the README).
+
+on:
+  schedule:
+    - cron: "20 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to run, in minutes"
+        default: "330"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sold-tracker
+  cancel-in-progress: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check out master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Restore the tracker's state from the sold-tracker branch
+        run: |
+          mkdir -p .sold-tracker
+          if git fetch --depth=1 origin sold-tracker; then
+            git archive FETCH_HEAD | tar -x -C .sold-tracker
+          else
+            echo "No sold-tracker branch yet - starting fresh."
+          fi
+
+      - name: Track
+        # Publishes every 30 minutes as it goes (--publish-cmd), so the page updates during the run.
+        run: >-
+          npx tsx scripts/track-sold-listings.ts --minutes "${{ github.event.inputs.minutes || '330' }}"
+          --dir .sold-tracker --publish-cmd "bash scripts/publish-sold-tracker.sh .sold-tracker"
+
+      # Once more at the end, and even when tracking failed partway, so the last save isn't lost.
+      # The same script the tracker calls while running; see it for why running it twice is safe.
+      - name: Publish to the sold-tracker branch
+        if: always()
+        run: bash scripts/publish-sold-tracker.sh .sold-tracker

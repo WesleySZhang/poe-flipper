@@ -17,6 +17,7 @@ import { humanizeCategoryName } from "@/lib/category-reliability";
 import { reconstructAllFlipSuggestions, type PrecomputedPredictions } from "@/lib/predicted-suggestion";
 import type { FlipSuggestion, PredictionCurvePoint } from "@/lib/flip-suggestions";
 import type { ItemDetail } from "@/lib/item-detail";
+import { isTradeSiteItem, tradeSearchUrl } from "@/lib/trade-site";
 import type { DivinationFlip } from "@/lib/divination-flips";
 import type { LeagueSeries } from "@/lib/price-history";
 import { CURRENT_LEAGUE_START_DATE } from "@/lib/league-recency";
@@ -288,6 +289,17 @@ export function ItemDetailPanel({ category, historyName, variant }: ItemDetailPa
         {detail?.ninjaUrl && (
           <a href={detail.ninjaUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-foreground hover:underline">
             View on poe.ninja
+            <ExternalLink className="size-3.5" />
+          </a>
+        )}
+        {detail && isTradeSiteItem(detail.category, detail.filterCategory) && (
+          <a
+            href={tradeSearchUrl(detail.historyName, detail.variant)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 hover:text-foreground hover:underline"
+          >
+            Search the trade site
             <ExternalLink className="size-3.5" />
           </a>
         )}

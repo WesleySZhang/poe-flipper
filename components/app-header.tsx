@@ -23,6 +23,7 @@ const NAV_LINKS = [
   { href: "/currency_exchange_flip", label: "Currency Exchange Flip" },
   { href: "/divination-cards", label: "Divination Card Flips" },
   { href: "/dust-value", label: "Dust Value" },
+  { href: "/sold-listings", label: "Sold Listings" },
 ];
 
 // Testing/simulation utilities, not same-day-actionable tools - grouped under one "Testing" menu so
@@ -90,7 +91,9 @@ export function AppHeader({ title }: { title: string }) {
                 <NavigationMenuLink
                   active={pathname === l.href}
                   render={<Link href={l.href} />}
-                  className={cn("px-3 py-1.5 font-medium", pathname !== l.href && "text-muted-foreground")}
+                  // Tighter from xl, where the links sit inline: the page is capped at max-w-6xl, so
+                  // wider screens never add room for them.
+                  className={cn("px-3 py-1.5 font-medium xl:px-2", pathname !== l.href && "text-muted-foreground")}
                 >
                   {l.label}
                 </NavigationMenuLink>

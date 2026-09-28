@@ -34,11 +34,57 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   filled as soon as they were placed). `[verified]` (2026-09-27; `stockRange` in `lib/faustus.ts`)
   The in-game exchange's order book (stock at each price) is only visible in game.
 - The trade site's bulk exchange (`POST https://www.pathofexile.com/api/trade/exchange/<League>`,
-  body `{"query":{"status":{"option":"online"|"any"},"have":["chaos"],"want":["the-doctor"]},"sort":{"have":"asc"}}`,
-  ids from `/api/trade/data/static`) does give price + stock per listing and needs no login, but it's
-  a different, mostly dead market since the in-game exchange: on 2026-09-27 The Doctor had 0 online
-  chaos listings, and "any" returned weeks-old offline 1c-per-Doctor listings (bait). Rate limit per
-  IP: 5/15s, 10/90s, 30/300s (`X-Rate-Limit-Ip`). Not a stand-in for exchange depth. `[verified]`
+  body `{"query":{"status":{"option":"online"|"any"},"have":["chaos","divine"],"want":["the-doctor"]},"sort":{"have":"asc"},"engine":"new"}`)
+  gives price + stock per listing inline (no second fetch) and needs no login, but it's a thin market
+  since the in-game exchange: on 2026-09-28, online listings were 4 for Divine Orb, 5 Stacked Deck,
+  1 The Doctor; "any" adds weeks-old offline bait (1c Doctors). A query can take `minimum` (only
+  sellers with at least that much stock). The app tried it behind the Exchange Price button and
+  dropped it as effectively dead (owner's call, 2026-09-28). `[verified]`
+- Trade item ids (`the-doctor`, `divine`) are the same as poe.ninja's exchange-overview line ids -
+  726 of 728 matched `/api/trade/data/static` on 2026-09-28 (the 2 misses were too new for the trade
+  site), so a name-to-trade-id map comes free with the exchange overview. `[verified]`
+- Trade item search (`POST /api/trade/search/<League>`): a unique searches by `name` alone (no base
+  type needed). A Foulborn (mutated) unique is NOT a trade name ("Unknown item name") - search the
+  base name with `filters.misc_filters.filters.mutated`. Other filters that work: `status`
+  `available` (online or instant buyout), `trade_filters.collapse` (one listing per account),
+  `misc_filters.ilvl.min`, `socket_filters.links.min`. A link with the query in it,
+  `/trade/search/<League>?q=<json>`, runs the search in the user's browser (`lib/trade-site.ts`).
+  `[verified]` (2026-09-28)
+- A search returns at most 100 result ids (cheapest first) plus `total`. `GET /api/trade/fetch/<up to
+  10 ids>` returns the listings; `?query=<search id>` is optional. Each has `item` (full mods, ilvl,
+  ...) and `listing` (`indexed` = listed/last changed, `price` {type `~b/o`/`~price`, amount,
+  currency}, `account` {name, online}, `stash` {name, x, y}, `method: "psapi"`). The result id equals
+  `item.id`. A fetched id that's no longer listed comes back as `null` in its slot - a cheap
+  "still listed?" check. `[verified]` (2026-09-27)
+- Repricing keeps the listing id. A Watcher's Eye lowered from 100d to 50d kept its id. A fetch
+  returned the new price, with `indexed` reset to the time of the change and the gold `fee`
+  unchanged. The change reached the trade site ~6 minutes later (the original listing took ~9).
+  `[verified]` (2026-09-28)
+- Status `securable` = instant buyout only; its listings carry a gold `fee` and `account.online:
+  null`. A search's `total` caps at 10,000. `sort: {"indexed": "desc"}` lists newest first. Filter
+  by listing age with `trade_filters.indexed` (`1day`, `1week`, ...) and by price with
+  `trade_filters.price` (`min`/`max`, `option: "divine"`). `[verified]` (2026-09-28)
+- A trade site search link's id (`/trade/search/<League>/H4sI...`) IS the query: gzipped JSON,
+  base64url (`H4sI` = gzip's header), with no sort. Decode it locally; the API has no lookup by id
+  (`GET /api/trade/search/<League>/<id>` is a 404). `[verified]` (2026-09-28; `lib/trade-query.ts`)
+- **Trade API rate limits are per IP and punish overruns** with a timeout (the third number). Every
+  response reports them: `X-Rate-Limit-Rules: Ip`, `X-Rate-Limit-Ip: max:window:timeout,...`,
+  `X-Rate-Limit-Ip-State: used:window:activeTimeout,...`. Search: `5:10:60,15:60:300,30:300:1800,
+  600:21600:3600`; fetch: `12:4:10,16:12:300,50:300:300,1000:21600:1800` (2026-09-27); bulk
+  exchange: `5:15:60,10:90:300,30:300:1800` (2026-09-28). Read them from the
+  headers, don't hard-code them; they differ per endpoint and can change. `Retry-After` on a 429.
+  Every user of a server-side caller shares the server's IP - prefer links (the search runs in the
+  user's browser). `[verified]`
+- poe.ninja's exchange overview lines carry `volumePrimaryValue`: chaos traded, on about the same
+  scale as GGG's hourly exchange volume (median ratio ~0.85, p10-p90 ~0.3-3, across Currency,
+  Scarab, Essence, DivinationCard on 2026-09-28), so hourly chaos-volume tiers apply to it. It covers
+  items GGG's hourly data has no market for (153 of 213 cards that hour). `[verified]`
+- poe.ninja also serves every category in one response:
+  `/poe1/api/economy/current/dense/overviews?league=<League>&language=en` (~366 KB, ~0.3 s). Lines
+  are only `{name, variant, chaos, graph}` - no seller count, links, detailsId or base type, and
+  variants embed the base type and links ("…, Sage's Robe, 6L"). Stash-type prices (uniques, gems)
+  match the per-type endpoints; currency and card prices don't match the exchange overview (71 of
+  213 cards, 77 of 100 currencies differed on 2026-09-28). Not used by the app yet (TODO). `[verified]`
 - poe.ninja has **no API listing its categories**. Its site sidebar is built from a config object
   compiled into one of its JavaScript chunks (`{availableViews:[...], title, type, url}` per
   category); chunk names change every deploy, so find it by walking the imports from the page's
@@ -62,6 +108,9 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 - Live prices: `lib/poe-ninja.ts`; daily snapshot: `lib/price-snapshot.ts` (`prices.json`).
 - Exchange: `lib/faustus.ts` (`FAUSTUS_NAME_TO_ID`, generated by `scripts/generate-faustus-mapping.ts`).
 - Card data: `lib/divination-cards.ts` (generated by `scripts/generate-divination-cards.ts`).
+- Official trade site: search links, `lib/trade-site.ts` - the running app makes no trade API calls.
+  The sold listing tracker (`scripts/track-sold-listings.ts`, a separate job) does, through the
+  queuing rate limiter in `lib/trade-api.ts`; see the `sold-tracker` project skill.
 - Past-league history: `db/history.duckdb`, built by `scripts/ingest-history.ts`.
 - Current-league history: CSVs on the `data` branch, read by `lib/current-league-history.ts`.
 
@@ -78,4 +127,7 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 ## Gaps
 
 - No documented rate-limit numbers for poe.ninja or GGG's endpoints.
-- The official trade API and its OAuth requirement are not covered.
+- GGG's public stash API (`GET /public-stash-tabs`, scope `service:psapi`, 5-minute delay) is the
+  official feed of every stash change, but its docs say "We are currently unable to process new
+  applications" (2026-09-27). The trade site API isn't in GGG's docs, which call reverse-engineering
+  undocumented endpoints a Terms of Use (7i) breach. See TODO.md's sold item tracker. `[verified]`

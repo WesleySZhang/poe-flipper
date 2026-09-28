@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { cn } from "cn";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { TradeSiteLink } from "@/components/trade-site-link";
 import { PriceHistoryChart, type PriceHistoryFetchState } from "@/components/price-history-chart";
 import { activePrice, type PriceUnit } from "@/lib/price-unit";
 import { itemDetailUrlKey, poeWikiUrl } from "@/lib/poe-ninja";
@@ -136,6 +137,9 @@ interface ItemHistoryRowProps {
    *  row is just a static summary: no click-to-expand chart, no chevron, no cursor-pointer/hover
    *  affordance. The name link and poewiki link are unaffected either way. */
   expandable?: boolean;
+  /** An official trade site search for this item (lib/trade-site.ts) - only for items not on the
+   *  Currency Exchange; shown as an icon after the poewiki link. */
+  tradeUrl?: string;
 }
 
 /**
@@ -159,6 +163,7 @@ export function ItemHistoryRow({
   colSpan,
   children,
   expandable = true,
+  tradeUrl,
 }: ItemHistoryRowProps) {
   const { expanded, hasExpandedOnce, state, predictedCurve, toggle } = useItemHistoryExpand({
     category,
@@ -206,6 +211,7 @@ export function ItemHistoryRow({
         >
           <ExternalLink className="size-3" />
         </a>
+        {tradeUrl && <TradeSiteLink href={tradeUrl} />}
       </div>
     </TableCell>
   );

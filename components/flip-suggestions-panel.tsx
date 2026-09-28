@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryFilter } from "@/components/category-filter";
 import { ConfidenceBadge } from "@/components/confidence-badge";
 import { ConfidenceTierFilter } from "@/components/confidence-tier-filter";
+import { isTradeSiteItem, tradeSearchUrl } from "@/lib/trade-site";
 import { FaustusPriceButton } from "@/components/faustus-price-button";
 import { ItemHistoryRow } from "@/components/item-history-row";
 import { ItemHistoryCard } from "@/components/item-history-card";
@@ -410,6 +411,7 @@ export function FlipSuggestionsPanel() {
                 currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                 predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                 fetchPredictedCurve
+                tradeUrl={isTradeSiteItem(s.category, s.filterCategory) ? tradeSearchUrl(s.historyName, s.variant) : undefined}
                 priceUnit={priceUnit}
                 fields={[
                   {
@@ -493,6 +495,7 @@ export function FlipSuggestionsPanel() {
                   currentValue={activePrice(s.currentChaosValue, s.currentDivineValue, priceUnit)}
                   predictedValue={activePrice(s.predictedChaosValue, s.predictedDivineValue, priceUnit)}
                   fetchPredictedCurve
+                  tradeUrl={isTradeSiteItem(s.category, s.filterCategory) ? tradeSearchUrl(s.historyName, s.variant) : undefined}
                   priceUnit={priceUnit}
                   colSpan={7}
                 >

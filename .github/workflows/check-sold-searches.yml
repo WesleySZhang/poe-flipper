@@ -1,0 +1,42 @@
+name: Check sold tracker searches
+
+# Runs every search in sold-tracker/searches.md against the trade site and fails the PR if a search
+# is too broad, or all of them together are, for the tracker's limits (scripts/check-sold-searches.ts,
+# limits in lib/sold-tracker.ts). The report is on the run's summary page.
+#
+# To make it block merging: Settings -> Branches -> a rule for master -> "Require status checks to
+# pass" -> add "check-searches".
+#
+# It fails closed: if the trade site refuses GitHub's runner (a 403), the searches can't be measured
+# and the check fails. Run `npm run sold:check` locally to see the counts.
+
+on:
+  pull_request:
+    paths:
+      - "sold-tracker/searches.md"
+      - "lib/sold-tracker.ts"
+      - "lib/sold-tracker-searches.ts"
+      - "lib/trade-query.ts"
+      - "lib/trade-api.ts"
+      - "scripts/check-sold-searches.ts"
+      - ".github/workflows/check-sold-searches.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check-searches:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Check the searches against the tracker's limits
+        run: npx tsx scripts/check-sold-searches.ts
