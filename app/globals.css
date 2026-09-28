@@ -138,16 +138,16 @@
    keeps its layout in black and white, to match the rest of the light theme. Each tooltip sets
    --poe-rarity-dark for its item's rarity (used in dark mode only). */
 .poe-tooltip {
-  --poe-rarity: #171717;
+  --poe-rarity: #0a0a0a;
   --poe-bg: #ffffff;
   --poe-label: #737373;
   --poe-value: #0a0a0a;
-  --poe-mod: #262626;
-  --poe-mod-soft: #525252;
-  --poe-fractured: #404040;
+  --poe-mod: #0a0a0a;
+  --poe-mod-soft: #262626;
+  --poe-fractured: #262626;
   --poe-corrupted: #0a0a0a;
-  --poe-special: #404040;
-  --poe-price: #525252;
+  --poe-special: #262626;
+  --poe-price: #262626;
   --poe-header-bg: transparent;
 }
 .dark .poe-tooltip {
