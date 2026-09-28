@@ -394,7 +394,7 @@ export function SoldListingsPanel() {
               className="text-xs text-muted-foreground"
               title={`Instant buyout, listed in the last week. Sold = no longer listed. Unsold = still listed, or expired after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
             >
-              Tracking {file.trackedCount.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
+              Tracking {file.trackedCount.toLocaleString("en-US")} / {MAX_TRACKED_LISTINGS.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
             </p>
             {file.atCapacity && (
               <p className="flex items-center gap-1.5 text-xs text-destructive">

@@ -129,8 +129,9 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   found (All = every search); each shows how many of the current tab's listings it found, and its
   hover shows how many listings it matches on the trade site now. "paused" means a
   search grew past the per-search limit; a warning icon means it failed or got more than 200 new
-  listings between runs (so it missed some). A red line above them means the tracking limit is
-  reached and new listings are being skipped.
+  listings between runs (so it missed some). Under them, "Tracking N / 6,000" shows how many
+  listings are followed against the limit; a red line means it's reached and new listings are
+  being skipped.
 
 ### Item detail page
 
