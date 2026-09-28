@@ -148,6 +148,7 @@
   --poe-corrupted: #0a0a0a;
   --poe-special: #404040;
   --poe-price: #525252;
+  --poe-header-bg: transparent;
 }
 .dark .poe-tooltip {
   --poe-rarity: var(--poe-rarity-dark);
@@ -160,4 +161,9 @@
   --poe-corrupted: #d20000;
   --poe-special: #82ad6a;
   --poe-price: #d3c3a8;
+  --poe-header-bg: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--poe-rarity) 25%, transparent),
+    color-mix(in srgb, var(--poe-rarity) 8%, transparent)
+  );
 }

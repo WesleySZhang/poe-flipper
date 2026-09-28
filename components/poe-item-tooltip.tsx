@@ -165,7 +165,7 @@ export function PoeItemTooltip({
     >
       <div
         className="px-3 py-1 text-[15px]"
-        style={{ color: RARITY, background: `linear-gradient(to bottom, ${rarityMix(25)}, ${rarityMix(8)})`, borderBottom: `1px solid ${rarityMix(40)}` }}
+        style={{ color: RARITY, background: "var(--poe-header-bg)", borderBottom: `1px solid ${rarityMix(40)}` }}
       >
         {twoLineHeader ? (
           <>
