@@ -102,7 +102,7 @@ Uniques ranked by how much Thaumaturgic Dust they give when disenchanted in King
 - **Item level** (default 84) scales the dust shown: ×1 at 65 and below up to ×20 at 84+. It's the
   same factor for every unique, so it never changes the order. poe.ninja prices don't say a
   listing's item level; each row's cart icon searches the trade site at that item level or above.
-- **20% quality** is assumed for every item (+2% dust per point, so ×1.4): it's cheap to add.
+- **0% quality** is assumed for every item (unqualified, as most disenchant fodder actually is).
 - **Confidence** is the seller count on poe.ninja (High 20+, Medium 5+).
 - **Left out:** Foulborn (mutated) uniques, since it's unchecked whether they give their base's dust;
   corruption and influence bonuses.

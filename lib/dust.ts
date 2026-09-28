@@ -6,15 +6,15 @@
  * every unique, so it changes how much dust each gives but never which unique is the best dust per
  * chaos.
  *
- * Every item is assumed to be at 20% quality: raising a unique to 20% is cheap, so that's what's
- * worth disenchanting. Quality counts +2% dust per point, as the in-game description says (poedb's
- * formula uses +1%). Two open questions are in TODO.md: that quality rate, and whether the ×2000
- * item-level-84 multiplier is right, since another formula in circulation gives 1.25× more from
- * item level 68 up. Pure, so components can import it.
+ * Every item is assumed to be at 0% quality (unqualified, as most disenchant fodder actually is).
+ * Quality would count +2% dust per point, as the in-game description says (poedb's formula uses
+ * +1%) - see DUST_ASSUMED_QUALITY. Two open questions are in TODO.md: that quality rate, and
+ * whether the ×2000 item-level-84 multiplier is right, since another formula in circulation gives
+ * 1.25× more from item level 68 up. Pure, so components can import it.
  */
 export const DUST_MIN_ITEM_LEVEL = 65;
 export const DUST_MAX_ITEM_LEVEL = 84;
-export const DUST_ASSUMED_QUALITY = 20;
+export const DUST_ASSUMED_QUALITY = 0;
 const DUST_PERCENT_PER_QUALITY = 2;
 
 export function dustItemLevelMultiplier(itemLevel: number): number {

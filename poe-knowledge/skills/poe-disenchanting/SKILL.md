@@ -43,9 +43,9 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   `lib/dust.ts`. `[verified]`
 - Item level scales every unique by the same factor, so it changes the dust shown but never the
   ranking; the page defaults to ilvl 84. `[verified]` (from the formula)
-- The page assumes every item is at 20% quality (the owner's call: adding quality is cheap), counted
-  at +2% per point (×1.4). Each row links a trade site search at the page's item level or above.
-  `[verified]` (`lib/dust.ts`)
+- The page assumes every item is at 0% quality (unqualified, as most disenchant fodder actually
+  is). Quality would count +2% dust per point if assumed otherwise. Each row links a trade site
+  search at the page's item level or above. `[verified]` (`lib/dust.ts`, owner's call, 2026-09-28)
 - Name matching (2026-09-27): every non-Foulborn unique poe.ninja lists matches a poedb name exactly
   (including accents like Mjölner). All 237 Foulborn names have their base in poedb; they're left out
   until it's known whether a mutated unique gives its base's dust. `[verified]`
