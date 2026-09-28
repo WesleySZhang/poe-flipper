@@ -9,10 +9,9 @@ ordered by importance.
 | --- | --- | --- |
 | 1 | [League tester has no mobile layout](#1-league-tester-has-no-mobile-layout) | Open |
 | 2 | [New items and categories: manual follow-ups](#2-new-items-and-categories-manual-follow-ups) | Open (small) |
-| 3 | [Disenchanting page: most Thaumaturgic Dust per chaos](#3-disenchanting-page-most-thaumaturgic-dust-per-chaos) | Open |
-| 4 | [Live price vs history for items with several poe.ninja lines](#4-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
-| 5 | [Holes in past-league history](#5-holes-in-past-league-history) | Open |
-| 6 | [Small follow-ups](#6-small-follow-ups) | Open |
+| 3 | [Live price vs history for items with several poe.ninja lines](#3-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
+| 4 | [Holes in past-league history](#4-holes-in-past-league-history) | Open |
+| 5 | [Small follow-ups](#5-small-follow-ups) | Open |
 | – | [Done](#done) | – |
 
 ---
@@ -40,29 +39,7 @@ and 75 exchange names. What it can't do, and is still open from that run:
   Kalguuran Rune, Coffin) are still requested. Harmless, since empty categories are skipped after the
   first daily snapshot, but they could be removed once no past-league history needs them.
 
-## 3. Disenchanting page: most Thaumaturgic Dust per chaos
-
-A new page ranking unique items by how much Thaumaturgic Dust they give when disenchanted in
-Kingsmarch, for what they cost to buy - "which cheap unique should I buy to disenchant?"
-
-- **Dust per unique:** poedb's Kingsmarch page, Disenchant tab
-  (https://poedb.tw/us/Kingsmarch#Disenchant), lists 1,511 uniques with a base value and the formula
-  `dust = value × 100 × (20 − (84 − clamp(ilvl, 65, 84))) × (1 + quality/100)`. Generate it into a
-  static file the way `scripts/generate-divination-cards.ts` does RePoE data, and check whether
-  RePoE carries the same number (a game-file source would be steadier than scraping a site).
-- **Price:** poe.ninja's unique item prices (already fetched for the other pages).
-- **Rank by** dust per chaos, with the dust itself and the price shown.
-- **Open questions:**
-  - Item level scales dust ×1 at ilvl 65 up to ×20 at 84+, but poe.ninja prices don't say what
-    ilvl a listing is. Assume a typical ilvl, show ilvl 84 as "up to", or let the user pick.
-  - Quality: poedb's formula is +1% per quality, the in-game description says +2%. Check which
-    is right before relying on it.
-  - Each corrupted implicit or influence adds 50%; poe.ninja variants may cover some of this.
-  - Uniques with several variants (poe.ninja lists them separately) and replicas need matching.
-  - Low seller counts make a "cheap" price unreliable; reuse the seller-count guard.
-- Follow the other flip pages: shared table/card components, mobile layout, liquidity/confidence filter.
-
-## 4. Live price vs history for items with several poe.ninja lines
+## 3. Live price vs history for items with several poe.ninja lines
 
 Base types (e.g. Dragonscale Doublet) have one poe.ninja line per item level or influence, all under
 one name. The live price takes the **first** line (1.8c); past-league and current-league history
@@ -72,7 +49,7 @@ prices, and the model predicts from a price that doesn't match what it was train
 **Option:** average the lines for the live price too. That would change the starting price, and so
 the forecast and ranking, for every affected item (mostly base types). Needs a decision.
 
-## 5. Holes in past-league history
+## 4. Holes in past-league history
 
 Some items have gaps in a past league's data. The Last One Standing has no Keepers prices on days
 78–93, and its Mirage history stops at day 34. The daily job now fills the resulting missing
@@ -85,8 +62,11 @@ forecast days (see Done), but:
 
 **Option:** interpolate short gaps (say up to 20 days) within a league at ingest time.
 
-## 6. Small follow-ups
+## 5. Small follow-ups
 
+- **Dust Value gaps.** Foulborn (mutated) uniques are left out until it's confirmed they give their
+  base unique's dust; quality (poedb says +1% per point, the game +2%) and corruption/influence
+  (+50% each) aren't counted. poedb lists unique maps too; unchecked whether Kingsmarch accepts them.
 - **Slider when a day has no precomputed data.** On the detail page and main table, dragging to a
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
   table on the previous value until release, then waits for a live calculation.
@@ -95,6 +75,10 @@ forecast days (see Done), but:
 
 ## Done
 
+- **Dust Value page** (`/dust-value`). Uniques ranked by Thaumaturgic Dust per chaos for Kingsmarch
+  disenchanting: poedb's dust values (generated into `lib/disenchant-values.ts`) against poe.ninja's
+  cheapest trusted line per unique, with an item-level input and the usual price, confidence and
+  Chaos/Divine controls.
 - **Divination Card Flips: instant buy could read cheaper than a buy order.** Cost used poe.ninja's
   card price and instant the exchange hour's top - different sources and times, so 13 of 33 cards
   (Divine Beauty, The Doctor, ...) had instant below Cost. Both now come from the exchange hour

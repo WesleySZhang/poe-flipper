@@ -22,6 +22,7 @@ const NAV_LINKS = [
   { href: "/", label: "Flip Predictions" },
   { href: "/currency_exchange_flip", label: "Currency Exchange Flip" },
   { href: "/divination-cards", label: "Divination Card Flips" },
+  { href: "/dust-value", label: "Dust Value" },
 ];
 
 // Testing/simulation utilities, not same-day-actionable tools - grouped under one "Testing" menu so

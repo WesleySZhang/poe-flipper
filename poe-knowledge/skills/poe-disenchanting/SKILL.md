@@ -21,7 +21,7 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   per-unique number poedb lists. `[verified]` (poedb Kingsmarch page, Disenchant tab)
   - **Item level dominates:** the multiplier runs ×1 at ilvl 65 (and below) to ×20 at ilvl 84+, so
     the same unique can give 20x the dust. `[verified]` (from the formula)
-  - poedb lists 1,511 uniques; base values run 0.58 to 1,128.89, median ~6. The top are Original
+  - poedb lists 1,511 uniques (1 struck through as removed); base values run 0.58 to 1,128.89, median ~6. The top are Original
     Sin 1,128.89, Replica Cortex 1,064.09, then Headhunter / Mageblood / Defiance of Destiny at
     891.16 - chase uniques, never cheap. `[verified]` (poedb, 2026-09-27)
 - **Quality:** the in-game description says each 1% quality adds 2% dust; poedb's formula (and its
@@ -31,8 +31,18 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 
 ## In this app
 
-- Not built yet: TODO.md item 3 plans a page ranking uniques by dust per chaos (poedb's value for
-  dust, poe.ninja's unique prices for cost).
+- **Dust Value page** (`/dust-value`, `components/dust-value-panel.tsx`, `lib/dust-value.ts`): uniques
+  ranked by dust per chaos. Values: `lib/disenchant-values.ts`, generated from poedb by
+  `scripts/generate-disenchant-values.ts --write` (rerun when a league adds uniques). Formula:
+  `lib/dust.ts`. `[verified]`
+- Item level scales every unique by the same factor, so it changes the dust shown but never the
+  ranking; the page defaults to ilvl 84. `[verified]` (from the formula)
+- Name matching (2026-09-27): every non-Foulborn unique poe.ninja lists matches a poedb name exactly
+  (including accents like Mjölner). All 237 Foulborn names have their base in poedb; they're left out
+  until it's known whether a mutated unique gives its base's dust. `[verified]`
+- The cheapest uniques on poe.ninja are priced below 1c (0.04c Fencoil - listed for a cheaper
+  currency), so the raw top of the ranking is sub-chaos items; a min price of 1c shows the rest.
+  `[verified]` (2026-09-27)
 
 ## Sources
 
@@ -45,8 +55,10 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 
 ## Gaps
 
-- Whether RePoE (or another game-file dump) carries poedb's per-unique `value`, which would be a
-  steadier source than scraping poedb.
+- A game-file source for the per-unique `value`: RePoE's uniques.json doesn't carry it (checked
+  2026-09-27), so poedb is the only source found.
+- Whether Foulborn (mutated) uniques give their base unique's dust.
+- Whether Kingsmarch accepts unique maps and jewels (poedb lists values for them).
 - Whether the quality bonus is 1% or 2% per point.
 - poe.ninja unique prices don't carry item level, so the dust a listed unique would give is unknown
   (it could be anywhere from ×1 to ×20).
