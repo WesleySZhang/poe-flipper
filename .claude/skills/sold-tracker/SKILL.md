@@ -112,9 +112,17 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   so text can be selected). Both tabs sort by price, lowest first, by default (shared sort state).
 - Unsold = listings still up ("Still listed" badge, "Last seen" date) + ones expired after 7 days.
 - Item stats come from the tracker's `SoldListingItem.detail` (every mod with roll ranges and tier,
-  properties, requirements, sockets, influences, relic/foil). The in-game item text and flavour
-  text aren't stored: nothing shows them, and the item text was half of each listing's size.
-  Listings stored before details existed show only their mod lines until their next check.
+  properties with "(augmented)" markers, requirements, sockets, influences, relic/foil, item class).
+  The in-game item text and flavour text aren't stored whole (the item text was half of each
+  listing's size): **Copy item** rebuilds it with `itemGameText` (`lib/item-text.ts`) - GGG's format
+  plus the in-game "(implicit)"/"(crafted)"/... markers PoB needs; see the `poe-item-display` skill.
+  To re-check the rebuild, fetch a mix of items (rare, magic, unique, relic, fractured, crafted,
+  mirrored, synthesised, influenced, corrupted, sockets, a weapon), run each through
+  `toListingItem` and diff `itemGameText` against the decoded `extended.text` (drop its flavour
+  and "Place into..." sections and the markers). Path of Building can parse it headless: its
+  repo's `src/HeadlessWrapper.lua` + LuaJIT, run from the PoB install, with a pure-Lua stand-in for
+  `lua-utf8` if its DLL doesn't load; `new("Item", text)`.
+  Listings stored before a field existed get it at their next check (ended ones never do).
 - **Previewing the UI with no real data:** build a fixture of real items (fetch ids with
   `TradeApiClient.fetchListings`, run them through `recordListing`, set statuses/times by hand) and
   either fulfil `/api/sold-listings` with it from Playwright (`page.route`) or point

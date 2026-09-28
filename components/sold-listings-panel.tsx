@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Copy, Loader2 } from "lucide-react";
 import { cn } from "cn";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MobileSortControl } from "@/components/mobile-sort-control";
 import { Pagination } from "@/components/pagination";
@@ -25,6 +26,7 @@ import {
   type SoldListingsFile,
   type TrackedListing,
 } from "@/lib/sold-tracker";
+import { itemGameText } from "@/lib/item-text";
 
 const PAGE_SIZE = 25;
 
@@ -133,6 +135,28 @@ function SearchLinks({ t, searchLinks }: { t: TrackedListing; searchLinks: Map<s
 }
 
 /** The listing's own facts, stacked: price history, then listed / sold / time up / search. */
+/** Copies the item in the game's Ctrl+C text (lib/item-text.ts). */
+function CopyItemButton({ t }: { t: TrackedListing }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="self-start"
+      title="Copies the item as the game's Ctrl+C text - pastes into Path of Building, Craft of Exile and the trade site"
+      onClick={() => {
+        void navigator.clipboard.writeText(itemGameText(t.item, currentPrice(t))).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    >
+      {copied ? <Check /> : <Copy />}
+      {copied ? "Copied" : "Copy item"}
+    </Button>
+  );
+}
+
 function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string; searchLinks: Map<string, string> }) {
   const endedLabel = t.status === "sold" ? "Sold" : t.status === "unsold" ? "Expired" : "Last seen";
   return (
@@ -149,6 +173,7 @@ function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string;
           <SearchLinks t={t} searchLinks={searchLinks} />
         </Field>
       </div>
+      <CopyItemButton t={t} />
       {(t.status === "listed" || t.reappeared) && (
         <div className="flex gap-1.5">
           {t.status === "listed" && (

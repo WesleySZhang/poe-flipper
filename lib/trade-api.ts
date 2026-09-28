@@ -152,6 +152,9 @@ export type TradeMod =
   | string
   | {
       description?: string;
+      /** "explicit", "implicit", ... - and "fractured"/"crafted" for those mods, which the fetch lists
+       *  among `explicitMods` (checked 2026-09-28). */
+      domain?: string;
       mods?: Array<{ name?: string; tier?: string; level?: number; magnitudes?: Array<{ min?: string; max?: string }> }>;
     };
 

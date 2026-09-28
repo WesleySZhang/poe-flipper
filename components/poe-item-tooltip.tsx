@@ -56,9 +56,14 @@ function Separator() {
 }
 
 /** "Limited to: 1" -> grey label, white value. Lines without a colon (templated ones) stay white. */
+// Stored values carry the game text's "(augmented)" (for copying); the tooltip shows the value only.
+function hideAugmented(text: string): string {
+  return text.replaceAll(" (augmented)", "");
+}
+
 function PropertyLine({ text: raw }: { text: string }) {
   // Stored before markup was stripped at record time.
-  const text = stripGameMarkup(raw);
+  const text = hideAugmented(stripGameMarkup(raw));
   const i = text.indexOf(": ");
   if (i === -1) return <div style={{ color: VALUE }}>{text}</div>;
   return (
@@ -107,7 +112,7 @@ export function PoeItemTooltip({
           <div>
             <span style={{ color: LABEL }}>Requires </span>
             {requirements.map((r, i) => {
-              const [label, value] = r.includes(": ") ? r.split(": ") : [r, ""];
+              const [label, value] = r.includes(": ") ? hideAugmented(r).split(": ") : [r, ""];
               return (
                 <span key={r}>
                   {i > 0 && <span style={{ color: LABEL }}>, </span>}
