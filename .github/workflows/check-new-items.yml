@@ -41,9 +41,13 @@ jobs:
         env:
           REPORT_PATH: ${{ runner.temp }}/new-items-report.md
 
+      # `next typegen` first: PageProps/LayoutProps are global types Next generates into .next/types
+      # (normally by `next dev`/`next build`), which a fresh checkout doesn't have.
       - name: Typecheck the changes
         if: steps.check.outputs.changed == 'true'
-        run: npx tsc --noEmit -p .
+        run: |
+          npx next typegen
+          npx tsc --noEmit -p .
 
       - name: Open or update the pull request
         if: steps.check.outputs.changed == 'true'

@@ -383,6 +383,8 @@ The PR description lists what needs a human: gold costs for new exchange items
 (`lib/faustus-gold.ts`) and where new categories go in the category filter
 (`lib/category-reliability.ts`). After merging, rerun the daily data job so the price snapshot picks
 up new categories. Run it locally with `npx tsx scripts/check-new-items.ts` (`--dry-run` to only report).
+The workflow typechecks its changes before opening the PR; any CI job that runs `tsc` needs
+`npx next typegen` first, since `PageProps`/`LayoutProps` are types Next generates into `.next/types`.
 
 To regenerate one list by hand (prints by default; `--write` writes the file):
 
