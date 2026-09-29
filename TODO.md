@@ -96,9 +96,10 @@ its own; volume is capped at 3,000 listings per search, 6,000 in total and 20 se
 every PR and enforced while running. Live since 2026-09-28: GitHub's runners reach the trade site
 (no 403 so far). Still open:
 
-- **No sale seen yet.** In the first ~20 hours (late Allflame, 100d+ Watcher's Eyes) nothing
-  tracked sold or was pulled - checked by re-fetching every listing, so it's the market, not a
-  bug. A busier, cheaper search would confirm a sale shows up on the page end to end.
+- **Sold times for the first sales are late.** The 14 listings that sold before the `gone` fix
+  get their sold time from the first run after it (up to ~1.5 days late), and their "Time up" is
+  long by the same amount. Listings already settled as unsold after 7 days aren't re-checked, so
+  one that actually sold before then stays unsold.
 - **Copy item in Craft of Exile** is untested (Path of Building's parser reads it correctly).
 - **Sweep limits.** The per-run sweep (which replaced "backfill a new search") pages by price, so
   it stops at a listing priced in a different currency than the link's price filter (e.g. a chaos
@@ -207,8 +208,9 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
     - stash tab name and position;
     - `indexed`: when it was listed or last changed.
   - The listing id equals the item's own id, and a repriced item keeps it (tested; see above).
-  - **A fetch of a listing that's gone returns `null`** in its slot, and fetch doesn't need the
-    search id. That makes it a cheap way to check whether a listing is still up, 10 per request.
+  - ~~A fetch of a listing that's gone returns `null`~~ - wrong: it returns the last listing with
+    `gone: true` (found 2026-09-29; see Done). Fetch doesn't need the search id, so it's still a
+    cheap "still up?" check, 10 per request.
 - **Traps:**
   - *Gone isn't sold.* A listing also disappears when the seller moves the item to a private tab,
     removes its price or uses it. Treat an id as sold only once it's been missing for 2+ checks
@@ -299,6 +301,10 @@ gains little over files built at ingest and shipped with the app, and adds a run
 
 ## Done
 
+- **Sales were never detected** (fixed 2026-09-29). The tracker counted a sale only when a fetch
+  came back `null`, but the trade site returns a sold or pulled listing with `gone: true` instead.
+  So every sale read as "still listed", and Sold stayed empty. `fetchListings` now treats `gone`
+  as not listed. 14 of 521 tracked listings were gone at the time.
 - **Sold tracker follows every listing a search matches** (2026-09-29). Each run starts with a sweep
   that pages the search by price (`sweepIds` in `scripts/track-sold-listings.ts`). Before it, the
   first run only reached the newest and oldest 100 of the backlog: 260 tracked of 544 matching,

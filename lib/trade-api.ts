@@ -133,6 +133,9 @@ class EndpointLimiter {
 
 export interface TradeListing {
   id: string;
+  /** Set on a listing that's no longer on the market (sold or pulled): the fetch still returns its
+   *  last listing, with `gone: true` and `item.verified: false`. (Checked 2026-09-29.) */
+  gone?: boolean;
   listing: {
     indexed: string;
     price?: { type?: string; amount: number; currency: string };
@@ -248,13 +251,20 @@ export class TradeApiClient {
     return { ids: json.result ?? [], total: json.total ?? 0 };
   }
 
-  /** Listings by id, up to 10 per request; `null` for an id that's no longer listed. */
+  /**
+   * Listings by id, up to 10 per request; `null` for an id that's no longer listed. A sold or pulled
+   * listing doesn't come back empty - the fetch returns its last listing marked `gone: true` - so
+   * those are turned into `null` here. (An id that never existed is `null` from the API itself.)
+   */
   async fetchListings(ids: string[]): Promise<Array<TradeListing | null>> {
     const out: Array<TradeListing | null> = [];
     for (let i = 0; i < ids.length; i += 10) {
       const batch = ids.slice(i, i + 10);
       const json = (await this.request("fetch", `${TRADE_API}/fetch/${batch.join(",")}`)) as { result?: Array<TradeListing | null> };
-      batch.forEach((_, k) => out.push(json.result?.[k] ?? null));
+      batch.forEach((_, k) => {
+        const listing = json.result?.[k] ?? null;
+        out.push(listing && !listing.gone ? listing : null);
+      });
     }
     return out;
   }

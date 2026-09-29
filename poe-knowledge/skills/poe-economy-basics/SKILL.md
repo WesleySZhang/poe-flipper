@@ -41,10 +41,12 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   ask. `[verified]` (`lib/flip-suggestions.ts` thin-market guard)
 - **A steady listing count isn't turnover.** A trade search limited to "listed in the last week"
   keeps a flat count because new listings arrive about as fast as old ones age past the window -
-  whether or not anything sells. Late Allflame (day ~66, 2026-09-28/29): 100d+ Watcher's Eyes held
-  at ~545 listings with ~7 new an hour, yet none of ~220 followed for 17 hours sold or was pulled.
-  High-end uniques late in a league can sit for days; measure sales by following listing ids, not
-  by the count. `[verified]` (2026-09-29; one search, one league)
+  whether or not anything sells. Measure sales by following listing ids (and reading the fetch's
+  `gone` flag - see `poe-data-sources`), not by the count. Late Allflame (day ~66, 2026-09-28/29),
+  100d+ Watcher's Eyes: ~520 listings, ~7 new an hour; of the ones followed, 14 went off the market
+  (sold or pulled) in ~1.5 days - slow, but not zero. `[verified]` (2026-09-29; one search, one
+  league. An earlier version of this note said none sold - that came from a tracker bug that read
+  `gone` listings as still up.)
 
 ## In this app
 

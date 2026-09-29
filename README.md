@@ -274,7 +274,8 @@ rebuilds from scratch):
 - **How long records are kept:** a sale shows on the page for 30 days and an unsold listing for 7;
   the state keeps ended listings 7 days; the archive keeps them forever. There's no backup: each
   publish replaces the branch with one commit, so its history holds no older copies.
-- **Deciding a sale:** every listing is checked by its item id once per run. A fetch by id ignores
+- **Deciding a sale:** every listing is checked by its item id once per run. A listing that's gone
+  still comes back from the fetch, marked `gone: true`, and counts as gone. A fetch by id ignores
   the search's filters, and the id survives a price change, so a price drop (even out of the
   search's price range) is recorded as a new price, not a sale (repricing happens in place). A
   listing counts as sold at the first check that finds it gone - pulling an item to relist it later

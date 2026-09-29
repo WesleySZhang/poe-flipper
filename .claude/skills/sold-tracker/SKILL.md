@@ -84,6 +84,13 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   some sell or expire. Narrow or remove searches.
 - **PR check fails with "Couldn't measure":** the trade site refused or failed - it fails closed.
   Re-run it; if it's a 403 from GitHub's runners, see the workflow's comments.
+- **No sales at all for days:** check that "gone" is still detected. A sold or pulled listing comes
+  back from the fetch with `gone: true`, not as `null`; `fetchListings` (`lib/trade-api.ts`) turns
+  it into `null`. Until 2026-09-29 it didn't, and Sold stayed empty. To check by hand: fetch the
+  tracked "listed" ids and count `gone: true`; for any tracked listing the search no longer shows
+  (at an unchanged price, under a week old), search its seller's account for the item with status
+  `any` - absent there but still fetched means gone. Don't test with a made-up id: that's `null`
+  whatever the rule is.
 - **A "sale" that wasn't:** a listing counts as sold at the first check that finds it gone (the
   owner's call: pulling an item to relist it later is rare, and repricing happens in place). A
   seller pulling an item for good looks the same. One relisted under the same item id is reopened
