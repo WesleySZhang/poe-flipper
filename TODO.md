@@ -97,10 +97,10 @@ its own; volume is capped at 3,000 listings per search, 6,000 in total and 20 se
 every PR and enforced while running. Live since 2026-09-28: GitHub's runners reach the trade site
 (no 403 so far). Still open:
 
-- **Backfill a new search.** A first run sees at most 200 per search (the newest and oldest 100 of
-  the week); the first took 205 of 546, and the ~340 in between are never tracked. The gap closes
-  on its own as they expire (Watcher's Eye: by ~2026-10-05). A one-time backfill that splits the
-  search by price or listing age (each slice under 100) would close it at once for new searches.
+- **Sweep limits.** The per-run sweep (which replaced "backfill a new search") pages by price, so
+  it stops at a listing priced in a different currency than the link's price filter (e.g. a chaos
+  listing on a divine-priced search), and takes only 200 of a price shared by more than 200
+  listings. Neither happens on Watcher's Eye today. Splitting by listing age would cover both.
 - **Back up the archive.** `ended/` is the only full history and lives only on `sold-tracker-data`,
   which each publish replaces with a single commit. A run that restored an incomplete copy and
   published would lose it for good. E.g. copy it to a release asset or a second branch weekly.

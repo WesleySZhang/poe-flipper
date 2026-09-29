@@ -50,6 +50,8 @@ export const UNSOLD_PAGE_DAYS = 7;
 /** A search returns at most this many ids (newest first here), so a run that finds this many new
  *  listings has likely missed some. */
 export const SEARCH_RESULT_CAP = 100;
+/** The sweep's page cap per search: MAX_LISTINGS_PER_SEARCH at 100 a page, plus room for price ties. */
+export const SWEEP_MAX_PAGES = 40;
 /** A search's `total` stops counting here. */
 export const TRADE_TOTAL_CAP = 10000;
 

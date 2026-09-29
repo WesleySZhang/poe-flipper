@@ -62,13 +62,18 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   listings between runs (the newest and oldest 100 are fetched) and missed some - narrow it.
 - **Page not updated today:** check the day's "Track sold listings" run. GitHub starts it hours
   late, and occasionally skips it; the next run catches up (state carries over).
-- **"Tracking N" well below the trade site's count:** expected for about a week after a search
-  starts. A search returns at most 100 ids, so the first run takes only the newest and oldest 100
-  of the listings already up (the first run on 2026-09-28 took 205 of 546). New listings are all
-  caught after that, and the untracked backlog expires within 7 days of being listed. If it's still
-  far below after a week, check for "missed some" warnings or skipped runs. A one-time backfill
-  (splitting the search by price or listing age so each slice is under 100) would close it at once;
-  not built.
+- **"Tracking N" well below the trade site's count:** it shouldn't be after one run - each run
+  starts with a sweep (`sweepIds` in the script) that pages through everything a search matches.
+  Before the sweep existed (2026-09-28) the first run took only the newest and oldest 100 of the
+  backlog: 205 of 546, and ~290 were never tracked. Compare with the trade site using the same
+  rules (instant buyout, listed in the last week; a 2-week filter shows far more). If it's short,
+  look for `sweep "...": ... (incomplete)` in the run log: a listing priced in a different currency
+  than the link's price filter stops the paging, over 200 listings at one exact price only 200 are
+  taken, and a paused search (over 3,000) isn't swept. The run log line
+  `sweep "<label>": N of TOTAL found, K new` shows how complete it was.
+- **Checking coverage by hand:** page the search by price like `sweepIds` does, diff the ids with
+  `state/<League>.json`, and fetch the untracked ones to see their `indexed` time - posted before
+  the tracker started means backlog; after means discovery missed them.
 - **Short manual runs:** "How long to run" defaults to 330 minutes. A short run (e.g. 20) publishes
   only at its end and re-checks little, so the page barely moves.
 - **"paused" on a search:** it now matches more than 3,000 listings, so it takes nothing new (its
