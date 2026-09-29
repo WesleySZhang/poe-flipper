@@ -46,7 +46,26 @@ knowledge, `[unsure]` unchecked - never present these as settled.
   have none, and the column only appears when the item has a tiered mod. `[owner]` (2026-09-28)
 - **The item text** (what Ctrl+C copies in game) comes base64 in the trade API's `extended.text`,
   with `\r\n` line endings. It pastes into Path of Building and the trade site's search. Some
-  facts are only in it, e.g. a foil's name: "Foil Unique (Celestial Emerald)". `[verified]`
+  facts are only in it: a foil's name ("Foil Unique (Celestial Emerald)") and the item class
+  ("Item Class: Body Armours"). `[verified]`
+- **Its format**, sections split by `--------` (checked against 14 real items, 2026-09-28):
+  1. `Item Class: X`, `Rarity: Rare`, name, base type (a magic item has one line: its full name;
+     a relic says `Rarity: Unique`);
+  2. properties, with ` (augmented)` after values changed by mods ("Energy Shield: 383
+     (augmented)"; each of several values gets its own); a weapon's first line is its class alone;
+  3. `Requirements:` then `Level: 68`, `Int: 194` (also marked augmented when changed);
+  4. `Sockets: R G-B-W ` - note the trailing space;
+  5. `Item Level: 84`;
+  6. enchants, implicits, explicits - one section each; fractured mods first, crafted last;
+  7. flavour text, then `Corrupted`, then `Shaper Item` / `Elder Item` / `Synthesised Item` /
+     `Fractured Item` / `Mirrored` / `Foil Unique (Aureate)`, then `Note: ~b/o 100 divine` (only when
+     the item has its own price note), then a trailing `\r\n`.
+  GGG's trade text (`extended.text`) puts no marker on implicit, crafted or fractured mods, and
+  keeps `[Ref|Text]` markup; the in-game copy adds ` (implicit)`, ` (crafted)`, ` (fractured)`,
+  ` (enchant)`. **Path of Building needs `(implicit)`** - without it its parser (checked headless,
+  PoB 2.67) counts implicits as explicits. Everything else above it parses: rarity incl. Relic,
+  class, sockets and links, quality, corruption, influences, synthesised, fractured, mirrored, foil.
+  `[verified]`
 - **Relics and foils:** relic uniques have `isRelic` and a foil (`frameType` 10, "SupporterFoil";
   `foilVariation` is a number). Seen foil names: Celestial Emerald, Ruby, Sunset. They can change a
   unique's price. `[verified]` (2026-09-28)

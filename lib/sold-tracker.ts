@@ -101,7 +101,10 @@ export interface SoldListingItem {
 }
 
 export interface SoldListingDetail {
-  /** "Limited to: 1", "Quality: +20%", ... in the order the game shows them. */
+  /** "Jewels", "Body Armours", ... - the item text's first line; only there, not in the fetch's fields. */
+  itemClass?: string;
+  /** "Limited to: 1", "Quality: +10% (augmented)", ... in the order the game shows them, with the
+   *  game's "(augmented)" after values changed by mods (lib/item-text.ts; the tooltip hides it). */
   properties: string[];
   requirements: string[];
   /** e.g. "R-G-B B" - linked sockets joined by "-". */
@@ -278,9 +281,19 @@ function modRanges(mod: TradeMod): Array<{ min: number; max: number }> | undefin
 /** "P7" / "S2" -> 7 / 2. A hybrid mod's parts share one tier, so the first is enough. */
 function modTier(mod: TradeMod): number | undefined {
   if (typeof mod === "string") return undefined;
-  const match = mod.mods?.find((m) => m.tier)?.tier?.match(/(\d+)$/);
+  // "R1" is a crafted mod's bench rank, not a tier - left out so it doesn't read as a top roll.
+  const match = mod.mods?.find((m) => m.tier)?.tier?.match(/^[PS](\d+)$/);
   return match ? Number(match[1]) : undefined;
 }
+
+/** The fetch lists fractured and crafted mods among the explicits, marked by `domain`. */
+function modKind(mod: TradeMod, listed: ListingModKind): ListingModKind {
+  if (typeof mod === "string" || listed !== "explicit") return listed;
+  return mod.domain === "fractured" || mod.domain === "crafted" ? mod.domain : listed;
+}
+
+// The game's order: enchants, implicits, then fractured mods first and crafted ones last.
+const KIND_ORDER: ListingModKind[] = ["enchant", "implicit", "fractured", "explicit", "crafted", "crucible", "scourge"];
 
 const MOD_KINDS: Array<[ListingModKind, keyof TradeItem]> = [
   ["enchant", "enchantMods"],
@@ -292,10 +305,14 @@ const MOD_KINDS: Array<[ListingModKind, keyof TradeItem]> = [
   ["scourge", "scourgeMods"],
 ];
 
+// Value display types the game's item text marks "(augmented)": 1 (changed by a mod) and the
+// elemental/chaos damage colours 4-7. 0 is plain, 2 an unmet requirement. (Checked 2026-09-28.)
+const AUGMENTED_DISPLAY_TYPES = new Set([1, 4, 5, 6, 7]);
+
 /** "Limited to: 1", or a name with {0} placeholders filled in ("Radius: {0}"). */
 function propertyText(p: TradeProperty): string {
   const name = stripGameMarkup(p.name);
-  const values = (p.values ?? []).map((v) => v[0]);
+  const values = (p.values ?? []).map((v) => (AUGMENTED_DISPLAY_TYPES.has(v[1]) ? `${v[0]} (augmented)` : v[0]));
   if (name.includes("{0}")) return values.reduce((text, v, i) => text.replace(`{${i}}`, v), name);
   return values.length > 0 ? `${name}: ${values.join(", ")}` : name;
 }
@@ -307,8 +324,8 @@ function decodeBase64(b64: string): string {
 }
 
 /**
- * The item text (base64 in the fetch) is read only for the foil name, not stored: at ~1.7 KB it was
- * half of each stored listing. Flavour text isn't stored either - nothing shows it.
+ * The item text (base64 in the fetch) is read for the item class and foil name, not stored whole: at
+ * ~1.7 KB it was half of each stored listing; lib/item-text.ts rebuilds it from the rest. Flavour text isn't stored either - nothing shows it.
  */
 function toListingDetail(item: TradeItem): SoldListingDetail {
   const text = item.extended?.text ? decodeBase64(item.extended.text).replace(/\r\n/g, "\n").trim() : undefined;
@@ -318,7 +335,8 @@ function toListingDetail(item: TradeItem): SoldListingDetail {
       .map(([name]) => name[0].toUpperCase() + name.slice(1)),
     ...(item.fractured ? ["Fractured"] : []),
     ...(item.synthesised ? ["Synthesised"] : []),
-    ...(item.mirrored ? ["Mirrored"] : []),
+    // The fetch calls a mirrored item "duplicated".
+    ...(item.mirrored || item.duplicated ? ["Mirrored"] : []),
     ...(item.split ? ["Split"] : []),
     ...(item.isRelic ? ["Relic"] : []),
   ];
@@ -327,7 +345,9 @@ function toListingDetail(item: TradeItem): SoldListingDetail {
   if (foil) tags.push(`Foil: ${foil}`);
   const groups = new Map<number, string[]>();
   for (const s of item.sockets ?? []) groups.set(s.group, [...(groups.get(s.group) ?? []), s.sColour ?? "?"]);
+  const itemClass = text?.match(/^Item Class: (.+)$/m)?.[1];
   return {
+    ...(itemClass ? { itemClass } : {}),
     properties: (item.properties ?? []).map(propertyText),
     requirements: (item.requirements ?? []).map(propertyText),
     ...(groups.size > 0 ? { sockets: [...groups.values()].map((g) => g.join("-")).join(" ") } : {}),
@@ -337,9 +357,9 @@ function toListingDetail(item: TradeItem): SoldListingDetail {
         const t = modText(m);
         const ranges = modRanges(m);
         const tier = modTier(m);
-        return t ? [{ kind, text: t, ...(ranges ? { ranges } : {}), ...(tier !== undefined ? { tier } : {}) }] : [];
+        return t ? [{ kind: modKind(m, kind), text: t, ...(ranges ? { ranges } : {}), ...(tier !== undefined ? { tier } : {}) }] : [];
       })
-    ),
+    ).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind)),
   };
 }
 

@@ -61,10 +61,17 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
     **roll range** of each number in the mod (a Watcher's Eye "60% increased Lightning Damage while
     affected by Wrath" has 40-60; a fixed mod has min = max). Magic/rare explicit mods also have
     `name` ("of the Furnace"), `tier` ("P7" = prefix tier 7, "S2" = suffix tier 2; 1 is best) and
-    `level`. Unique mods and implicits have no tier. `[verified]` (2026-09-28)
-  - `properties` / `requirements` as `{name, values: [[text, displayType]]}` ("Limited to", [["1",0]]);
-  - `sockets`, `influences`, `corrupted`, `mirrored`, `fractured`, `synthesised`, `isRelic`,
-    `foilVariation` (a number - the foil's name is only in the item text), `flavourText`;
+    `level`. Unique mods and implicits have no tier. A crafted mod's tier is "R1" (a bench rank).
+    `[verified]` (2026-09-28)
+  - **Fractured and crafted mods sit inside `explicitMods`**, marked `domain: "fractured"` /
+    `"crafted"` (and `flags`), not in `fracturedMods` / `craftedMods`. `[verified]` (2026-09-28)
+  - `properties` / `requirements` as `{name, values: [[text, displayType]]}` ("Limited to", [["1",0]]).
+    displayType 0 = plain, 1 = augmented (changed by a mod), 4/5/6 = fire/cold/lightning damage
+    (7 = chaos, assumed); the item text writes "(augmented)" after 1 and 4-7. `[verified]`
+  - `sockets` (`{group, sColour}`; same group = linked), `influences`, `corrupted`, `fractured`,
+    `synthesised`, `isRelic`, `foilVariation` (a number - the foil's name is only in the item text),
+    `flavourText`, `descrText`. **A mirrored item is `duplicated: true`** - there is no `mirrored`
+    field. `[verified]` (2026-09-28)
   - `extended.text`: the in-game item text (what Ctrl+C copies), base64 - pastes into Path of
     Building. See the `poe-item-display` skill for rendering it. `[verified]`
 - Repricing keeps the listing id. A Watcher's Eye lowered from 100d to 50d kept its id. A fetch

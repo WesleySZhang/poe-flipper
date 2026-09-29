@@ -126,6 +126,8 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   `46% increased Attack Damage while affected by Precision`. Also properties, item level,
   influences, relic/foil and corruption. Rows don't open anything, so text can be selected. Listings
   recorded before details were kept get them at their next check.
+- **Copy item** puts the item on the clipboard as the game's Ctrl+C text (`lib/item-text.ts`), for
+  Path of Building, Craft of Exile or the trade site's search.
 - **The searches** are listed first, as filters: pick one or more to see only the listings they
   found (All = every search); each shows how many of the current tab's listings it found, and its
   hover shows how many listings it matches on the trade site now. "paused" means a
@@ -503,6 +505,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `lib/trade-site.ts` | Official trade site search links |
 | `lib/trade-query.ts`, `lib/trade-api.ts` | Trade site links decoded to their queries; the rate-limited trade API client (tracker only) |
 | `lib/sold-tracker.ts`, `lib/sold-listings.ts`, `lib/sold-tracker-searches.ts` | The sold listing tracker's data model, sale rules and limits; reading its file for the page; reading `searches.md` |
+| `lib/item-text.ts` | A stored item rebuilt as the game's Ctrl+C text (Sold Listings' Copy item) |
 | `lib/price-history.ts` | Past-league history for the chart |
 | `lib/current-league-history.ts` | Current league's history from the `precompute-data` branch CSVs |
 | `lib/spark-backfill.ts` | Rebuilding missed days from poe.ninja's sparkline |
