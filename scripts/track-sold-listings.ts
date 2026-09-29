@@ -50,6 +50,7 @@ import {
   MAX_SEARCHES,
   MIN_DISCOVERY_MINUTES,
   SEARCH_RESULT_CAP,
+  SWEEP_MAX_PAGES,
   STATE_KEEP_ENDED_DAYS,
   admitNewListings,
   buildSoldListingsFile,
@@ -301,6 +302,87 @@ async function main() {
     }
   }
 
+  /**
+   * Every listing a search matches, not just the newest page: a search returns at most 100 ids, so
+   * this pages through it cheapest first, starting each page at the last one's price. Listings at
+   * one price that fill a whole page (e.g. many at a round 100d) are taken newest and oldest first,
+   * up to 200. Run once per run per search, it takes in listings discovery never saw - the backlog
+   * already up when a search starts, or more new listings than a discovery pass can reach.
+   * Returns the ids found, and whether that's all of them.
+   */
+  async function sweepIds(search: TrackedSearch): Promise<{ ids: Set<string>; total: number; complete: boolean }> {
+    const query = search.query!;
+    const priceFilter = (query.filters?.trade_filters?.filters?.price ?? {}) as { min?: number; max?: number; option?: string };
+    // Paging needs listing prices in the filter's own unit: no option = chaos equivalent.
+    const unit = priceFilter.option || "chaos";
+    const withPrice = (min: number | undefined, max?: number) => {
+      const trade = query.filters?.trade_filters ?? {};
+      const price = { ...priceFilter, ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}) };
+      return { ...query, filters: { ...query.filters, trade_filters: { ...trade, filters: { ...trade.filters, price } } } };
+    };
+    const ids = new Set<string>();
+    let min = priceFilter.min;
+    let total = 0;
+    for (let page = 0; page < SWEEP_MAX_PAGES; page++) {
+      const r = await client.search(CURRENT_LEAGUE, withPrice(min), { price: "asc" });
+      if (page === 0) {
+        total = r.total;
+        // Over the limit it's paused (admitNewListings) - don't spend searches paging it.
+        if (total > MAX_LISTINGS_PER_SEARCH) return { ids, total, complete: false };
+      }
+      r.ids.forEach((id) => ids.add(id));
+      if (r.total <= r.ids.length) return { ids, total, complete: true };
+      const [first, last] = await client.fetchListings([r.ids[0], r.ids[r.ids.length - 1]]);
+      const firstPrice = first?.listing.price;
+      const lastPrice = last?.listing.price;
+      if (!firstPrice || !lastPrice || firstPrice.currency !== unit || lastPrice.currency !== unit) {
+        log(`sweep "${search.label}": can't page past a listing not priced in ${unit} - stopped at ${ids.size}`);
+        return { ids, total, complete: false };
+      }
+      if (firstPrice.amount === lastPrice.amount) {
+        const p = lastPrice.amount;
+        const newest = await client.search(CURRENT_LEAGUE, withPrice(p, p), { indexed: "desc" });
+        const oldest = await client.search(CURRENT_LEAGUE, withPrice(p, p), { indexed: "asc" });
+        [...newest.ids, ...oldest.ids].forEach((id) => ids.add(id));
+        if (newest.total > SEARCH_RESULT_CAP * 2) log(`sweep "${search.label}": ${newest.total} listings at ${p} ${unit}, took 200`);
+        min = p + 0.01;
+      } else {
+        min = lastPrice.amount;
+      }
+    }
+    log(`sweep "${search.label}": stopped after ${SWEEP_MAX_PAGES} pages at ${ids.size}`);
+    return { ids, total, complete: false };
+  }
+
+  async function sweep(search: TrackedSearch) {
+    const status = statuses.get(search.label)!;
+    try {
+      const { ids, total, complete } = await sweepIds(search);
+      const now = new Date().toISOString();
+      const fresh: string[] = [];
+      for (const id of ids) {
+        const t = listings.get(id);
+        if (!t || t.status === "sold") fresh.push(id);
+        else if (t.status === "listed") {
+          t.lastSeen = now;
+          if (!t.searches.includes(search.label)) t.searches.push(search.label);
+        }
+      }
+      const { admit, paused, atCapacity: full } = admitNewListings(fresh, total, listedCount());
+      atCapacity = full;
+      const fetched = await client.fetchListings(admit);
+      fetched.forEach((l) => l && recordListing(listings, l, now, search.label));
+      status.total = total;
+      log(
+        `sweep "${search.label}": ${ids.size} of ${total} found${complete ? "" : " (incomplete)"}, ${admit.length} new` +
+          (paused ? ` - PAUSED: ${paused}` : fresh.length > admit.length ? ` - ${fresh.length - admit.length} skipped, at the tracking limit` : "")
+      );
+    } catch (e) {
+      log(`sweep "${search.label}" failed: ${(e as Error).message}`);
+      if (e instanceof TradeApiError && e.status === 403) throw e;
+    }
+  }
+
   async function check(ids: string[]) {
     const fetched = await client.fetchListings(ids);
     const now = new Date().toISOString();
@@ -315,6 +397,11 @@ async function main() {
   }
 
   try {
+    // Once per run, every listing each search matches (see sweepIds); discovery then keeps up.
+    for (const search of active) {
+      if (stopping || Date.now() >= deadline) break;
+      await sweep(search);
+    }
     while (!stopping && Date.now() < deadline) {
       let didWork = false;
       for (const search of active) {

@@ -263,12 +263,14 @@ rebuilds from scratch):
   (`lib/trade-query.ts`), so reading it costs no request. The tracker adds its own rules to every
   search: instant buyout only (no offline sellers or bait), listed in the last week, current league.
   Everything else, including any price range, is the link's.
-- **Finding listings:** each search runs newest-first. A search returns at most 100 listings, so
-  when all 100 are new the tracker also fetches the oldest 100 since the last run: up to 200 new
-  listings per search between runs (the per-search limit averages ~110 per 6 hours). More than
-  that and the search is flagged as having missed some. So a new search only takes in ~200 of the
-  listings already up when it starts; the rest are never tracked, and "Tracking N" sits below the
-  trade site's count until they expire (7 days). After that it's close to the full count.
+- **Finding listings:** a search returns at most 100 listings, so two passes:
+  - **A sweep at the start of each run** pages through every listing a search matches, cheapest
+    first, 100 at a time (each page starts at the last one's price; a price shared by a whole page,
+    like a round 100d, is taken newest and oldest first, up to 200). It takes in everything not yet
+    tracked, so "Tracking N" matches the trade site's count from the first run - including the
+    backlog already listed when a search is added. ~1 search per 100 listings.
+  - **Discovery during the run**, newest-first every 30 minutes (sooner when busy), keeps up with
+    new listings; when all 100 are new it also fetches the oldest 100 since the last pass.
 - **How long records are kept:** a sale shows on the page for 30 days and an unsold listing for 7;
   the state keeps ended listings 7 days; the archive keeps them forever. There's no backup: each
   publish replaces the branch with one commit, so its history holds no older copies.
