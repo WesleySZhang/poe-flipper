@@ -284,7 +284,10 @@ rebuilds from scratch):
   each limit window has room, keeps to 70% of each limit, and follows the limits and usage the
   site reports on every response. The fetch limit (1,000 per 6 hours, 10 listings each) is the
   ceiling: at 70% that's ~7,000 listing checks per 6 hours. Fetches are paced ~25 s apart, so a
-  run's ~600 are spread over its hours instead of spent in bursts.
+  run's ~600 are spread over its hours instead of spent in bursts. Searches (~420 per 6 hours at
+  70%) go to the sweep (~1 per 100 listings, plus 1 fetch per page to read its last price) and to
+  discovery (~11 per search per run). A first sweep that takes in hundreds of new listings spends
+  ~15 minutes fetching them at that pace.
 - **Limits on volume** (`lib/sold-tracker.ts`): 3,000 listings per search, 6,000 in total (every
   listing checked each 6 hours, with room for GitHub's late starts), 20 searches. Enforced before merge by the **"Check sold tracker searches"** PR check
   (`scripts/check-sold-searches.ts`, `npm run sold:check` locally): it runs every search on the
@@ -297,8 +300,8 @@ rebuilds from scratch):
   resumes from). To see a local run on the page, start the dev server with
   `SOLD_LISTINGS_FILE=.sold-tracker/sold-listings/<League>.json`.
 - **Caveats:** a seller pulling an item for good looks the same as a sale. The trade API isn't in
-  GGG's developer docs, and it's untested whether pathofexile.com accepts requests from GitHub's
-  runners; if the workflow fails with a 403, run the tracker elsewhere. See `TODO.md`.
+  GGG's developer docs. pathofexile.com accepts requests from GitHub's runners (checked
+  2026-09-28); if the workflow ever fails with a 403, run the tracker elsewhere. See `TODO.md`.
 
 ---
 

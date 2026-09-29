@@ -16,7 +16,8 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   - **poe.ninja** - an estimate from scraped stash listings (a lag of a few minutes to hours). `[verified]`
   - **GGG Currency Exchange ("Faustus")** - actual completed trades; the API gives a per-hour
     buy/sell range and volume for the last closed hour, so it is roughly 2 hours stale. `[verified]`
-  - **Trade site** - live asking prices for individual listings; not used by this app. `[verified]`
+  - **Trade site** - live asking prices for individual listings (the sold listing tracker follows
+    them to see what actually sells). `[verified]`
 - The Currency Exchange charges gold per trade; cost differs per item, so a spread only pays if it
   beats the gold cost. `[verified]` (`lib/faustus-gold.ts`)
 - Exchange ratios are integers, so a barely-traded cheap item can show a huge "spread" from one
@@ -38,6 +39,12 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   no volume. `[verified]`
 - A price with few sellers is easy to move; a low seller count means the price may be one person's
   ask. `[verified]` (`lib/flip-suggestions.ts` thin-market guard)
+- **A steady listing count isn't turnover.** A trade search limited to "listed in the last week"
+  keeps a flat count because new listings arrive about as fast as old ones age past the window -
+  whether or not anything sells. Late Allflame (day ~66, 2026-09-28/29): 100d+ Watcher's Eyes held
+  at ~545 listings with ~7 new an hour, yet none of ~220 followed for 17 hours sold or was pulled.
+  High-end uniques late in a league can sit for days; measure sales by following listing ids, not
+  by the count. `[verified]` (2026-09-29; one search, one league)
 
 ## In this app
 

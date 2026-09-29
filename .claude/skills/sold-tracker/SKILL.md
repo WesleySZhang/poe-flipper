@@ -8,7 +8,7 @@ description: Use when adding or changing the trade searches the sold listing tra
 `scripts/track-sold-listings.ts` follows trade site listings (instant buyout, listed in the last
 week) matched by the links in `sold-tracker/searches.md`, and records which sell. The "Track sold
 listings" workflow runs it ~5.5 h every 6 h, then force-pushes `state/`, `sold-listings/` (the
-page's file: recent sales/unsold and every listing still up, which the page shows as unsold) and `ended/` (the full history, JSONL by month) to the
+page's file: recent sales/unsold and every listing still up, which the page shows as unsold) and `ended/` (the full history, JSONL by day) to the
 `sold-tracker-data` branch; `/sold-listings` reads `sold-listings/<League>.json` (`lib/sold-listings.ts`,
 5-min cache). Publishing (`scripts/publish-sold-tracker.sh`, a full snapshot force-pushed as one
 commit) happens every 30 min during a run and once at its end, so the page lags by up to ~35 min.
@@ -58,8 +58,10 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   missing. Check the workflow's last run; the file is per league, so a league swap starts empty.
 - **Workflow fails with `403 (blocked before reaching the API)`:** pathofexile.com refused GitHub's
   runner IP. Run the tracker from another machine (it only needs Node and the repo).
-- **Warning icon on a search:** it failed (hover for the error), or got more than 200 new
-  listings between runs (the newest and oldest 100 are fetched) and missed some - narrow it.
+- **Warning icon on a search:** it failed (hover for the error), or discovery got more than 200
+  new listings between passes (the newest and oldest 100 are fetched) and missed some. The next
+  run's sweep takes the missed ones in, so it's only a problem if it shows every run - then narrow
+  the search or check the sweep's log line.
 - **Page not updated today:** check the day's "Track sold listings" run. GitHub starts it hours
   late, and occasionally skips it; the next run catches up (state carries over).
 - **"Tracking N" well below the trade site's count:** it shouldn't be after one run - each run

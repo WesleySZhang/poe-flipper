@@ -96,6 +96,10 @@ its own; volume is capped at 3,000 listings per search, 6,000 in total and 20 se
 every PR and enforced while running. Live since 2026-09-28: GitHub's runners reach the trade site
 (no 403 so far). Still open:
 
+- **No sale seen yet.** In the first ~20 hours (late Allflame, 100d+ Watcher's Eyes) nothing
+  tracked sold or was pulled - checked by re-fetching every listing, so it's the market, not a
+  bug. A busier, cheaper search would confirm a sale shows up on the page end to end.
+- **Copy item in Craft of Exile** is untested (Path of Building's parser reads it correctly).
 - **Sweep limits.** The per-run sweep (which replaced "backfill a new search") pages by price, so
   it stops at a listing priced in a different currency than the link's price filter (e.g. a chaos
   listing on a divine-priced search), and takes only 200 of a price shared by more than 200
@@ -295,6 +299,10 @@ gains little over files built at ingest and shipped with the app, and adds a run
 
 ## Done
 
+- **Sold tracker follows every listing a search matches** (2026-09-29). Each run starts with a sweep
+  that pages the search by price (`sweepIds` in `scripts/track-sold-listings.ts`). Before it, the
+  first run only reached the newest and oldest 100 of the backlog: 260 tracked of 544 matching,
+  290 never seen. A test run took in 292 and ended at 554 tracked.
 - **Copy a sold listing's item as game text** (2026-09-28). "Copy item" on each Sold Listings row
   rebuilds the game's Ctrl+C text from the stored item (`lib/item-text.ts`): identical to GGG's own
   text for 14 real items (minus flavour text), plus the in-game "(implicit)"/"(crafted)" markers, and

@@ -56,6 +56,18 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   currency}, `account` {name, online}, `stash` {name, x, y}, `method: "psapi"`). The result id equals
   `item.id`. A fetched id that's no longer listed comes back as `null` in its slot - a cheap
   "still listed?" check. `[verified]` (2026-09-27)
+- **Getting every listing past the 100 cap:** sort `{"price": "asc"}`, take the page, fetch its last
+  id for its price, and search again with `trade_filters.price.min` = that price (inclusive; ids
+  repeat, dedupe). When a whole page shares one price (e.g. 105 Watcher's Eyes at exactly 100d),
+  search `min = max = price` sorted `{"indexed": "desc"}` and `"asc"` (covers 200), then continue
+  from price + 0.01. Paging needs listing prices in the filter's unit: `price.option` "divine" =
+  divine-priced, no option = chaos equivalent. 544 listings took 8 searches (2026-09-29).
+  Bisecting the price range instead (split until each slice is under 100) works but costs many
+  more searches. Newest-first alone (`indexed` desc) only ever sees the latest 100.
+  `[verified]` (2026-09-29)
+- Other search filters: `status.option` "securable" = instant buyout only; `trade_filters.indexed`
+  ("1day", "3days", "1week", "2weeks", ...) = listed or last repriced within that window - a
+  2-week window roughly doubles a week's count. `total` is exact up to 10,000. `[verified]`
 - A fetched listing's `item` carries far more than names and mod text (2026-09-28):
   - each mod as `{description, hash, mods: [{magnitudes: [{min, max}]}]}` - `min`/`max` is the
     **roll range** of each number in the mod (a Watcher's Eye "60% increased Lightning Damage while
