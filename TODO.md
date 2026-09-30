@@ -101,6 +101,31 @@ every PR and enforced while running. Live since 2026-09-28: GitHub's runners rea
   long by the same amount. Listings already settled as unsold after 7 days aren't re-checked, so
   one that actually sold before then stays unsold.
 - **Copy item in Craft of Exile** is untested (Path of Building's parser reads it correctly).
+- **Spread checks out instead of hitting the limit.** Today, past 6,000 tracked listings new ones
+  are skipped, and a search over 3,000 is paused. Those caps exist because every listing is checked
+  once per run, and one run's fetch budget covers about 6,750 listings (1,000 fetches per 6 hours
+  at 70%, 10 listings each). Instead, when the tracked count goes over what one run can check,
+  stretch the recheck interval to fit, e.g. each listing every 2nd run at 12,000 listings. Also
+  stretch discovery for busy searches, and keep a ceiling beyond which the data is too stale to use
+  (e.g. checks 24 hours apart). The cost is freshness: a sale is timed at the first check that
+  finds it gone, so sold times get up to one interval late, and the page moves more slowly.
+  Ideas to make it smarter:
+  - Over the limit, prioritize by listing age: check recently listed items more often, since they're
+    more likely to sell soon, and items up a long time less often (they tend to stay up). Don't try
+    to judge whether an item is overpriced - too hard to tell reliably.
+  - Show the current interval on the page ("checked every ~12 h").
+  - Have the PR check and `admitNewListings` use the new ceiling in place of the fixed caps.
+- **Add or remove a search from GitHub Actions.** A manual workflow with inputs (a trade site link,
+  an optional label, add or remove) that edits `sold-tracker/searches.md` on a new branch and opens
+  a PR, so the existing "Check sold tracker searches" check still runs before merge. Validate the
+  link decodes (`parseTradeSearchUrl`) and the label is unique before opening the PR. The PR must
+  trigger the check: a PR opened with the default `GITHUB_TOKEN` doesn't start other workflows, so
+  use a PAT or GitHub App token.
+  No redeploy is needed (checked 2026-09-29): the app doesn't read `searches.md`. The tracker reads
+  it once at the start of each run, and the page's search chips come from its published file on
+  `sold-tracker-data`, so a merged change shows up at the next run's first publish (up to ~6.5 h
+  later). A run already going keeps the old list. To make it quicker, start a tracker run on merge
+  when none is running (the workflow's concurrency group would otherwise queue it).
 - **Sweep limits.** The per-run sweep (which replaced "backfill a new search") pages by price, so
   it stops at a listing priced in a different currency than the link's price filter (e.g. a chaos
   listing on a divine-priced search), and takes only 200 of a price shared by more than 200

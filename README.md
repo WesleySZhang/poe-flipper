@@ -262,7 +262,9 @@ rebuilds from scratch):
   one by pasting a trade site link as a list item; the link's id is the search itself, gzipped
   (`lib/trade-query.ts`), so reading it costs no request. The tracker adds its own rules to every
   search: instant buyout only (no offline sellers or bait), listed in the last week, current league.
-  Everything else, including any price range, is the link's.
+  Everything else, including any price range, is the link's. A change needs no Vercel deploy: the
+  tracker reads the file (from master) when a run starts, and the page's search chips come from its
+  published file, so a merged change shows up at the next run's first publish.
 - **Finding listings:** a search returns at most 100 listings, so two passes:
   - **A sweep at the start of each run** pages through every listing a search matches, cheapest
     first, 100 at a time (each page starts at the last one's price; a price shared by a whole page,

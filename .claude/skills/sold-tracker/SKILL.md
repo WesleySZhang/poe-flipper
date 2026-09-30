@@ -25,7 +25,9 @@ commit) happens every 30 min during a run and once at its end, so the page lags 
    range or more filters to the link. Near a limit (80%+) passes with a warning - a busier league
    will likely push it over, and the tracker then pauses it.
 5. Open a PR: the "Check sold tracker searches" check runs the same count and fails over the
-   limits. The tracker workflow checks out master, so a search only goes live once merged.
+   limits. The tracker workflow checks out master, so a search only goes live once merged - at
+   the next run's start (a running one keeps its list), on the page at that run's first publish.
+   No Vercel deploy: the app never reads `searches.md`; the chips come from the published file.
 
 ## Run it locally
 
@@ -95,7 +97,8 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - **"paused" on a search:** it now matches more than 3,000 listings, so it takes nothing new (its
   tracked listings are still checked). Narrow the link; it resumes on its own once under.
 - **"Tracking limit reached":** 6,000 listings are being followed, so new ones are skipped until
-  some sell or expire. Narrow or remove searches.
+  some sell or expire. Narrow or remove searches. (TODO.md item 6 plans checking less often past
+  the limit instead, favouring recently listed items.)
 - **PR check fails with "Couldn't measure":** the trade site refused or failed - it fails closed.
   Re-run it; if it's a 403 from GitHub's runners, see the workflow's comments.
 - **No sales at all for days:** check that "gone" is still detected. A sold or pulled listing comes

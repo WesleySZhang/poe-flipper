@@ -48,6 +48,13 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   league. An earlier version of this note said none sold - that came from a tracker bug that read
   `gone` listings as still up.)
 
+- **Fresh listings sell sooner.** A trade listing is most likely to sell soon after it's posted;
+  one that has been up a long time tends to stay up. So when you can only watch some listings,
+  watch the newest. `[owner]` (Not measured yet; the sold listing tracker's data can check it:
+  time up for sold vs still-listed listings.)
+- **Whether a listing is overpriced is hard to judge.** Rare items have no single market price (the
+  mods, rolls and tiers all matter), so don't build logic that relies on it. `[owner]`
+
 ## In this app
 
 - Flip Predictions (page name; code/routes still say "flip-suggestions"): predicted growth from poe.ninja history + a learned model (`lib/flip-suggestions.ts`).
