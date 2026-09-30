@@ -92,6 +92,9 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - **Checking coverage by hand:** page the search by price like `sweepIds` does, diff the ids with
   `state/<League>.json`, and fetch the untracked ones to see their `indexed` time - posted before
   the tracker started means backlog; after means discovery missed them.
+- **Listings from a removed or renamed search:** its chip goes at the next run start, but its
+  listings keep being checked (and count toward the cap) until they sell or reach 7 days, showing
+  only under All. TODO.md item 6 has the plan (drop listed ones, keep sales, cull the archive).
 - **Short manual runs:** "How long to run" defaults to 330 minutes. A short run (e.g. 20) publishes
   only at its end and re-checks little, so the page barely moves.
 - **"paused" on a search:** it now matches more than 3,000 listings, so it takes nothing new (its

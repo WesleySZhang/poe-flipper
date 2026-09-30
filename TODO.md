@@ -126,6 +126,40 @@ every PR and enforced while running. Live since 2026-09-28: GitHub's runners rea
   `sold-tracker-data`, so a merged change shows up at the next run's first publish (up to ~6.5 h
   later). A run already going keeps the old list. To make it quicker, start a tracker run on merge
   when none is running (the workflow's concurrency group would otherwise queue it).
+- **Removing a search: what happens to its listings.** How it works today (checked 2026-09-29):
+  - The search's status is rebuilt from `searches.md` at each run start, so a removed search's chip
+    disappears.
+  - Its listings stay in the state and keep being checked until they sell or reach 7 days. They
+    still count toward the 6,000 cap, and they only show under All, with a label no chip matches.
+  - A renamed label is the same problem: its listings keep the old label.
+
+  **Plan:**
+  1. **Listings still up:** when a run starts and finds a label gone, stop checking listings that
+     only that search found, and drop them from the state and page file. They aren't results yet,
+     and dropping them frees the fetch budget and the cap. Listings another active search also
+     matches keep going under that search. Re-adding the search later sweeps its listings back in.
+  2. **Sold and unsold listings:** keep them. They stay in the archive, and on the page for the
+     usual 30/7 days. Keep the removed search's status with a `removed` date, so its chip still
+     shows (greyed, "Removed") while it has listings on the page. Drop the status once it has none.
+  3. **Renames:** if a new label has the same link as a removed one, move the listings to the new
+     label instead of treating it as a remove plus an add.
+
+  **Culling stored sales when storage gets out of hand:**
+  - **Size today:** the archive is ~50-125 KB a day for one search (~540 listings). The state and
+    page file are ~1.1 MB each. Near 6,000 listings that's roughly 1-1.5 MB a day, several hundred
+    MB a year. GitHub rejects files over 100 MB (day files stay far under) and wants repos under
+    ~1-5 GB.
+  - **Watch it:** log the archive's total size each run and warn past a set budget (e.g. 500 MB).
+    Show the size on the page footer or in the run summary.
+  - **Shrink first, delete second:**
+    - gzip day files older than ~30 days (JSONL compresses ~10x);
+    - write a relisted listing once (the archive can hold it twice);
+    - drop per-mod roll ranges from old records if needed.
+  - **A cull script / workflow** (`npm run sold:cull`, or a manual workflow with inputs) to delete
+    archive records by search label (e.g. everything from a removed search), by age (older than N
+    days) or by league (past leagues). It should print what it would delete and only delete with a
+    confirm flag.
+  - **Culling can't be undone.** Do the archive backup below first, and back up before each cull.
 - **Sweep limits.** The per-run sweep (which replaced "backfill a new search") pages by price, so
   it stops at a listing priced in a different currency than the link's price filter (e.g. a chaos
   listing on a divine-priced search), and takes only 200 of a price shared by more than 200
