@@ -37,6 +37,15 @@ SOLD_LISTINGS_FILE=.sold-tracker/sold-listings/Allflame.json npm run dev   # pag
 Only one `next dev` can run per project; stop the other one first. For UI work without a real run,
 fulfil `/api/sold-listings` with a fixture file from Playwright (`page.route`) instead.
 
+**Testing against the live data:** copy the branch (`git archive origin/sold-tracker-data | tar -x -C
+<dir>`), then run `npx tsx scripts/track-sold-listings.ts --minutes 25 --fetch-pace-ms 9000 --dir
+<dir>` with no `--publish-cmd`, so nothing is pushed. A run only re-checks listings not checked
+in the last 5.5 hours, so right after a GitHub run few are due - to test the check itself, call
+`TradeApiClient.fetchListings` on known ids directly. Probe scripts use this machine's IP, with
+its own rate limits: go through `TradeApiClient` (it queues and backs off); raw `fetch` loops can
+hit a 429 that locks the IP out for up to 5 minutes. Output piped through `tail` only shows at the
+end - write to a log file to watch progress.
+
 ## Change what it stores
 
 The workflows only run the script from master, so a change to `lib/sold-tracker.ts` or the script
