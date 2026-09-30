@@ -30,7 +30,7 @@ past mistakes that the code doesn't show. Load them unprompted; the owner should
 | Disenchanting / Thaumaturgic Dust | `poe-disenchanting` |
 
 If a skill turns out wrong or stale, fix it in the same change (see "Keep skills and READMEs
-current" below). When you add a skill, add a row here.
+current" below). Keep this table in step with the skills: see "Keep this skill table current" below.
 
 ## UI changes should apply everywhere they can
 
@@ -71,3 +71,11 @@ them in the same change:
   for the conventions and confidence tags; those are linked into `~/.claude/skills/`, so a new
   one needs a junction there too). Give each skill a description that says *when* to use it.
 - Fix a skill that turns out to be wrong or stale when you notice it, rather than working around it.
+- **Keep this skill table current.** Whenever you add, rename, remove or change a skill (in
+  `.claude/skills/` or `poe-knowledge/skills/`), check the "Load the matching skill before
+  starting" table above in the same change:
+  - a new skill gets a row;
+  - a renamed or removed one has its row updated or deleted;
+  - a skill whose scope changed (its `description` now covers new files, symptoms or topics) has
+    its row's "When the task touches..." updated to match.
+  The table and the skills' `description`s should never disagree.
