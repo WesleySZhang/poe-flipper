@@ -161,7 +161,7 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
   - *Discovery:* a newest-first search (`sort: {"indexed": "desc"}`) every 10 minutes. About one
     search and one fetch per cycle.
   - *Re-checks, mainly by search:* slice the price range so each search returns ≤100 listings. Any
-    tracked id missing from its slice gets one fetch, which returns `null` if the listing is gone
+    tracked id missing from its slice gets one fetch, which marks it `gone: true` if the listing is gone (not `null` - see Done)
     or shows its new price if it was repriced out of the slice.
     - Sorting a slice both newest-first and oldest-first covers up to 200 listings. That's needed
       for the 100d tie, which no price range can split.
@@ -172,7 +172,7 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
     (the time of the change), not `null`. The trade site showed the change ~6 minutes later; the
     original listing had taken ~9. So:
     - Track by item id and keep each id's price history.
-    - Count a sale only when a fetch returns `null`. Dropping out of a search, e.g. below the
+    - Count a sale only when a fetch says it's gone (`gone: true`). Dropping out of a search, e.g. below the
       100d floor, doesn't count.
     - Store a first-seen time, since `indexed` resets on every price change.
     - Freshness doesn't matter, so wait (say 24 hours) before calling a missing id sold, in case
