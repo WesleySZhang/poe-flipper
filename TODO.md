@@ -208,9 +208,17 @@ every PR and enforced while running. Live since 2026-09-28: GitHub's runners rea
   **Plan:**
   1. **Store the seller** on each listing as a short hash of the account name, refreshed at each
      fetch. It's enough to compare, and keeps no names.
-  2. **Re-fetch sold listings by id** once per run for 7 days after the sale. A relisted item
-     fetches live again, whatever the search's filters. It's cheap: ~16 sales in 2 days is ~2
-     fetches a run.
+  2. **Detect relists two ways (owner's choice, 2026-09-30):**
+     - **Free, from the searches.** Discovery and the sweep already reopen a "sold" id they see
+       again, for as long as the sold record is in the state. Keep that; it's the main path.
+     - **Cheap, by id.** Re-fetch a sold listing by id every other run (~12 h apart) for 1 day
+       after the sale: about 2 checks per sale. This catches a relist the search doesn't show
+       (e.g. relisted above its price range). Share fetches with the regular checks (10 ids per
+       fetch), e.g. `SOLD_RECHECK_DAYS = 1` and `RECHECK_SOLD_MINUTES = 660` beside
+       `RECHECK_LISTED_MINUTES`.
+     - **Cost:** at ~1.2% of tracked listings selling a day, it's ~1 fetch a day today (~520
+       tracked). At the 6,000 cap it's ~4 fetches a run, ~40 of the ~7,000 checks a run can do
+       (<1%). The 6,000 cap stays.
   3. **On a reappearance:**
      - **Same seller:** it wasn't a sale. Reopen it (as today), and record when it was pulled and
        relisted.
