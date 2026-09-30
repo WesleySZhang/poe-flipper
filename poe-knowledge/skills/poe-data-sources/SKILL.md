@@ -54,8 +54,12 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   10 ids>` returns the listings; `?query=<search id>` is optional. Each has `item` (full mods, ilvl,
   ...) and `listing` (`indexed` = listed/last changed, `price` {type `~b/o`/`~price`, amount,
   currency}, `account` {name, online}, `stash` {name, x, y}, `method: "psapi"`). The result id equals
-  `item.id`. A fetched id that's no longer listed comes back as `null` in its slot - a cheap
-  "still listed?" check. `[verified]` (2026-09-27)
+  `item.id`. **A listing that sold or was pulled is NOT `null`**: the fetch still returns its last
+  listing (old price, stash, account) with top-level **`gone: true`** and `item.verified: false`.
+  Only an id that never existed comes back `null`. So the "still listed?" check is `!r || r.gone`.
+  Checked on 521 tracked Watcher's Eyes: 14 had `gone: true`, all 14 missing from the search and
+  from their seller's own listings; none of the rest had it. `?query=<search id>` on the fetch
+  changes nothing. `[verified]` (2026-09-29; an earlier note here said `null`, which was wrong)
 - **Getting every listing past the 100 cap:** sort `{"price": "asc"}`, take the page, fetch its last
   id for its price, and search again with `trade_filters.price.min` = that price (inclusive; ids
   repeat, dedupe). When a whole page shares one price (e.g. 105 Watcher's Eyes at exactly 100d),
