@@ -283,7 +283,9 @@ rebuilds from scratch):
   as unsold. Times on the page are accurate to about 6 hours.
 - **Rate limits:** GGG limits the trade API per IP. `lib/trade-api.ts` queues every request until
   each limit window has room, keeps to 70% of each limit, and follows the limits and usage the
-  site reports on every response. The fetch limit (1,000 per 6 hours, 10 listings each) is the
+  site reports on every response. A 502/503/504 (the site's brief outages) is retried after 30 s,
+  1 min and 2 min; a check that still fails is skipped and retried later in the run, so one outage
+  doesn't end it (a 403 still does). The fetch limit (1,000 per 6 hours, 10 listings each) is the
   ceiling: at 70% that's ~7,000 listing checks per 6 hours. Fetches are paced ~25 s apart, so a
   run's ~600 are spread over its hours instead of spent in bursts. Searches (~420 per 6 hours at
   70%) go to the sweep (~1 per 100 listings, plus 1 fetch per page to read its last price) and to

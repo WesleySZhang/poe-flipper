@@ -65,6 +65,11 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   next publish (30 min later, or the final step) retries; the branch keeps the previous snapshot.
 - **Page says "No tracker data yet":** the `sold-tracker-data` branch or the current league's file is
   missing. Check the workflow's last run; the file is per league, so a league swap starts empty.
+- **Run ended early with `TradeApiError: fetch 503` (or 502/504):** the site was briefly down. Since
+  2026-09-30 the client retries these (30 s, 1 min, 2 min) and a failed check is skipped and
+  retried later, so it shouldn't end a run; if it does, the outage outlasted the retries. The
+  final publish step still saves the state, and the next run carries on. Before the fix, one 503
+  ended the 22:20 UTC run of 2026-09-29 after 23 minutes.
 - **Workflow fails with `403 (blocked before reaching the API)`:** pathofexile.com refused GitHub's
   runner IP. Run the tracker from another machine (it only needs Node and the repo).
 - **Warning icon on a search:** it failed (hover for the error), or discovery got more than 200

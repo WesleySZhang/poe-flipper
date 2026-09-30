@@ -15,6 +15,8 @@
 const TRADE_API = "https://www.pathofexile.com/api/trade";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";
 const SAFETY_FRACTION = 0.7;
+/** Waits before retrying a 502/503/504, then it's thrown (a run died on one lone 503, 2026-09-29). */
+const SERVER_ERROR_RETRIES_MS = [30_000, 60_000, 120_000];
 
 interface Rule {
   max: number;
@@ -232,6 +234,11 @@ export class TradeApiClient {
       });
       this.limiters[endpoint].update(res);
       if (res.status === 429 && attempt < 3) continue; // update() has already set the wait
+      // The site's own brief outages (a 503 maintenance page, 502/504 from its edge): wait, retry.
+      if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < SERVER_ERROR_RETRIES_MS.length) {
+        await new Promise((r) => setTimeout(r, SERVER_ERROR_RETRIES_MS[attempt]));
+        continue;
+      }
       if (!res.ok) {
         const body = await res.text();
         // A 403 with an HTML body is the site's bot protection, not the API.

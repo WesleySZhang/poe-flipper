@@ -415,7 +415,15 @@ async function main() {
       }
       const due = listingsDueForCheck(listings.values(), new Date().toISOString(), 10);
       if (due.length > 0 && !stopping) {
-        await check(due);
+        try {
+          await check(due);
+        } catch (e) {
+          // Still failing after the client's retries: skip this batch (it stays due) and carry on,
+          // rather than ending a 5.5-hour run. A 403 means this IP is blocked - stop.
+          if (e instanceof TradeApiError && e.status === 403) throw e;
+          log(`check failed, retrying later: ${(e as Error).message.slice(0, 120)}`);
+          await new Promise((r) => setTimeout(r, IDLE_SLEEP_MS));
+        }
         didWork = true;
       }
       archive(settleListings(listings.values(), new Date().toISOString()));
