@@ -273,7 +273,9 @@ rebuilds from scratch):
     backlog already listed when a search is added. ~1 search per 100 listings.
   - **Discovery during the run**, newest-first every 30 minutes (sooner when busy), keeps up with
     new listings; when all 100 are new it also fetches the oldest 100 since the last pass.
-- **How long records are kept:** a sale shows on the page for 30 days and an unsold listing for 7;
+- **How long records are kept:** a sale is meant to show on the page for 30 days, but shows for 7
+  for now (the page is built from the state, which keeps ended listings 7 days; see TODO.md item
+  6), and an unsold listing for 7;
   the state keeps ended listings 7 days; the archive keeps them forever. There's no backup: each
   publish replaces the branch with one commit, so its history holds no older copies.
 - **Deciding a sale:** every listing is checked by its item id once per run. A listing that's gone

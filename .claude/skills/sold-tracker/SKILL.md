@@ -114,7 +114,10 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - **A "sale" that wasn't:** a listing counts as sold at the first check that finds it gone (the
   owner's call: pulling an item to relist it later is rare, and repricing happens in place). A
   seller pulling an item for good looks the same. One relisted under the same item id is reopened
-  and marked "Relisted".
+  and marked "Relisted" - but only if a tracked search's discovery/sweep shows it again, and only
+  within 7 days (after that the sold record has left the state). A pull and relist between two
+  checks is never seen as gone. We don't store the seller, so a buyer reselling the same item
+  would also be "reopened". The fix is planned in TODO.md item 6 ("Pulled and relisted vs sold").
 - The rules (gone = sold; 7 days = unsold; each listing checked once per 6-hour run; fetches
   paced 25 s apart) and limits are constants in `lib/sold-tracker.ts`; the rate-limit margin (70%)
   is in `lib/trade-api.ts`.
@@ -125,7 +128,9 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   one file per day (`ended/<League>/<YYYY-MM-DD>.jsonl`) to stay far under it; the tracker splits
   any old month file (`YYYY-MM.jsonl`) into day files at start. `dropUnusedDetail` strips fields
   older versions stored (item text, flavour text) from the state as it loads.
-- **How long records are kept:** page file - sold 30 days (`SOLD_PAGE_DAYS`), unsold 7
+- **How long records are kept:** page file - sold 30 days (`SOLD_PAGE_DAYS`, but in effect 7:
+  `buildSoldListingsFile` only sees the state, which drops ended listings after 7 - a known bug,
+  TODO.md item 6), unsold 7
   (`UNSOLD_PAGE_DAYS`), listed always; state - ended listings 7 days (`STATE_KEEP_ENDED_DAYS`);
   archive - forever. **No backup:** each publish replaces the branch with a single commit, and each
   run restores the branch, then republishes it all, so a run that restored an incomplete copy and

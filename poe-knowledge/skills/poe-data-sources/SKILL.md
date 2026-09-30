@@ -60,6 +60,13 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   Checked on 521 tracked Watcher's Eyes: 14 had `gone: true`, all 14 missing from the search and
   from their seller's own listings; none of the rest had it. `?query=<search id>` on the fetch
   changes nothing. `[verified]` (2026-09-29; an earlier note here said `null`, which was wrong)
+  A gone listing keeps its last `listing.account.name`, `stash`, `price` and `indexed` - so who
+  listed it is still readable after it sells (16 of 16 checked, 2026-09-30). `[verified]`
+- Whether an item keeps its id when it changes hands (bought, then relisted by the buyer) is
+  unchecked (the id does survive repricing). `[unsure]`
+- `indexed` also changes without a price change: a Watcher's Eye first seen at 125d (indexed
+  09-28 05:27) read indexed 09-29 17:33 at the same 125d when found gone. It's likely the seller
+  moving or re-listing it. `[verified]` (the reset; the cause is `[unsure]`)
 - **Getting every listing past the 100 cap:** sort `{"price": "asc"}`, take the page, fetch its last
   id for its price, and search again with `trade_filters.price.min` = that price (inclusive; ids
   repeat, dedupe). When a whole page shares one price (e.g. 105 Watcher's Eyes at exactly 100d),

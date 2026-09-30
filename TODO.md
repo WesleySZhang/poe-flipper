@@ -175,8 +175,54 @@ every PR and enforced while running. Live since 2026-09-28: GitHub's runners rea
   happening, run the tracker on an always-on machine.
 - **Terms of Use.** The trade API isn't in GGG's docs (see below). The tracker keeps to 70% of the
   rate limits, but it's still steady automated use.
-- **Withdrawn vs sold.** Measure from real data how often a "sale" is really a withdrawal, e.g. by
-  how many sold listings come back as Relisted.
+- **Pulled and relisted vs sold.** A seller pulling an item looks like a sale (the fetch says
+  `gone: true` for both). Can a later relist move it from Sold back to Unsold?
+
+  **Findings (2026-09-30):**
+  - **Partly handled already.** A listing's id is its item's id. If a tracked search's discovery
+    or sweep turns up a "sold" id again, `recordListing` reopens it: status back to listed (so it
+    moves to the Unsold tab), sold time cleared, "Relisted" badge. So far 0 of 16 sales have come
+    back.
+  - **A quick pull-and-relist between two checks is never seen.** Checks are ~6 h apart, and only
+    a listing that's gone at a check counts as sold, so those don't become false sales.
+  - **A gone listing still carries its last seller** (`listing.account.name`), stash, price and
+    `indexed`. So "same seller relisted it" can be told apart from "a buyer is reselling it".
+    `whisper` holds the character name; don't store it.
+  - **`indexed` changes without a price change.** Listing 549c22a9 was first seen listed on
+    09-28 05:27. When found gone, its `indexed` read 09-29 17:33, at the same 125d. The seller
+    moved it or re-listed it. That's a pull-and-relist signal we don't record (only the first
+    `indexed` is kept).
+
+  **Gaps:**
+  1. A relist is only noticed if a tracked search shows it. One relisted above the search's price
+     range, or once its search is removed, stays counted as sold.
+  2. After 7 days (`STATE_KEEP_ENDED_DAYS`) the sold record leaves the state. A relist then is a new
+     listing, and the old sale stays in the archive as a sale.
+  3. **A real sale that the buyer relists would be wrongly reopened.** Item ids probably survive a
+     trade (unchecked), and we don't store the seller, so we can't tell the two apart.
+  4. The archive keeps the "sold" line after a reopen until the listing ends again (the later line
+     wins). A reopened listing still up reads as sold there.
+  5. **Bug: the page shows sales for 7 days, not 30.** `buildSoldListingsFile` is built from the
+     state, which drops ended listings after 7 days, so `SOLD_PAGE_DAYS = 30` never takes effect.
+
+  **Plan:**
+  1. **Store the seller** on each listing as a short hash of the account name, refreshed at each
+     fetch. It's enough to compare, and keeps no names.
+  2. **Re-fetch sold listings by id** once per run for 7 days after the sale. A relisted item
+     fetches live again, whatever the search's filters. It's cheap: ~16 sales in 2 days is ~2
+     fetches a run.
+  3. **On a reappearance:**
+     - **Same seller:** it wasn't a sale. Reopen it (as today), and record when it was pulled and
+       relisted.
+     - **Different seller:** the sale was real. Keep the sold record and start a new record for the
+       resale, linked to it and badged "Resold". That's flipping data worth having.
+  4. **Record `indexed` changes** at an unchanged price as a "touched" time, a weaker relist signal.
+  5. **Archive the reopen** (a line with status listed), so the archive's latest line is always
+     right.
+  6. **Fix the 30-day window:** keep ended listings in the state for `SOLD_PAGE_DAYS` (sales are
+     few), or build the page's ended listings from the archive's last 30 days. This also widens
+     the relist window from gap 2.
+  7. **Measure** reopened vs resold counts, to settle how often a "sale" is really a pull.
 - **A fresh league's volume** is unmeasured. The PR check counts today's market, so searches near
   the limits may get paused at a league start. Check the page in the first days.
 - **Make the PR check required** on `master` (Settings > Branches > required status check
