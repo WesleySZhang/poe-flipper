@@ -1,6 +1,6 @@
 ---
 name: sold-tracker
-description: Use when adding or changing the trade searches the sold listing tracker follows, running it locally, changing what it stores, previewing the Sold Listings page with mock data, or working out why that page is empty, stale or shows odd sales.
+description: Use for any work on the sold listing tracker or the Sold Listings page - adding/removing trade searches (sold-tracker/searches.md), changing the tracker script, lib/sold-tracker.ts or lib/trade-api.ts, the "Track sold listings" workflow or sold-tracker-data branch, running it locally or against live data, previewing the page with mock data, or working out why the page is empty, stale, shows no sales or odd sales, or tracks fewer listings than the trade site.
 ---
 
 # The sold listing tracker

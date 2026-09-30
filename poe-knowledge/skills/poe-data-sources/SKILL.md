@@ -1,6 +1,6 @@
 ---
 name: poe-data-sources
-description: Use when deciding where PoE data comes from or why a number is missing/wrong - poe.ninja endpoints, GGG's exchange API, RePoE, poewiki, the history CSVs - and each source's quirks.
+description: Use when deciding where PoE data comes from or why a number is missing/wrong - poe.ninja endpoints, GGG's Currency Exchange API, the trade site's search/fetch API (listing fields, gone flag, rate limits, paging), RePoE, poewiki, the history CSVs - and each source's quirks.
 ---
 
 # PoE data sources

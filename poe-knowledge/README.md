@@ -21,6 +21,7 @@ the same file.
 
 - **Adding a skill:** create `skills/<name>/SKILL.md`, then link it (PowerShell):
   `New-Item -ItemType Junction -Path "$env:USERPROFILE\.claude\skills\<name>" -Target "<repo>\poe-knowledge\skills\<name>"`
+  Then add a row for it to the skill table in the repo's `AGENTS.md`, so agents load it unprompted.
 - **Another machine:** junctions don't come with a clone; re-create them, or run with
   `claude --plugin-dir ./poe-knowledge` (skills then appear as `poe-knowledge:<name>`).
 - Claude Code looks exactly one level deep (`skills/<name>/SKILL.md`), so skills can't be nested in

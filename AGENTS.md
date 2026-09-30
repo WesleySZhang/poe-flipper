@@ -8,6 +8,30 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Load the matching skill before starting
+
+This repo keeps its know-how in skills. Before starting a task (including one that comes up in
+the middle of a long conversation), check this table and load every skill that matches with the
+Skill tool. Do this even if you think you already know the area: skills hold checked facts and
+past mistakes that the code doesn't show. Load them unprompted; the owner shouldn't have to ask.
+
+| When the task touches... | Load |
+| --- | --- |
+| The sold listing tracker, `/sold-listings`, `sold-tracker/searches.md`, `lib/trade-api.ts`, the "Track sold listings" workflow | `sold-tracker` |
+| Any UI change (before calling it done) | `verify-ui` |
+| A new page, or a page panel's layout | `new-page` |
+| The daily precompute job, the `precompute-data` branch, stale predictions/prices | `precompute-check` |
+| A league starting or ending | `new-league`, `poe-league-lifecycle` |
+| Where a number comes from, or why it's missing/wrong (poe.ninja, GGG exchange or trade API, RePoE) | `poe-data-sources` |
+| What a price means, spreads, liquidity, whether a flip or sale is real | `poe-economy-basics` |
+| Showing or copying an item the way the game does (tooltips, mods, tiers, Ctrl+C text) | `poe-item-display` |
+| Item categories, names/variants, a lookup that finds nothing | `poe-item-categories` |
+| Divination cards | `poe-divination-cards` |
+| Disenchanting / Thaumaturgic Dust | `poe-disenchanting` |
+
+If a skill turns out wrong or stale, fix it in the same change (see "Keep skills and READMEs
+current" below). When you add a skill, add a row here.
+
 ## UI changes should apply everywhere they can
 
 This app has several pages that share the same row/table pattern (`components/item-history-row.tsx`
