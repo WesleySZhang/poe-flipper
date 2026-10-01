@@ -6,8 +6,8 @@
 # Safe to run any number of times: each run publishes a full snapshot, so publishing the same state
 # again gives the same files, and a failed push leaves the previous snapshot in place. It never
 # touches the working tree or the checked-out branch (plumbing commands on a copy), so it can run
-# while the tracker is running. vercel.json goes in every commit so Vercel reads its "never deploy
-# this branch" rule from the pushed commit itself.
+# while the tracker is running. vercel.json goes in every commit so Vercel reads its "never deploy"
+# rule from the pushed commit itself.
 set -euo pipefail
 
 DIR="${1:?usage: publish-sold-tracker.sh <tracker dir>}"

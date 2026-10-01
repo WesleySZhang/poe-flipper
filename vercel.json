@@ -1,12 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": {
-      "precompute-data": false,
-      "sold-tracker-data": false,
-      "master": false,
-      "auto/new-items": false,
-      "auto/current-league-swap": false
-    }
+    "deploymentEnabled": false
   }
 }

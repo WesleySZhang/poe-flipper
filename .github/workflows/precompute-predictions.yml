@@ -13,7 +13,7 @@ name: Precompute predictions
 #    pair matching scripts/ingest-history.ts's own format - see that script's module doc for why (the
 #    currently active league otherwise has no daily price history at all until someone manually
 #    downloads poe.ninja's export after it ends).
-# "precompute-data" is configured (see vercel.json) to never trigger a Vercel deployment - this app's committed
+# No branch, "precompute-data" included, triggers a Vercel deployment (vercel.json) - this app's committed
 # database is ~72MB, and a deployment re-bundles the whole app regardless of how small the actual
 # change was.
 #

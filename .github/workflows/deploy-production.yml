@@ -1,7 +1,7 @@
 name: Deploy to production
 
-# Manual "deploy now" button. vercel.json disables automatic deployment on push for master (and
-# data), so pushing a commit here no longer updates the live site by itself - this workflow is the
+# Manual "deploy now" button. vercel.json disables automatic deployment on push for every branch
+# (git.deploymentEnabled: false - no previews either), so pushing a commit no longer updates the live site by itself - this workflow is the
 # replacement: it triggers a Vercel Deploy Hook, which builds and deploys master's CURRENT latest
 # commit (whatever that is at the moment this runs, not necessarily the commit that triggered this
 # workflow - there isn't one, since this only ever runs on workflow_dispatch).
