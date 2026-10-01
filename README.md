@@ -416,7 +416,9 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 
 - **Pushing to `master` doesn't deploy.** Run "Deploy to production" from the Actions tab
   (`.github/workflows/deploy-production.yml`). It calls a Vercel Deploy Hook, which needs a
-  `VERCEL_DEPLOY_HOOK_URL` repo secret; see that workflow's comments for setup.
+  `VERCEL_DEPLOY_HOOK_URL` repo secret; see that workflow's comments for setup. `vercel.json`
+  also turns off Vercel's preview deploys for the bots' PR branches (`auto/new-items`,
+  `auto/current-league-swap`) and the data branches; any other branch still gets one.
 - **Git LFS:** `db/history.duckdb` (~72 MB) is stored with Git LFS, so enable LFS in the Vercel
   project. If every query fails, the build got an LFS pointer instead of the file.
 - **Environment:** set `SITE_PASSWORD`. Set `PREDICTOR=baseline` to switch off the learned model

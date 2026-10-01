@@ -4,7 +4,9 @@
     "deploymentEnabled": {
       "precompute-data": false,
       "sold-tracker-data": false,
-      "master": false
+      "master": false,
+      "auto/new-items": false,
+      "auto/current-league-swap": false
     }
   }
 }
