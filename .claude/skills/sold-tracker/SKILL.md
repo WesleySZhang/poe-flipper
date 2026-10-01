@@ -148,7 +148,7 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   `lib/sold-tracker.ts`), listed / sold or expired / time up / search. Each mod line: text centred,
   tier ("T7", magic/rare only) at the left, roll range at the right on hover/tap only (laid over
   the line so the text never shifts). Rows don't open anything (the owner dropped the detail dialog
-  so text can be selected). Both tabs sort by price, lowest first, by default (shared sort state).
+  so text can be selected). Both tabs sort by sold/expired time, most recent first, by default (shared sort state; on Unsold a still-listed one sorts by its last check).
 - Unsold = listings still up ("Still listed" badge, "Last seen" date) + ones expired after 7 days.
 - Item stats come from the tracker's `SoldListingItem.detail` (every mod with roll ranges and tier,
   properties with "(augmented)" markers, requirements, sockets, influences, relic/foil, item class).
