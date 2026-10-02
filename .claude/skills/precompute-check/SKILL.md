@@ -16,18 +16,18 @@ each 1st of the month dropped earlier months and a league swap dropped the old l
 collection only began 2026-09-21, so Allflame has nothing before that.
 
 1. **Freshness.** `git fetch origin precompute-data`, then:
-   - `git log origin/data -1 --format=%cd` - last publish time.
-   - `git ls-tree -r --name-only origin/data` - expect `predictions.json`, `prices.json`,
+   - `git log origin/precompute-data -1 --format=%cd` - last publish time.
+   - `git ls-tree -r --name-only origin/precompute-data` - expect `predictions.json`, `prices.json`,
      `vercel.json`, and `history/<League>/*.csv` with **one pair per month since collection began**
      (plus ended leagues' folders). A missing earlier month means the carry-forward failed; the
      run log lists "Publishing history files". There must be no `history/history/`.
-   - `git show origin/data:prices.json | head -c 200` - check `league` and `fetchedAt` (< 36h old,
+   - `git show origin/precompute-data:prices.json | head -c 200` - check `league` and `fetchedAt` (< 36h old,
      or the app ignores it).
 2. **Recent runs.** `gh run list --workflow precompute-predictions.yml -L 5`; `gh run view <id> --log-failed`.
 3. **Predictions.** `predictions.json` items may carry an `e` array marking filled horizons (1 =
    interpolated, 2 = held); the job logs "Filled N horizon gaps across M items". Every item with any
    prediction should have all 30 horizons. See `lib/horizon-fill.ts`.
-4. **History rows.** `git show origin/data:history/<League>/<League>.items.<YYYY-MM>.csv | cut -d';' -f2,10 | sort | uniq -c`
+4. **History rows.** `git show origin/precompute-data:history/<League>/<League>.items.<YYYY-MM>.csv | cut -d';' -f2,10 | sort | uniq -c`
    - one block per day; today's date present after the run. `High` = the job's own reading, `Medium` =
      rebuilt from poe.ninja's sparkline for a day the job missed (`lib/spark-backfill.ts`).
    - A missed run is repaired by the next one if it's within 6 days: look for `::notice::` lines
