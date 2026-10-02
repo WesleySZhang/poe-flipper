@@ -142,6 +142,8 @@ export interface TradeListing {
     indexed: string;
     price?: { type?: string; amount: number; currency: string };
     fee?: number;
+    /** The seller - also on a gone listing (its last seller). The tracker keeps only a hash. */
+    account?: { name?: string };
   };
   item: TradeItem;
 }

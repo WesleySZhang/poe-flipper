@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { SOLD_TRACKER_DATA_BRANCH } from "./data-branches";
-import type { SoldListingsFile } from "./sold-tracker";
+import { getCurrencyPricesPreferSnapshot } from "./price-snapshot";
+import { TRADE_CURRENCY_NAMES, type SoldListingsFile, type SoldListingsResponse } from "./sold-tracker";
 
 /**
  * Reads the sold listing tracker's page file (recent sales and unsold - see buildSoldListingsFile)
@@ -17,7 +18,7 @@ const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated wi
 // The workflow publishes at the end of each run (every few hours), so a few minutes' cache is plenty.
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-let cache: { league: string; data: SoldListingsFile | null; expiresAt: number } | undefined;
+let cache: { league: string; data: SoldListingsResponse | null; expiresAt: number } | undefined;
 
 function isSoldListingsFile(value: unknown): value is SoldListingsFile {
   if (!value || typeof value !== "object") return false;
@@ -42,14 +43,36 @@ async function readTrackerFile(league: string): Promise<unknown> {
   return res.ok ? res.json() : null;
 }
 
-export async function getSoldListings(league: string): Promise<SoldListingsFile | null> {
+/** Chaos per unit of each currency the listings are priced in, from today's prices (the daily
+ *  snapshot, else poe.ninja live). Missing ones are left out; the page sorts those last. */
+async function chaosRatesFor(file: SoldListingsFile): Promise<Record<string, number>> {
+  const currencies = new Set(file.listings.flatMap((t) => t.prices.map((p) => p.currency)));
+  currencies.add("divine");
+  const prices = await getCurrencyPricesPreferSnapshot(file.league);
+  const rates: Record<string, number> = { chaos: 1 };
+  for (const id of currencies) {
+    const name = TRADE_CURRENCY_NAMES[id];
+    const value = name ? prices.get(name)?.chaosValue : undefined;
+    if (value && value > 0) rates[id] = value;
+  }
+  return rates;
+}
+
+export async function getSoldListings(league: string): Promise<SoldListingsResponse | null> {
   if (cache && cache.league === league && cache.expiresAt > Date.now()) return cache.data;
-  let data: SoldListingsFile | null = null;
+  let data: SoldListingsResponse | null = null;
   try {
     const parsed = await readTrackerFile(league);
     if (isSoldListingsFile(parsed) && parsed.league === league) data = parsed;
   } catch {
     // Missing branch/file, network error or malformed JSON - the page says there's no data yet.
+  }
+  if (data) {
+    try {
+      data = { ...data, chaosRates: await chaosRatesFor(data) };
+    } catch {
+      // No prices right now: the page sorts by divine amount and puts other currencies last.
+    }
   }
   cache = { league, data, expiresAt: Date.now() + CACHE_TTL_MS };
   return data;

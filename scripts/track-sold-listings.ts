@@ -31,27 +31,36 @@
  *  2. Checks: listed ids due a re-check are fetched by id, 10 per request. A fetch ignores the
  *     search's filters, so a listing repriced out of its search still comes back (a price change);
  *     an empty result means it's gone (lib/sold-tracker.ts decides when gone counts as sold).
+ *     Recent sales ride along every other run for a day, to catch a relist; a sale that comes back
+ *     is reopened (same seller) or kept as a sale with the item tracked as a resale (a new one).
+ * At start: searches removed from searches.md drop the listings still up only they found (their
+ * sales stay), renamed ones move theirs to the new label (reconcileSearches); archive days older
+ * than ARCHIVE_GZIP_DAYS are gzipped, and the archive's size is logged.
  * Requests go through lib/trade-api.ts's rate limiter, with fetches paced (FETCH_PACE_MS) so a run's
  * ~600 fetches are spread over hours rather than bursts. The state is saved every few minutes and on
  * exit, so a killed run loses little. A first run picks up at most the newest and oldest 100 of the
  * week per search; after that, new listings are caught as they come.
  */
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { CURRENT_LEAGUE } from "../lib/league-recency";
-import { TradeApiClient, TradeApiError } from "../lib/trade-api";
+import { TradeApiClient, TradeApiError, type TradeListing } from "../lib/trade-api";
 import { SEARCHES_DOC, parseSearchesDoc, type TrackedSearch } from "../lib/sold-tracker-searches";
 import { withListingAge } from "../lib/trade-query";
 import {
+  ARCHIVE_GZIP_DAYS,
+  ARCHIVE_WARN_BYTES,
   DISCOVERY_MINUTES,
   FETCH_PACE_MS,
   MAX_LISTINGS_PER_SEARCH,
   MAX_SEARCHES,
   MIN_DISCOVERY_MINUTES,
   SEARCH_RESULT_CAP,
+  SOLD_PAGE_DAYS,
   SWEEP_MAX_PAGES,
-  STATE_KEEP_ENDED_DAYS,
+  UNSOLD_PAGE_DAYS,
   admitNewListings,
   buildSoldListingsFile,
   dropUnusedDetail,
@@ -59,8 +68,10 @@ import {
   endedToDrop,
   listingsDueForCheck,
   recordListing,
+  reconcileSearches,
   recordMissing,
   settleListings,
+  type RelistChange,
   type TrackedListing,
   type TrackerState,
   type TrackedSearchStatus,
@@ -69,7 +80,7 @@ import {
 const SAVE_EVERY_MS = 5 * 60 * 1000;
 const PUBLISH_EVERY_MINUTES = 30;
 const PUBLISH_TIMEOUT_MS = 2 * 60 * 1000;
-const STATE_DAYS_LABEL = `${STATE_KEEP_ENDED_DAYS} days`;
+const STATE_DAYS_LABEL = `sold ${SOLD_PAGE_DAYS} days, unsold ${UNSOLD_PAGE_DAYS}`;
 const IDLE_SLEEP_MS = 60 * 1000;
 
 function arg(name: string, fallback: string): string {
@@ -112,21 +123,14 @@ function writeJson(file: string, data: unknown) {
   renameSync(tmp, file);
 }
 
-// What each day's archive file already holds, as "<id>|<endedAt>" - read once per day per run.
+// What each day's archive holds, as "<id>|<event time>" - read once per day per run.
 const archived = new Map<string, Set<string>>();
 
 function archivedKeys(day: string): Set<string> {
   let keys = archived.get(day);
   if (!keys) {
     keys = new Set();
-    const file = path.join(archiveDir, `${day}.jsonl`);
-    if (existsSync(file)) {
-      for (const line of readFileSync(file, "utf8").split("\n")) {
-        if (!line.trim()) continue;
-        const t = JSON.parse(line) as TrackedListing;
-        keys.add(`${t.id}|${t.endedAt}`);
-      }
-    }
+    for (const line of readArchiveDay(day)) keys.add(archiveKey(JSON.parse(line) as TrackedListing));
     archived.set(day, keys);
   }
   return keys;
@@ -136,21 +140,79 @@ function archivedKeys(day: string): Set<string> {
  * Appends newly ended listings to the archive, by the day they ended - skipping any already
  * there, so it's idempotent: if a run stopped after archiving but before saving its state, the
  * next run settles the same listing again and this adds nothing. (A relisted listing that ends
- * again has a new endedAt, so it's a new line.)
+ * again has a new endedAt, so it's a new line.) A reopened listing (status "listed", no endedAt) is
+ * keyed and filed by when it was seen back.
  */
 function archive(ended: TrackedListing[]) {
   if (ended.length === 0) return;
   mkdirSync(archiveDir, { recursive: true });
   const byDay = new Map<string, string[]>();
   for (const t of ended) {
-    const day = (t.endedAt ?? new Date().toISOString()).slice(0, 10);
+    const day = eventTime(t).slice(0, 10);
     const keys = archivedKeys(day);
-    const key = `${t.id}|${t.endedAt}`;
+    const key = archiveKey(t);
     if (keys.has(key)) continue;
     keys.add(key);
     byDay.set(day, [...(byDay.get(day) ?? []), JSON.stringify(t)]);
   }
   for (const [day, lines] of byDay) appendFileSync(path.join(archiveDir, `${day}.jsonl`), lines.join("\n") + "\n");
+}
+
+/** When an archived record happened: when it ended, or (a reopen line) when it was seen back. */
+function eventTime(t: TrackedListing): string {
+  return t.endedAt ?? t.lastSeen;
+}
+
+function archiveKey(t: TrackedListing): string {
+  return `${t.id}|${eventTime(t)}`;
+}
+
+/** A day's archive lines: the gzipped file (an older day) and/or the plain one. */
+function readArchiveDay(day: string): string[] {
+  const lines: string[] = [];
+  const gz = path.join(archiveDir, `${day}.jsonl.gz`);
+  const plain = path.join(archiveDir, `${day}.jsonl`);
+  if (existsSync(gz)) lines.push(...gunzipSync(readFileSync(gz)).toString("utf8").split("\n"));
+  if (existsSync(plain)) lines.push(...readFileSync(plain, "utf8").split("\n"));
+  return lines.filter((l) => l.trim());
+}
+
+/**
+ * Gzips day files older than ARCHIVE_GZIP_DAYS (~10x smaller), keeping each listing once per day
+ * (the later line wins, as when reading the archive). A plain file next to a gzipped one (a late
+ * write to an old day) is merged into it.
+ */
+function compressOldArchives() {
+  if (!existsSync(archiveDir)) return;
+  const cutoff = new Date(Date.now() - ARCHIVE_GZIP_DAYS * 24 * 3600e3).toISOString().slice(0, 10);
+  for (const name of readdirSync(archiveDir)) {
+    const day = name.match(/^(\d{4}-\d{2}-\d{2})\.jsonl$/)?.[1];
+    if (!day || day >= cutoff) continue;
+    const byId = new Map<string, string>();
+    for (const line of readArchiveDay(day)) byId.set((JSON.parse(line) as TrackedListing).id, line);
+    writeFileSync(path.join(archiveDir, `${day}.jsonl.gz`), gzipSync([...byId.values()].join("\n") + "\n"));
+    unlinkSync(path.join(archiveDir, name));
+    archived.delete(day);
+    log(`archive: gzipped ${name} (${byId.size} listings)`);
+  }
+}
+
+/** The archive's total size, logged each run, with a warning past ARCHIVE_WARN_BYTES (also in the
+ *  workflow's run summary). Over budget: see scripts/cull-sold-archive.ts. */
+function reportArchiveSize() {
+  if (!existsSync(archiveDir)) return;
+  let bytes = 0;
+  let files = 0;
+  for (const name of readdirSync(archiveDir)) {
+    bytes += statSync(path.join(archiveDir, name)).size;
+    files++;
+  }
+  const over = bytes > ARCHIVE_WARN_BYTES;
+  const line =
+    `archive: ${(bytes / 1024 / 1024).toFixed(1)} MB in ${files} files` +
+    (over ? ` - over the ${ARCHIVE_WARN_BYTES / 1024 / 1024} MB budget; cull it (scripts/cull-sold-archive.ts)` : "");
+  log(over ? `WARNING ${line}` : line);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${over ? "**Warning:** " : ""}Sold tracker ${line}\n`);
 }
 
 /** The archive was once one file per month (YYYY-MM.jsonl): moves any into day files, slimmed. */
@@ -203,17 +265,14 @@ async function main() {
   const searches = readSearches();
   const state = loadState();
   splitMonthArchives();
+  compressOldArchives();
+  reportArchiveSize();
   const listings = new Map(state.listings.map((t) => [t.id, t]));
-  const previous = new Map(state.searches.map((s) => [s.label, s]));
-  const statuses = new Map<string, TrackedSearchStatus>(
-    searches.map((s) => {
-      const prev = previous.get(s.label);
-      const status: TrackedSearchStatus = { ...(prev?.url === s.url ? prev : {}), label: s.label, url: s.url };
-      if (s.error) status.error = s.error;
-      else delete status.error;
-      return [s.label, status];
-    })
-  );
+  const { statuses, renamed, removed, dropped } = reconcileSearches(listings, state.searches, searches, new Date().toISOString());
+  for (const [from, to] of renamed) log(`search renamed: "${from}" -> "${to}" (its listings moved)`);
+  if (removed.length > 0) {
+    log(`searches removed: ${removed.map((l) => `"${l}"`).join(", ")} - ${dropped} listings still up dropped; sales kept`);
+  }
   for (const s of searches) if (s.error) log(`skipping "${s.label}": ${s.error}`);
   const active = searches.filter((s) => s.query);
   log(`${active.length} searches, ${listings.size} listings on file, running ${minutes} min, league ${CURRENT_LEAGUE}`);
@@ -230,6 +289,22 @@ async function main() {
   process.on("SIGTERM", stop);
 
   let atCapacity = state.atCapacity ?? false;
+  const relistCounts = { reopened: 0, resold: 0 };
+  /** Records a fetched listing; a sale that came back is archived (and counted) as what it was. */
+  function record(l: TradeListing, now: string, label?: string) {
+    const { change } = recordListing(listings, l, now, label);
+    if (change) noteChange(change);
+  }
+  function noteChange(change: RelistChange) {
+    relistCounts[change.kind]++;
+    if (change.kind === "reopened") {
+      log(`relisted by the same seller - not a sale: ${change.listing.id.slice(0, 8)}`);
+      archive([change.listing]);
+    } else {
+      log(`resold by a new seller - the sale stands: ${change.sale.itemId?.slice(0, 8)}`);
+      archive([change.sale]);
+    }
+  }
   const listedCount = () => {
     let n = 0;
     for (const t of listings.values()) if (t.status === "listed") n++;
@@ -270,7 +345,7 @@ async function main() {
       const { admit, paused, atCapacity: full } = admitNewListings(fresh, total, listedCount());
       atCapacity = full;
       const fetched = await client.fetchListings(admit);
-      fetched.forEach((l) => l && recordListing(listings, l, now, search.label));
+      fetched.forEach((l) => l && record(l, now, search.label));
       const interval = status.intervalMinutes ?? DISCOVERY_MINUTES;
       // Busy: over half a page of new listings since the last run - look sooner. Quiet (or paused,
       // taking nothing in): ease back.
@@ -371,7 +446,7 @@ async function main() {
       const { admit, paused, atCapacity: full } = admitNewListings(fresh, total, listedCount());
       atCapacity = full;
       const fetched = await client.fetchListings(admit);
-      fetched.forEach((l) => l && recordListing(listings, l, now, search.label));
+      fetched.forEach((l) => l && record(l, now, search.label));
       status.total = total;
       log(
         `sweep "${search.label}": ${ids.size} of ${total} found${complete ? "" : " (incomplete)"}, ${admit.length} new` +
@@ -390,8 +465,11 @@ async function main() {
     ids.forEach((id, i) => {
       const l = fetched[i];
       const t = listings.get(id)!;
-      if (l) recordListing(listings, l, now);
-      else sold.push(recordMissing(t, now));
+      if (l) record(l, now);
+      else {
+        const ended = recordMissing(t, now);
+        if (ended) sold.push(ended);
+      }
     });
     archive(sold);
   }
@@ -443,6 +521,7 @@ async function main() {
     const counts = { listed: 0, sold: 0, unsold: 0 };
     for (const t of listings.values()) counts[t.status]++;
     log(`saved ${dir}: ${counts.listed} listed, ${counts.sold} sold, ${counts.unsold} unsold (last ${STATE_DAYS_LABEL})`);
+    log(`sales that came back this run: ${relistCounts.reopened} pulled and relisted (not sales), ${relistCounts.resold} resold`);
   }
 }
 

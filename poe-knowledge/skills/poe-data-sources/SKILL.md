@@ -63,7 +63,11 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   A gone listing keeps its last `listing.account.name`, `stash`, `price` and `indexed` - so who
   listed it is still readable after it sells (16 of 16 checked, 2026-09-30). `[verified]`
 - Whether an item keeps its id when it changes hands (bought, then relisted by the buyer) is
-  unchecked (the id does survive repricing). `[unsure]`
+  unchecked (the id does survive repricing). `[unsure]` The sold tracker assumes it might, and
+  compares the seller (as a hash) when a sold id comes back; a first "Resold" in its run log would
+  confirm it.
+- `indexed` changing at an unchanged price is common: 2 of 10 live Watcher's Eyes checked on
+  2026-10-02 had moved since first seen. `[verified]`
 - `indexed` also changes without a price change: a Watcher's Eye first seen at 125d (indexed
   09-28 05:27) read indexed 09-29 17:33 at the same 125d when found gone. It's likely the seller
   moving or re-listing it. `[verified]` (the reset; the cause is `[unsure]`)

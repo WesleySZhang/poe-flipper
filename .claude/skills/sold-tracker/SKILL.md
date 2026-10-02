@@ -1,6 +1,6 @@
 ---
 name: sold-tracker
-description: Use for any work on the sold listing tracker or the Sold Listings page - adding/removing trade searches (sold-tracker/searches.md, or the "Add or remove a sold tracker search" workflow), changing the tracker script, lib/sold-tracker.ts or lib/trade-api.ts, the "Track sold listings" workflow or sold-tracker-data branch, running it locally or against live data, previewing the page with mock data, or working out why the page is empty, stale, shows no sales or odd sales, or tracks fewer listings than the trade site.
+description: Use for any work on the sold listing tracker or the Sold Listings page - adding/removing trade searches (sold-tracker/searches.md, or the "Add or remove a sold tracker search" workflow), changing the tracker script, lib/sold-tracker.ts or lib/trade-api.ts, the "Track sold listings", "Start the sold tracker on a search change" or "Cull sold tracker archive" workflows or the sold-tracker-data branch and its archive size, running it locally or against live data, previewing the page with mock data, or working out why the page is empty, stale, shows no sales or odd sales, or tracks fewer listings than the trade site.
 ---
 
 # The sold listing tracker
@@ -37,7 +37,7 @@ Gotchas:
 - The PR's own check runs only with the `SOLD_SEARCHES_PR_TOKEN` secret: a PR opened by the built-in
   `GITHUB_TOKEN` starts no workflows.
 - Two such PRs open at once both append to the list's end and conflict - merge one first.
-- Removing a search leaves its listings tracked until they end (see "When something looks wrong").
+- Merging a change to searches.md starts a tracker run ("Start the sold tracker on a search change") when none is running or queued; otherwise the next run picks it up. Removing a search drops its listings still up and keeps its sales (see "When something looks wrong").
 
 ## Run it locally
 
@@ -102,15 +102,19 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
 - **Checking coverage by hand:** page the search by price like `sweepIds` does, diff the ids with
   `state/<League>.json`, and fetch the untracked ones to see their `indexed` time - posted before
   the tracker started means backlog; after means discovery missed them.
-- **Listings from a removed or renamed search:** its chip goes at the next run start, but its
-  listings keep being checked (and count toward the cap) until they sell or reach 7 days, showing
-  only under All. TODO.md item 9 has the plan (drop listed ones, keep sales, cull the archive).
+- **Listings from a removed or renamed search** (`reconcileSearches`, at each run's start; the log
+  says `searches removed: ... N listings still up dropped` / `search renamed`): listed ones only it
+  found are deleted from the state (not archived - they weren't results); shared ones lose the label.
+  Its sold/unsold stay, and its status stays with `removed` (a dashed "removed" chip) until none of
+  them is in the state. A rename = a label gone whose exact link is now under a new label: every
+  listing's label is rewritten. Re-adding a removed search clears `removed` and the sweep takes its
+  listings back in.
 - **Short manual runs:** "How long to run" defaults to 330 minutes. A short run (e.g. 20) publishes
   only at its end and re-checks little, so the page barely moves.
 - **"paused" on a search:** it now matches more than 3,000 listings, so it takes nothing new (its
   tracked listings are still checked). Narrow the link; it resumes on its own once under.
 - **"Tracking limit reached":** 6,000 listings are being followed, so new ones are skipped until
-  some sell or expire. Narrow or remove searches. (TODO.md item 10 plans checking less often past
+  some sell or expire. Narrow or remove searches. (TODO.md item 7 plans checking less often past
   the limit instead, favouring recently listed items.)
 - **PR check fails with "Couldn't measure":** the trade site refused or failed - it fails closed.
   Re-run it; if it's a 403 from GitHub's runners, see the workflow's comments.
@@ -123,11 +127,19 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   whatever the rule is.
 - **A "sale" that wasn't:** a listing counts as sold at the first check that finds it gone (the
   owner's call: pulling an item to relist it later is rare, and repricing happens in place). A
-  seller pulling an item for good looks the same. One relisted under the same item id is reopened
-  and marked "Relisted" - but only if a tracked search's discovery/sweep shows it again, and only
-  within 7 days (after that the sold record has left the state). A pull and relist between two
-  checks is never seen as gone. We don't store the seller, so a buyer reselling the same item
-  would also be "reopened". The fix is planned in TODO.md item 7 ("pulled and relisted vs sold").
+  seller pulling an item for good looks the same. A sale that comes back - a search shows its id
+  again (while it's in the state, 30 days), or the by-id re-check (`listingsDueForCheck`: every
+  `RECHECK_SOLD_MINUTES` = 660, for `SOLD_RECHECK_DAYS` = 1, so ~2 per sale) finds it live - goes
+  through `recordListing`, which compares `seller` (a cyrb53 hash of the account name, refreshed at
+  every live fetch; names aren't stored):
+  - same seller, or no seller on file (sales recorded before 2026-10-02): **reopened** - listed
+    again, `reappeared`, `relists[]` gets {goneAt, backAt}, archived as a "listed" line;
+  - different seller: **resold** - the sale is moved to key/id `<item id>~<sold ms>` (`itemId`,
+    `resoldAs`), archived again under that id, and the item is tracked afresh with `resaleOf`.
+  A re-check that finds it still gone only bumps `lastChecked` (`recordMissing` returns nothing).
+  Each run ends with `sales that came back this run: N pulled and relisted, M resold`. A pull and
+  relist between two checks is never seen as gone. `touchedAt` lists `indexed` changes at an
+  unchanged price - 2 of 10 live listings had one on 2026-10-02 - a weaker relist sign, not acted on.
 - The rules (gone = sold; 7 days = unsold; each listing checked once per 6-hour run; fetches
   paced 25 s apart) and limits are constants in `lib/sold-tracker.ts`; the rate-limit margin (70%)
   is in `lib/trade-api.ts`.
@@ -138,13 +150,21 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   one file per day (`ended/<League>/<YYYY-MM-DD>.jsonl`) to stay far under it; the tracker splits
   any old month file (`YYYY-MM.jsonl`) into day files at start. `dropUnusedDetail` strips fields
   older versions stored (item text, flavour text) from the state as it loads.
-- **How long records are kept:** page file - sold 30 days (`SOLD_PAGE_DAYS`, but in effect 7:
-  `buildSoldListingsFile` only sees the state, which drops ended listings after 7 - a known bug,
-  TODO.md item 6), unsold 7
-  (`UNSOLD_PAGE_DAYS`), listed always; state - ended listings 7 days (`STATE_KEEP_ENDED_DAYS`);
-  archive - forever. **No backup:** each publish replaces the branch with a single commit, and each
-  run restores the branch, then republishes it all, so a run that restored an incomplete copy and
-  published would lose the archive for good. Copy `ended/` elsewhere if the history matters.
+- **How long records are kept:** page file and state alike (the page is built from the state;
+  `endedToDrop`) - sold 30 days (`SOLD_PAGE_DAYS`), unsold 7 (`UNSOLD_PAGE_DAYS`), listed always.
+  Before 2026-10-02 the state dropped every ended listing after 7 days, so sales left the page at 7.
+  Archive - forever; day files older than `ARCHIVE_GZIP_DAYS` (30) become `.jsonl.gz` (~10x smaller,
+  one line per listing per day). **No backup:** each publish replaces the branch with a single
+  commit, and each run restores the branch, then republishes it all, so a run that restored an
+  incomplete copy and published would lose the archive for good. Copy `ended/` elsewhere if the
+  history matters.
+- **Archive too big** (the run log's `archive: N MB` line, `WARNING` past `ARCHIVE_WARN_BYTES` =
+  500 MB, also in the run summary): run "Cull sold tracker archive" (`scripts/cull-sold-archive.ts`)
+  - by `--search` (records only that label found), `--before` a day, or `--league X --all-league`.
+  Dry run unless confirmed; the workflow uploads `ended/` as an artifact first and shares the
+  tracker's concurrency group (a cull pushed mid-run would be overwritten by the run's next publish).
+  Reading the archive: `.jsonl` and `.jsonl.gz` per day; a listing can appear several times (later
+  line wins; a resold sale has its own `~` id).
 - **Checks falling behind** (listings not re-checked each run): the tracked count is near what one
   run's fetch budget covers (~6,750), or runs were short/skipped. Lower `MAX_TRACKED_LISTINGS` or
   narrow searches.
@@ -160,6 +180,11 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   the line so the text never shifts). Rows don't open anything (the owner dropped the detail dialog
   so text can be selected). Both tabs sort by sold/expired time, most recent first, by default (shared sort state; on Unsold a still-listed one sorts by its last check).
 - Unsold = listings still up ("Still listed" badge, "Last seen" date) + ones expired after 7 days.
+- Badges: Relisted (`reappeared`; hover lists each gone/back), Resold (`resoldAs`, on a sale), Resale
+  (`resaleOf`, the new seller's listing). A removed search's chip is dashed with "· removed".
+- Price sort is in divines: `priceInDivines` with `chaosRates` (trade currency id -> chaos), which
+  `getSoldListings` adds from the price snapshot (`TRADE_CURRENCY_NAMES` maps ids to poe.ninja names;
+  an unmapped currency sorts last - add it there).
 - Item stats come from the tracker's `SoldListingItem.detail` (every mod with roll ranges and tier,
   properties with "(augmented)" markers, requirements, sockets, influences, relic/foil, item class).
   The in-game item text and flavour text aren't stored whole (the item text was half of each

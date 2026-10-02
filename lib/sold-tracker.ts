@@ -9,7 +9,10 @@ import type { TradeItem, TradeListing, TradeMod, TradeProperty } from "./trade-a
  * the price changes (tested 2026-09-28: 100d -> 50d kept the id). So a price drop - even out of the
  * search's own price range - is a price change, not a sale (repricing happens in place). A listing
  * counts as sold at the first check that finds it gone - pulling an item only to relist it later is
- * rare; if one does come back, it's reopened and marked relisted. The false positive left: an item
+ * rare. If a sale comes back (a search shows it again, or the by-id re-check in its first
+ * SOLD_RECHECK_DAYS finds it live), the seller decides: the same seller means it was pulled and
+ * relisted - reopened, not a sale; a different seller means it sold and the buyer is reselling it -
+ * the sale stands and the resale is tracked as its own listing. The false positive left: an item
  * taken off the market for good looks the same as a sale.
  *
  * The tracker runs ~5.5 hours every 6 hours (the "Track sold listings" workflow) and checks every
@@ -39,14 +42,21 @@ export const RECHECK_LISTED_MINUTES = 330;
 export const FETCH_PACE_MS = 25_000;
 export const DISCOVERY_MINUTES = 30;
 export const MIN_DISCOVERY_MINUTES = 5;
-/** Ended listings stay in the tracker's state this long (so a relist is recognised), then live
- *  only in the archive. */
-export const STATE_KEEP_ENDED_DAYS = 7;
 /** What the page's file holds: sales from the last SOLD_PAGE_DAYS, unsold from the last
  *  UNSOLD_PAGE_DAYS, and every listing still up (the page counts those as unsold). Everything
- *  ended is in the archive. */
+ *  ended is in the archive. The page's file is built from the state, so ended listings stay in the
+ *  state exactly as long (endedToDrop) - which is also how long a relist can be recognised. */
 export const SOLD_PAGE_DAYS = 30;
 export const UNSOLD_PAGE_DAYS = 7;
+/** A sale is re-fetched by id every RECHECK_SOLD_MINUTES (every other run) for SOLD_RECHECK_DAYS
+ *  after it, ~2 checks per sale, to catch a relist the searches don't show (e.g. relisted above a
+ *  search's price range). Searches catch the rest for free, for as long as the sale is in the state. */
+export const SOLD_RECHECK_DAYS = 1;
+export const RECHECK_SOLD_MINUTES = 660;
+/** Archive day files older than this are gzipped (`.jsonl.gz`, ~10x smaller). */
+export const ARCHIVE_GZIP_DAYS = 30;
+/** The run log warns when the archive passes this; see scripts/cull-sold-archive.ts. */
+export const ARCHIVE_WARN_BYTES = 500 * 1024 * 1024;
 /** A search returns at most this many ids (newest first here), so a run that finds this many new
  *  listings has likely missed some. */
 export const SEARCH_RESULT_CAP = 100;
@@ -118,8 +128,11 @@ export interface SoldListingDetail {
 }
 
 export interface TrackedListing {
-  /** The item's id - also its listing id on the trade site. */
+  /** The item's id - also its listing id on the trade site. A sale whose item was later resold is
+   *  moved aside to `<item id>~<sold time ms>` (see `itemId`, `resoldAs`). */
   id: string;
+  /** Set when `id` isn't the item id: a sale moved aside for its resale. */
+  itemId?: string;
   /** Labels of the searches (lib/trade-query.ts links) that found it. */
   searches: string[];
   item: SoldListingItem;
@@ -135,8 +148,40 @@ export interface TrackedListing {
   /** Sold: the check that found it gone (it sold between lastSeen and this). Unsold: when it
    *  reached LISTING_MAX_AGE_DAYS. */
   endedAt?: string;
-  /** It was counted sold once, then showed up listed again. */
+  /** It was counted sold once, then showed up listed again (by the same seller, or one we can't
+   *  compare). Each time is in `relists`. */
   reappeared?: boolean;
+  /** Each time it was counted sold, then came back from the same seller: a pull and relist. */
+  relists?: Array<{ goneAt: string; backAt: string }>;
+  /** A short hash of the seller's account name (sellerHash), from the last live fetch - only to tell
+   *  "the same seller relisted it" from "a buyer resold it". Names aren't stored. */
+  seller?: string;
+  /** The `indexed` time at the last fetch (it resets on a price change, and on some moves). */
+  lastIndexed?: string;
+  /** `indexed` times that changed at an unchanged price - the seller moved or re-listed it in place.
+   *  A weaker pull-and-relist signal; capped at MAX_TOUCHES. */
+  touchedAt?: string[];
+  /** This listing is the item listed again by a different seller after it sold: the id (key) of that
+   *  earlier sale. */
+  resaleOf?: string;
+  /** On a sale: the item was listed again by a different seller (this item id). */
+  resoldAs?: string;
+}
+
+const MAX_TOUCHES = 20;
+
+/** A short, stable hash of a seller's account name (cyrb53) - enough to compare, keeps no names. */
+export function sellerHash(name: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < name.length; i++) {
+    const c = name.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
 export interface TrackedSearchStatus {
@@ -156,13 +201,19 @@ export interface TrackedSearchStatus {
   /** Why it isn't taking new listings: over MAX_LISTINGS_PER_SEARCH, or past MAX_SEARCHES. Its
    *  listings already tracked are still checked. */
   paused?: string;
+  /** No longer in searches.md since this time (reconcileSearches). Kept while the page still shows
+   *  any of its sold/unsold listings, so its chip can be shown as removed. */
+  removed?: string;
 }
 
 /**
  * The tracker's own state (state/<League>.json on the sold-tracker-data branch): every listed listing,
- * plus ended ones from the last STATE_KEEP_ENDED_DAYS. Ended listings are also appended to the
- * archive (ended/<League>/<YYYY-MM-DD>.jsonl by the day each ended, one listing per line; a relisted one that ends again
- * appears twice - the later line wins).
+ * plus sales from the last SOLD_PAGE_DAYS and unsold from the last UNSOLD_PAGE_DAYS. Ended listings
+ * are also appended to the archive (ended/<League>/<YYYY-MM-DD>.jsonl by the day each ended, one
+ * listing per line, gzipped after ARCHIVE_GZIP_DAYS). A listing can appear more than once - the
+ * later line wins: a sale that's reopened (pulled and relisted) gets a line with status "listed"
+ * when it comes back, and another when it ends again. A sale moved aside for a resale gets a line
+ * under its new id (`<item id>~<ms>`, with `itemId`), so the resale's own lines don't replace it.
  */
 export interface TrackerState {
   version: 2;
@@ -185,6 +236,42 @@ export interface SoldListingsFile {
   trackedCount: number;
   searches: TrackedSearchStatus[];
   listings: TrackedListing[];
+}
+
+/** What /api/sold-listings returns: the file, plus each listing currency's chaos value right now
+ *  (trade currency id -> chaos, from poe.ninja) so prices in different currencies sort together. */
+export interface SoldListingsResponse extends SoldListingsFile {
+  chaosRates?: Record<string, number>;
+}
+
+/** Trade site currency ids -> poe.ninja names, for chaosRates. Chaos is 1 by definition. */
+export const TRADE_CURRENCY_NAMES: Record<string, string> = {
+  divine: "Divine Orb",
+  exalted: "Exalted Orb",
+  mirror: "Mirror of Kalandra",
+  alch: "Orb of Alchemy",
+  fusing: "Orb of Fusing",
+  chance: "Orb of Chance",
+  vaal: "Vaal Orb",
+  regal: "Regal Orb",
+  gcp: "Gemcutter's Prism",
+  chrome: "Chromatic Orb",
+  jewellers: "Jeweller's Orb",
+  alt: "Orb of Alteration",
+  scour: "Orb of Scouring",
+  regret: "Orb of Regret",
+  annul: "Orb of Annulment",
+  blessed: "Blessed Orb",
+};
+
+/** A price in divines, at today's rates: divine as is, anything else converted through chaos.
+ *  Undefined when a rate is missing (sorts last). */
+export function priceInDivines(p: ListingPrice | undefined, chaosRates: Record<string, number> | undefined): number | undefined {
+  if (!p) return undefined;
+  if (p.currency === "divine") return p.amount;
+  const divine = chaosRates?.divine;
+  const chaos = p.currency === "chaos" ? 1 : chaosRates?.[p.currency];
+  return divine && chaos ? (p.amount * chaos) / divine : undefined;
 }
 
 export function emptyTrackerState(league: string): TrackerState {
@@ -219,14 +306,82 @@ export function buildSoldListingsFile(state: TrackerState, listings: Iterable<Tr
   };
 }
 
-/** Ended listings old enough to leave the state (they're already in the archive). */
+/** Ended listings old enough to leave the state (they're already in the archive): once the page no
+ *  longer shows them - sold after SOLD_PAGE_DAYS, unsold after UNSOLD_PAGE_DAYS. */
 export function endedToDrop(listings: Iterable<TrackedListing>, now: string): string[] {
   const nowMs = Date.parse(now);
   const out: string[] = [];
   for (const t of listings) {
-    if (t.status !== "listed" && t.endedAt && nowMs - Date.parse(t.endedAt) > STATE_KEEP_ENDED_DAYS * DAY_MS) out.push(t.id);
+    if (t.status === "listed" || !t.endedAt) continue;
+    const keepDays = t.status === "sold" ? SOLD_PAGE_DAYS : UNSOLD_PAGE_DAYS;
+    if (nowMs - Date.parse(t.endedAt) > keepDays * DAY_MS) out.push(t.id);
   }
   return out;
+}
+
+/**
+ * Brings the state's searches in line with searches.md at the start of a run:
+ *  - a label gone from the file whose link is now under a new label is a rename: its listings and
+ *    status move to the new label;
+ *  - a label gone for good is a removed search: listings still up that only it found are dropped
+ *    (they aren't results yet, and they'd use the fetch budget and the cap); ones another search
+ *    also found carry on under that search. Its sold/unsold listings stay (and in the archive), and
+ *    its status is kept, marked `removed`, while any of them is still in the state (on the page).
+ * Re-adding a removed search sweeps its listings back in at the next run.
+ */
+export function reconcileSearches(
+  listings: Map<string, TrackedListing>,
+  previous: TrackedSearchStatus[],
+  current: Array<{ label: string; url: string; error?: string }>,
+  now: string
+): { statuses: Map<string, TrackedSearchStatus>; renamed: Array<[string, string]>; removed: string[]; dropped: number } {
+  const currentLabels = new Set(current.map((s) => s.label));
+  const prevByLabel = new Map(previous.map((s) => [s.label, s]));
+  const relabel = (from: string, to: string) => {
+    for (const t of listings.values()) t.searches = t.searches.map((l) => (l === from ? to : l));
+  };
+  const renamed: Array<[string, string]> = [];
+  for (const p of previous) {
+    if (currentLabels.has(p.label)) continue;
+    const to = current.find((s) => s.url === p.url && !prevByLabel.has(s.label));
+    if (!to) continue;
+    relabel(p.label, to.label);
+    prevByLabel.delete(p.label);
+    prevByLabel.set(to.label, { ...p, label: to.label });
+    renamed.push([p.label, to.label]);
+  }
+  const removed = [...prevByLabel.keys()].filter((l) => !currentLabels.has(l));
+  const removedSet = new Set(removed);
+  let dropped = 0;
+  for (const [key, t] of listings) {
+    if (t.status !== "listed" || !t.searches.some((l) => removedSet.has(l))) continue;
+    t.searches = t.searches.filter((l) => !removedSet.has(l));
+    if (t.searches.length === 0) {
+      listings.delete(key);
+      dropped++;
+    }
+  }
+  const statuses = new Map<string, TrackedSearchStatus>();
+  for (const s of current) {
+    const prev = prevByLabel.get(s.label);
+    const status: TrackedSearchStatus = { ...(prev?.url === s.url ? prev : {}), label: s.label, url: s.url };
+    delete status.removed;
+    if (s.error) status.error = s.error;
+    else delete status.error;
+    statuses.set(s.label, status);
+  }
+  const stillShown = new Set<string>();
+  for (const t of listings.values()) for (const l of t.searches) if (removedSet.has(l)) stillShown.add(l);
+  for (const label of removed) {
+    if (!stillShown.has(label)) continue;
+    // Not running any more: its run state (paused, error, missed listings) no longer applies.
+    const prev = { ...prevByLabel.get(label)! };
+    delete prev.paused;
+    delete prev.error;
+    delete prev.missedListings;
+    statuses.set(label, { ...prev, removed: prev.removed ?? now });
+  }
+  return { statuses, renamed, removed, dropped };
 }
 
 /**
@@ -396,47 +551,97 @@ export function currentPrice(t: TrackedListing): ListingPrice | undefined {
   return t.prices[t.prices.length - 1];
 }
 
-/**
- * Records a fetched listing: adds it, or refreshes one already tracked (a new price is appended,
- * and a listing that was gone or counted sold is back). `searchLabel` is set when a search found it.
- */
-export function recordListing(listings: Map<string, TrackedListing>, fetched: TradeListing, now: string, searchLabel?: string): TrackedListing {
-  const existing = listings.get(fetched.id);
+function newListing(fetched: TradeListing, now: string, searchLabel: string | undefined, seller: string | undefined): TrackedListing {
   const price = fetched.listing.price;
+  return {
+    id: fetched.id,
+    searches: searchLabel ? [searchLabel] : [],
+    item: toListingItem(fetched.item),
+    prices: price ? [{ amount: price.amount, currency: price.currency, ...(price.type ? { type: price.type } : {}), at: now }] : [],
+    listedAt: fetched.listing.indexed,
+    lastIndexed: fetched.listing.indexed,
+    firstSeen: now,
+    lastSeen: now,
+    lastChecked: now,
+    status: "listed",
+    ...(seller ? { seller } : {}),
+  };
+}
+
+/** What recordListing changed beyond a refresh: a sale that came back. */
+export type RelistChange =
+  /** Same seller (or one we can't compare): it wasn't a sale. Reopened as listed. */
+  | { kind: "reopened"; listing: TrackedListing }
+  /** A different seller: the sale was real. `sale` is the sale, moved aside; `listing` the resale. */
+  | { kind: "resold"; listing: TrackedListing; sale: TrackedListing };
+
+/**
+ * Records a fetched (live) listing: adds it, or refreshes one already tracked - a new price is
+ * appended, the seller hash and `indexed` are updated. A listing counted sold that's back is either
+ * reopened (same seller: a pull and relist, not a sale) or, when the seller changed, a resale: the
+ * sale stays a sale under a new id and the item is tracked afresh, linked to it. Returns the listing
+ * and, for a sale that came back, what happened (the caller archives it). `searchLabel` is set when
+ * a search found it.
+ */
+export function recordListing(
+  listings: Map<string, TrackedListing>,
+  fetched: TradeListing,
+  now: string,
+  searchLabel?: string
+): { listing: TrackedListing; change?: RelistChange } {
+  const existing = listings.get(fetched.id);
+  const seller = fetched.listing.account?.name ? sellerHash(fetched.listing.account.name) : undefined;
   if (!existing) {
-    const t: TrackedListing = {
-      id: fetched.id,
-      searches: searchLabel ? [searchLabel] : [],
-      item: toListingItem(fetched.item),
-      prices: price ? [{ amount: price.amount, currency: price.currency, ...(price.type ? { type: price.type } : {}), at: now }] : [],
-      listedAt: fetched.listing.indexed,
-      firstSeen: now,
-      lastSeen: now,
-      lastChecked: now,
-      status: "listed",
-    };
+    const t = newListing(fetched, now, searchLabel, seller);
     listings.set(t.id, t);
-    return t;
+    return { listing: t };
+  }
+  if (existing.status === "sold" && existing.seller && seller && existing.seller !== seller) {
+    const saleKey = `${existing.id}~${Date.parse(existing.endedAt ?? existing.lastChecked)}`;
+    listings.delete(existing.id);
+    existing.itemId = existing.id;
+    existing.id = saleKey;
+    existing.resoldAs = fetched.id;
+    listings.set(saleKey, existing);
+    const resale = newListing(fetched, now, searchLabel, seller);
+    resale.searches = [...new Set([...existing.searches, ...resale.searches])];
+    resale.resaleOf = saleKey;
+    listings.set(resale.id, resale);
+    return { listing: resale, change: { kind: "resold", listing: resale, sale: existing } };
   }
   if (searchLabel && !existing.searches.includes(searchLabel)) existing.searches.push(searchLabel);
+  const price = fetched.listing.price;
   const last = currentPrice(existing);
-  if (price && (!last || last.amount !== price.amount || last.currency !== price.currency)) {
+  const priceChanged = !!price && (!last || last.amount !== price.amount || last.currency !== price.currency);
+  if (priceChanged) {
     existing.prices.push({ amount: price.amount, currency: price.currency, ...(price.type ? { type: price.type } : {}), at: now });
   }
+  const indexed = fetched.listing.indexed;
+  const reopening = existing.status === "sold";
+  if (!priceChanged && !reopening && indexed && indexed !== (existing.lastIndexed ?? existing.listedAt)) {
+    existing.touchedAt = [...(existing.touchedAt ?? []), indexed].slice(-MAX_TOUCHES);
+  }
+  if (indexed) existing.lastIndexed = indexed;
+  if (seller) existing.seller = seller;
   existing.item = toListingItem(fetched.item);
   existing.lastSeen = now;
   existing.lastChecked = now;
-  if (existing.status === "sold") {
+  if (reopening) {
     existing.status = "listed";
     existing.reappeared = true;
+    existing.relists = [...(existing.relists ?? []), { goneAt: existing.endedAt ?? existing.lastChecked, backAt: now }];
     delete existing.endedAt;
+    return { listing: existing, change: { kind: "reopened", listing: existing } };
   }
-  return existing;
+  return { listing: existing };
 }
 
-/** A fetch by id came back empty: it sold (see the module doc). Returns it, for the archive. */
-export function recordMissing(t: TrackedListing, now: string): TrackedListing {
+/** A fetch by id came back gone. A listed listing sold (see the module doc) and is returned, for
+ *  the archive. A sale re-checked for a relist (SOLD_RECHECK_DAYS) that's still gone only notes the
+ *  check, and returns nothing. */
+export function recordMissing(t: TrackedListing, now: string): TrackedListing | undefined {
   t.lastChecked = now;
+  if (t.status !== "listed") return undefined;
   t.status = "sold";
   t.endedAt = now;
   return t;
@@ -458,13 +663,17 @@ export function settleListings(listings: Iterable<TrackedListing>, now: string):
   return ended;
 }
 
-/** Listed ids due a check, most overdue first. */
+/** Ids due a check, most overdue first: listed ones every RECHECK_LISTED_MINUTES, and recent sales
+ *  every RECHECK_SOLD_MINUTES for SOLD_RECHECK_DAYS (a relist check; they share the same fetches). */
 export function listingsDueForCheck(listings: Iterable<TrackedListing>, now: string, limit: number): string[] {
   const nowMs = Date.parse(now);
   const due: Array<{ id: string; overdueMs: number }> = [];
   for (const t of listings) {
-    if (t.status !== "listed") continue;
-    const everyMs = RECHECK_LISTED_MINUTES * 60 * 1000;
+    let everyMs: number;
+    if (t.status === "listed") everyMs = RECHECK_LISTED_MINUTES * 60 * 1000;
+    else if (t.status === "sold" && !t.resoldAs && t.endedAt && nowMs - Date.parse(t.endedAt) <= SOLD_RECHECK_DAYS * DAY_MS) {
+      everyMs = RECHECK_SOLD_MINUTES * 60 * 1000;
+    } else continue;
     const overdueMs = nowMs - Date.parse(t.lastChecked) - everyMs;
     if (overdueMs >= 0) due.push({ id: t.id, overdueMs });
   }

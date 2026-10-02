@@ -5,7 +5,7 @@ name: Track sold listings
 # scratch every run):
 #   state/<League>.json          the tracker's state, restored at the start of the next run
 #   sold-listings/<League>.json  what the Sold Listings page reads (lib/sold-listings.ts)
-#   ended/<League>/<YYYY-MM>.jsonl  every listing that ended - the full history
+#   ended/<League>/<YYYY-MM-DD>.jsonl  every listing that ended, by day (gzipped after 30 days) - the full history
 #
 # Published as it goes: the tracker publishes a full snapshot every 30 minutes, straight after a save
 # (scripts/publish-sold-tracker.sh), and the last step publishes once more - also when tracking
