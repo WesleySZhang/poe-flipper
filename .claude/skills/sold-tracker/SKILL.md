@@ -1,6 +1,6 @@
 ---
 name: sold-tracker
-description: Use for any work on the sold listing tracker or the Sold Listings page - adding/removing trade searches (sold-tracker/searches.md), changing the tracker script, lib/sold-tracker.ts or lib/trade-api.ts, the "Track sold listings" workflow or sold-tracker-data branch, running it locally or against live data, previewing the page with mock data, or working out why the page is empty, stale, shows no sales or odd sales, or tracks fewer listings than the trade site.
+description: Use for any work on the sold listing tracker or the Sold Listings page - adding/removing trade searches (sold-tracker/searches.md, or the "Add or remove a sold tracker search" workflow), changing the tracker script, lib/sold-tracker.ts or lib/trade-api.ts, the "Track sold listings" workflow or sold-tracker-data branch, running it locally or against live data, previewing the page with mock data, or working out why the page is empty, stale, shows no sales or odd sales, or tracks fewer listings than the trade site.
 ---
 
 # The sold listing tracker
@@ -28,6 +28,16 @@ commit) happens every 30 min during a run and once at its end, so the page lags 
    limits. The tracker workflow checks out master, so a search only goes live once merged - at
    the next run's start (a running one keeps its list), on the page at that run's first publish.
    No Vercel deploy: the app never reads `searches.md`; the chips come from the published file.
+
+**Or from the Actions tab:** "Add or remove a sold tracker search" (`.github/workflows/edit-sold-search.yml`)
+does steps 2-5: `scripts/edit-sold-searches.ts add "<link>" ["<label>"]` / `remove "<label or link>"`
+(same script locally; it refuses an unreadable link, a taken label or a link already there), the
+limit check, then a PR (branch `auto/sold-search-<run id>`, the check's report as its body).
+Gotchas:
+- The PR's own check runs only with the `SOLD_SEARCHES_PR_TOKEN` secret: a PR opened by the built-in
+  `GITHUB_TOKEN` starts no workflows.
+- Two such PRs open at once both append to the list's end and conflict - merge one first.
+- Removing a search leaves its listings tracked until they end (see "When something looks wrong").
 
 ## Run it locally
 

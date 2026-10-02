@@ -265,6 +265,12 @@ rebuilds from scratch):
   Everything else, including any price range, is the link's. A change needs no Vercel deploy: the
   tracker reads the file (from master) when a run starts, and the page's search chips come from its
   published file, so a merged change shows up at the next run's first publish.
+- **Adding or removing a search without editing the file:** Actions -> **"Add or remove a sold
+  tracker search"** -> paste a trade site link (and optionally a label), or a search's label/link to
+  remove it. It edits `searches.md` (`scripts/edit-sold-searches.ts`, also runnable locally), runs
+  the limit check and opens a PR with the check's report. The PR's own "Check sold tracker
+  searches" check only runs if the `SOLD_SEARCHES_PR_TOKEN` secret is set (a fine-grained token with
+  Contents and Pull requests read/write); GitHub doesn't run checks on PRs its built-in token opens.
 - **Finding listings:** a search returns at most 100 listings, so two passes:
   - **A sweep at the start of each run** pages through every listing a search matches, cheapest
     first, 100 at a time (each page starts at the last one's price; a price shared by a whole page,
@@ -537,6 +543,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
 | `scripts/track-sold-listings.ts`, `sold-tracker/searches.md` | The sold listing tracker and the searches it follows |
+| `scripts/edit-sold-searches.ts`, `.github/workflows/edit-sold-search.yml` | Add or remove a tracker search from the Actions tab (opens a PR) |
 | `scripts/publish-sold-tracker.sh` | Publishes the tracker's files to the `sold-tracker-data` branch (during and after a run) |
 | `scripts/check-sold-searches.ts` | PR check: every search within the tracker's limits |
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |

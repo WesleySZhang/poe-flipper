@@ -1,0 +1,89 @@
+name: Add or remove a sold tracker search
+
+# Adds or removes a search in sold-tracker/searches.md from the Actions tab, without editing the
+# file by hand: Actions -> "Add or remove a sold tracker search" -> Run workflow, paste a trade site
+# link (or, to remove, its label or link). It edits the file (scripts/edit-sold-searches.ts - the
+# link must decode, and the label and link must be new), runs the same limit check as the PR check
+# (scripts/check-sold-searches.ts), and opens a PR with the result. Nothing changes until that PR is
+# merged; the tracker picks the change up at its next run's start, and the page at that run's first
+# publish - no Vercel deploy.
+#
+# Each run opens its own PR (branch auto/sold-search-<run id>). Two open at once both edit the end
+# of the list, so merge one before starting the next, or resolve the conflict.
+#
+# The PR's own "Check sold tracker searches" check: GitHub doesn't start workflows for a PR opened
+# with the built-in GITHUB_TOKEN, so it only runs there when the SOLD_SEARCHES_PR_TOKEN secret is set
+# (a fine-grained personal access token for this repo with Contents and Pull requests read/write).
+# Without it the PR still opens - this run has already done the same check, and its report is the
+# PR's description.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Add or remove"
+        type: choice
+        options: [add, remove]
+        default: add
+      search:
+        description: "Add: the trade site link. Remove: the search's label or link."
+        required: true
+      label:
+        description: "Add only: label for the page's filter chip (default: the item name)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  edit-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      # Inputs go through env, never straight into the script, so a link can't inject shell.
+      - name: Edit sold-tracker/searches.md
+        id: edit
+        run: npx tsx scripts/edit-sold-searches.ts "$ACTION" "$SEARCH" "$LABEL"
+        env:
+          ACTION: ${{ inputs.action }}
+          SEARCH: ${{ inputs.search }}
+          LABEL: ${{ inputs.label }}
+
+      - name: Check the searches against the tracker's limits
+        run: |
+          {
+            echo "${ACTION^} sold tracker search **${LABEL}** (from the \"Add or remove a sold tracker search\" workflow)."
+            echo
+          } > "$REPORT"
+          GITHUB_STEP_SUMMARY="$REPORT" npx tsx scripts/check-sold-searches.ts
+          status=$?
+          cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+        shell: bash {0}
+        env:
+          ACTION: ${{ inputs.action }}
+          LABEL: ${{ steps.edit.outputs.label }}
+          REPORT: ${{ runner.temp }}/sold-search-report.md
+
+      - name: Open the pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.SOLD_SEARCHES_PR_TOKEN || github.token }}
+          commit-message: "Sold tracker: ${{ inputs.action }} search \"${{ steps.edit.outputs.label }}\""
+          title: "Sold tracker: ${{ inputs.action }} search \"${{ steps.edit.outputs.label }}\""
+          body-path: ${{ runner.temp }}/sold-search-report.md
+          branch: auto/sold-search-${{ github.run_id }}
+          delete-branch: true
+          add-paths: sold-tracker/searches.md

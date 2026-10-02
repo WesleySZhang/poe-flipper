@@ -115,17 +115,9 @@ every PR and enforced while running. Live since 2026-09-28: GitHub's runners rea
     to judge whether an item is overpriced - too hard to tell reliably.
   - Show the current interval on the page ("checked every ~12 h").
   - Have the PR check and `admitNewListings` use the new ceiling in place of the fixed caps.
-- **Add or remove a search from GitHub Actions.** A manual workflow with inputs (a trade site link,
-  an optional label, add or remove) that edits `sold-tracker/searches.md` on a new branch and opens
-  a PR, so the existing "Check sold tracker searches" check still runs before merge. Validate the
-  link decodes (`parseTradeSearchUrl`) and the label is unique before opening the PR. The PR must
-  trigger the check: a PR opened with the default `GITHUB_TOKEN` doesn't start other workflows, so
-  use a PAT or GitHub App token.
-  No redeploy is needed (checked 2026-09-29): the app doesn't read `searches.md`. The tracker reads
-  it once at the start of each run, and the page's search chips come from its published file on
-  `sold-tracker-data`, so a merged change shows up at the next run's first publish (up to ~6.5 h
-  later). A run already going keeps the old list. To make it quicker, start a tracker run on merge
-  when none is running (the workflow's concurrency group would otherwise queue it).
+- **Start a tracker run when a search change is merged.** A merged change shows up at the next
+  run's first publish, up to ~6.5 h later; a run already going keeps the old list. Start one on
+  merge when none is running (the workflow's concurrency group would otherwise queue it).
 - **Removing a search: what happens to its listings.** How it works today (checked 2026-09-29):
   - The search's status is rebuilt from `searches.md` at each run start, so a removed search's chip
     disappears.
@@ -413,6 +405,11 @@ gains little over files built at ingest and shipped with the app, and adds a run
 ---
 
 ## Done
+
+- **Add or remove a sold tracker search from the Actions tab** (2026-10-01). The "Add or remove a
+  sold tracker search" workflow edits `sold-tracker/searches.md` (`scripts/edit-sold-searches.ts`:
+  the link must decode, and the label and link must be new), runs the limit check and opens a PR.
+  The PR's own check only runs with a `SOLD_SEARCHES_PR_TOKEN` secret (see the workflow's comments).
 
 - **Sales were never detected** (fixed 2026-09-29). The tracker counted a sale only when a fetch
   came back `null`, but the trade site returns a sold or pulled listing with `gone: true` instead.

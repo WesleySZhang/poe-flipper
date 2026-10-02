@@ -24,6 +24,9 @@ same locally). A price range is the usual way to bring a search down. While runn
 also pauses a search that has grown past 3,000, and stops taking new listings at 6,000 - both show on
 the Sold Listings page.
 
+Or skip editing this file: Actions -> "Add or remove a sold tracker search" takes a link (or a
+label to remove) and opens the PR for you.
+
 Once merged, a change is picked up when the next tracker run starts and shows on the page at its
 first publish (~30 minutes in). No app deploy is needed.
 
