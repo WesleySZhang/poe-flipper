@@ -1,0 +1,89 @@
+name: Cull sold tracker archive
+
+# Deletes records from the sold tracker's archive (ended/ on the sold-tracker-data branch) when it
+# gets too big - the tracker's run log and summary warn past the budget (ARCHIVE_WARN_BYTES in
+# lib/sold-tracker.ts). Runs scripts/cull-sold-archive.ts: by search (records only that search
+# found, e.g. a removed one), by date (whole days before it) and/or a whole past league.
+#
+# A dry run unless "confirm" is ticked: the run log lists what would go. With confirm, ended/ is
+# first saved as a run artifact (kept 90 days) - culling can't otherwise be undone - then the result
+# is published like the tracker does.
+#
+# Shares the tracker's concurrency group, so it never runs during a tracker run (that run would
+# publish its own copy over the cull). Queuing it can replace a scheduled tracker run that's
+# waiting; the next one carries on.
+
+on:
+  workflow_dispatch:
+    inputs:
+      search:
+        description: "Delete records only this search found (its label)"
+        required: false
+        default: ""
+      before:
+        description: "Delete whole days before this date (YYYY-MM-DD)"
+        required: false
+        default: ""
+      past_league:
+        description: "Delete everything for this past league"
+        required: false
+        default: ""
+      confirm:
+        description: "Actually delete (unticked = dry run)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sold-tracker
+  cancel-in-progress: false
+
+jobs:
+  cull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Restore the sold-tracker-data branch
+        run: |
+          mkdir -p .sold-tracker
+          git fetch --depth=1 origin sold-tracker-data
+          git archive FETCH_HEAD | tar -x -C .sold-tracker
+
+      - name: Back up the archive
+        if: inputs.confirm
+        uses: actions/upload-artifact@v4
+        with:
+          name: sold-tracker-archive-before-cull-${{ github.run_id }}
+          path: .sold-tracker/ended
+          retention-days: 90
+
+      # Inputs go through env, never straight into the script, so they can't inject shell.
+      - name: Cull
+        env:
+          SEARCH: ${{ inputs.search }}
+          BEFORE: ${{ inputs.before }}
+          PAST_LEAGUE: ${{ inputs.past_league }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          args=(--dir .sold-tracker)
+          if [ -n "$PAST_LEAGUE" ]; then args+=(--league "$PAST_LEAGUE" --all-league); fi
+          if [ -n "$SEARCH" ]; then args+=(--search "$SEARCH"); fi
+          if [ -n "$BEFORE" ]; then args+=(--before "$BEFORE"); fi
+          if [ "$CONFIRM" = "true" ]; then args+=(--confirm); fi
+          npx tsx scripts/cull-sold-archive.ts "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish to the sold-tracker-data branch
+        if: inputs.confirm
+        run: bash scripts/publish-sold-tracker.sh .sold-tracker

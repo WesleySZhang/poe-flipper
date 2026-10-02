@@ -17,7 +17,7 @@ past mistakes that the code doesn't show. Load them unprompted; the owner should
 
 | When the task touches... | Load |
 | --- | --- |
-| The sold listing tracker, `/sold-listings`, `sold-tracker/searches.md`, `lib/trade-api.ts`, the "Track sold listings" or "Add or remove a sold tracker search" workflows | `sold-tracker` |
+| The sold listing tracker, `/sold-listings`, `sold-tracker/searches.md`, `lib/trade-api.ts`, the "Track sold listings", "Add or remove a sold tracker search", "Start the sold tracker on a search change" or "Cull sold tracker archive" workflows, the sold-tracker-data archive | `sold-tracker` |
 | Any UI change (before calling it done) | `verify-ui` |
 | A new page, or a page panel's layout | `new-page` |
 | The daily precompute job, the `precompute-data` branch, stale predictions/prices | `precompute-check` |

@@ -12,22 +12,17 @@ ordered by importance.
 | 3 | [Live price vs history for items with several poe.ninja lines](#3-live-price-vs-history-for-items-with-several-poeninja-lines) | Undecided |
 | 4 | [Holes in past-league history](#4-holes-in-past-league-history) | Open |
 | 5 | [Small follow-ups](#5-small-follow-ups) | Open |
-| 6 | [Sold tracker: sales show for 7 days, not 30](#6-sold-tracker-sales-show-for-7-days-not-30) | Bug |
-| 7 | [Sold tracker: pulled and relisted vs sold](#7-sold-tracker-pulled-and-relisted-vs-sold) | Planned |
-| 8 | [Sold tracker: back up the archive](#8-sold-tracker-back-up-the-archive) | Open |
-| 9 | [Sold tracker: removing a search, and culling stored sales](#9-sold-tracker-removing-a-search-and-culling-stored-sales) | Planned |
-| 10 | [Sold tracker: spread checks out instead of hitting the limit](#10-sold-tracker-spread-checks-out-instead-of-hitting-the-limit) | Idea |
-| 11 | [Sold tracker: make the PR check required](#11-sold-tracker-make-the-pr-check-required) | Open (settings) |
-| 12 | [Sold tracker: start a run when a search change is merged](#12-sold-tracker-start-a-run-when-a-search-change-is-merged) | Idea |
-| 13 | [Sold tracker: scheduled runs start late or not at all](#13-sold-tracker-scheduled-runs-start-late-or-not-at-all) | Watching |
-| 14 | [Sold tracker: sweep limits](#14-sold-tracker-sweep-limits) | Open (not hit yet) |
-| 15 | [Sold tracker: price sort across currencies](#15-sold-tracker-price-sort-across-currencies) | Open (not hit yet) |
-| 16 | [Sold tracker: sold times for the first sales are late](#16-sold-tracker-sold-times-for-the-first-sales-are-late) | Known, won't fix |
-| 17 | [Sold tracker: copy item in Craft of Exile](#17-sold-tracker-copy-item-in-craft-of-exile) | Untested |
-| 18 | [Sold tracker: a fresh league's volume](#18-sold-tracker-a-fresh-leagues-volume) | Check at league start |
-| 19 | [Sold tracker: Terms of Use](#19-sold-tracker-terms-of-use) | Risk |
-| 20 | [Trade site links don't always match the item](#20-trade-site-links-dont-always-match-the-item) | Open |
-| 21 | [Should DuckDB stay in the deployed app?](#21-should-duckdb-stay-in-the-deployed-app) | Discovery |
+| 6 | [Sold tracker: back up the archive](#6-sold-tracker-back-up-the-archive) | Open |
+| 7 | [Sold tracker: spread checks out instead of hitting the limit](#7-sold-tracker-spread-checks-out-instead-of-hitting-the-limit) | Idea |
+| 8 | [Sold tracker: make the PR check required](#8-sold-tracker-make-the-pr-check-required) | Open (settings) |
+| 9 | [Sold tracker: scheduled runs start late or not at all](#9-sold-tracker-scheduled-runs-start-late-or-not-at-all) | Watching |
+| 10 | [Sold tracker: sweep limits](#10-sold-tracker-sweep-limits) | Open (not hit yet) |
+| 11 | [Sold tracker: sold times for the first sales are late](#11-sold-tracker-sold-times-for-the-first-sales-are-late) | Known, won't fix |
+| 12 | [Sold tracker: copy item in Craft of Exile](#12-sold-tracker-copy-item-in-craft-of-exile) | Untested |
+| 13 | [Sold tracker: a fresh league's volume](#13-sold-tracker-a-fresh-leagues-volume) | Check at league start |
+| 14 | [Sold tracker: Terms of Use](#14-sold-tracker-terms-of-use) | Risk |
+| 15 | [Trade site links don't always match the item](#15-trade-site-links-dont-always-match-the-item) | Open |
+| 16 | [Should DuckDB stay in the deployed app?](#16-should-duckdb-stay-in-the-deployed-app) | Discovery |
 | – | [Sold tracker: background](#sold-tracker-background) | – |
 | – | [Done](#done) | – |
 
@@ -101,114 +96,15 @@ forecast days (see Done), but:
   day the file doesn't cover (day 30 when the file is a day old, or past 30) freezes the chart and
   table on the previous value until release, then waits for a live calculation.
 
-## 6. Sold tracker: sales show for 7 days, not 30
-
-`buildSoldListingsFile` builds the page's file from the state, which drops ended listings after
-7 days (`STATE_KEEP_ENDED_DAYS`), so `SOLD_PAGE_DAYS = 30` never takes effect: a sale leaves the
-page after 7 days. Fix: keep ended listings in the state for `SOLD_PAGE_DAYS` (sales are few), or
-build the page's ended listings from the archive's last 30 days. Doing this also gives relist
-detection a longer window (item 7).
-
-## 7. Sold tracker: pulled and relisted vs sold
-
-A seller pulling an item looks like a sale (the fetch says `gone: true` for both). Can a later relist move it from Sold back to Unsold?
-
-**Findings (2026-09-30):**
-- **Partly handled already.** A listing's id is its item's id. If a tracked search's discovery
-  or sweep turns up a "sold" id again, `recordListing` reopens it: status back to listed (so it
-  moves to the Unsold tab), sold time cleared, "Relisted" badge. So far 0 of 16 sales have come
-  back.
-- **A quick pull-and-relist between two checks is never seen.** Checks are ~6 h apart, and only
-  a listing that's gone at a check counts as sold, so those don't become false sales.
-- **A gone listing still carries its last seller** (`listing.account.name`), stash, price and
-  `indexed`. So "same seller relisted it" can be told apart from "a buyer is reselling it".
-  `whisper` holds the character name; don't store it.
-- **`indexed` changes without a price change.** Listing 549c22a9 was first seen listed on
-  09-28 05:27. When found gone, its `indexed` read 09-29 17:33, at the same 125d. The seller
-  moved it or re-listed it. That's a pull-and-relist signal we don't record (only the first
-  `indexed` is kept).
-
-**Gaps:**
-1. A relist is only noticed if a tracked search shows it. One relisted above the search's price
-   range, or once its search is removed, stays counted as sold.
-2. After 7 days (`STATE_KEEP_ENDED_DAYS`) the sold record leaves the state. A relist then is a new
-   listing, and the old sale stays in the archive as a sale.
-3. **A real sale that the buyer relists would be wrongly reopened.** Item ids probably survive a
-   trade (unchecked), and we don't store the seller, so we can't tell the two apart.
-4. The archive keeps the "sold" line after a reopen until the listing ends again (the later line
-   wins). A reopened listing still up reads as sold there.
-5. Sales leave the page after 7 days, not 30 (item 6).
-
-**Plan:**
-1. **Store the seller** on each listing as a short hash of the account name, refreshed at each
-   fetch. It's enough to compare, and keeps no names.
-2. **Detect relists two ways (owner's choice, 2026-09-30):**
-   - **Free, from the searches.** Discovery and the sweep already reopen a "sold" id they see
-     again, for as long as the sold record is in the state. Keep that; it's the main path.
-   - **Cheap, by id.** Re-fetch a sold listing by id every other run (~12 h apart) for 1 day
-     after the sale: about 2 checks per sale. This catches a relist the search doesn't show
-     (e.g. relisted above its price range). Share fetches with the regular checks (10 ids per
-     fetch), e.g. `SOLD_RECHECK_DAYS = 1` and `RECHECK_SOLD_MINUTES = 660` beside
-     `RECHECK_LISTED_MINUTES`.
-   - **Cost:** at ~1.2% of tracked listings selling a day, it's ~1 fetch a day today (~520
-     tracked). At the 6,000 cap it's ~4 fetches a run, ~40 of the ~7,000 checks a run can do
-     (<1%). The 6,000 cap stays.
-3. **On a reappearance:**
-   - **Same seller:** it wasn't a sale. Reopen it (as today), and record when it was pulled and
-     relisted.
-   - **Different seller:** the sale was real. Keep the sold record and start a new record for the
-     resale, linked to it and badged "Resold". That's flipping data worth having.
-4. **Record `indexed` changes** at an unchanged price as a "touched" time, a weaker relist signal.
-5. **Archive the reopen** (a line with status listed), so the archive's latest line is always
-   right.
-6. **Fix the 30-day window** (item 6). This also widens the relist window from gap 2.
-7. **Measure** reopened vs resold counts, to settle how often a "sale" is really a pull.
-
-## 8. Sold tracker: back up the archive
+## 6. Sold tracker: back up the archive
 
 `ended/` is the only full history and lives only on `sold-tracker-data`, which each publish
 replaces with a single commit. A run that restored an incomplete copy and published would lose it
-for good. E.g. copy it to a release asset or a second branch weekly. Needed before any cull
-(item 9).
+for good. E.g. copy it to a release asset or a second branch weekly. (The "Cull sold tracker
+archive" workflow saves a 90-day artifact before it deletes anything, but nothing protects against
+the restore case.)
 
-## 9. Sold tracker: removing a search, and culling stored sales
-
-How it works today (checked 2026-09-29):
-- The search's status is rebuilt from `searches.md` at each run start, so a removed search's chip
-  disappears.
-- Its listings stay in the state and keep being checked until they sell or reach 7 days. They
-  still count toward the 6,000 cap, and they only show under All, with a label no chip matches.
-- A renamed label is the same problem: its listings keep the old label.
-
-**Plan:**
-1. **Listings still up:** when a run starts and finds a label gone, stop checking listings that
-   only that search found, and drop them from the state and page file. They aren't results yet,
-   and dropping them frees the fetch budget and the cap. Listings another active search also
-   matches keep going under that search. Re-adding the search later sweeps its listings back in.
-2. **Sold and unsold listings:** keep them. They stay in the archive, and on the page for the
-   usual 30/7 days. Keep the removed search's status with a `removed` date, so its chip still
-   shows (greyed, "Removed") while it has listings on the page. Drop the status once it has none.
-3. **Renames:** if a new label has the same link as a removed one, move the listings to the new
-   label instead of treating it as a remove plus an add.
-
-**Culling stored sales when storage gets out of hand:**
-- **Size today:** the archive is ~50-125 KB a day for one search (~540 listings). The state and
-  page file are ~1.1 MB each. Near 6,000 listings that's roughly 1-1.5 MB a day, several hundred
-  MB a year. GitHub rejects files over 100 MB (day files stay far under) and wants repos under
-  ~1-5 GB.
-- **Watch it:** log the archive's total size each run and warn past a set budget (e.g. 500 MB).
-  Show the size on the page footer or in the run summary.
-- **Shrink first, delete second:**
-  - gzip day files older than ~30 days (JSONL compresses ~10x);
-  - write a relisted listing once (the archive can hold it twice);
-  - drop per-mod roll ranges from old records if needed.
-- **A cull script / workflow** (`npm run sold:cull`, or a manual workflow with inputs) to delete
-  archive records by search label (e.g. everything from a removed search), by age (older than N
-  days) or by league (past leagues). It should print what it would delete and only delete with a
-  confirm flag.
-- **Culling can't be undone.** Do the archive backup (item 8) first, and back up before each cull.
-
-## 10. Sold tracker: spread checks out instead of hitting the limit
+## 7. Sold tracker: spread checks out instead of hitting the limit
 
 Today, past 6,000 tracked listings new ones are skipped, and a search over 3,000 is paused. Those
 caps exist because every listing is checked once per run, and one run's fetch budget covers about 6,750 listings (1,000 fetches per 6 hours
@@ -224,52 +120,42 @@ Ideas to make it smarter:
 - Show the current interval on the page ("checked every ~12 h").
 - Have the PR check and `admitNewListings` use the new ceiling in place of the fixed caps.
 
-## 11. Sold tracker: make the PR check required
+## 8. Sold tracker: make the PR check required
 
 Settings > Branches > a rule for `master` > required status check `check-searches`, so an
 over-limit search can't be merged.
 
-## 12. Sold tracker: start a run when a search change is merged
-
-A merged change shows up at the next run's first publish, up to ~6.5 h later; a run already going
-keeps the old list. Start one on merge when none is running (the workflow's concurrency group would otherwise queue it).
-
-## 13. Sold tracker: scheduled runs start late or not at all
+## 9. Sold tracker: scheduled runs start late or not at all
 
 On 2026-09-28 the 12:20 UTC run never started and the 18:20 one started 82 minutes late, so the page went ~8 hours without an update. If it keeps
 happening, run the tracker on an always-on machine.
 
-## 14. Sold tracker: sweep limits
+## 10. Sold tracker: sweep limits
 
 The per-run sweep (which replaced "backfill a new search") pages by price, so it stops at a listing priced in a different currency than the link's price filter (e.g. a chaos
 listing on a divine-priced search), and takes only 200 of a price shared by more than 200
 listings. Neither happens on Watcher's Eye today. Splitting by listing age would cover both.
 
-## 15. Sold tracker: price sort across currencies
-
-Price sorts divine listings by amount and puts anything else after them (all listings are divine today). A chaos-priced listing needs a divine rate to sort
-in the right place.
-
-## 16. Sold tracker: sold times for the first sales are late
+## 11. Sold tracker: sold times for the first sales are late
 
 The 14 listings that sold before the `gone` fix get their sold time from the first run after it (up to ~1.5 days late), and their "Time up" is
 long by the same amount. Listings already settled as unsold after 7 days aren't re-checked, so
 one that actually sold before then stays unsold.
 
-## 17. Sold tracker: copy item in Craft of Exile
+## 12. Sold tracker: copy item in Craft of Exile
 
 "Copy item" is untested in Craft of Exile (Path of Building's parser reads it correctly).
 
-## 18. Sold tracker: a fresh league's volume
+## 13. Sold tracker: a fresh league's volume
 
 Unmeasured. The PR check counts today's market, so searches near the limits may get paused at a league start. Check the page in the first days.
 
-## 19. Sold tracker: Terms of Use
+## 14. Sold tracker: Terms of Use
 
 The trade API isn't in GGG's docs (see "Sold tracker: background"). The tracker keeps to 70% of
 the rate limits, but it's still steady automated use.
 
-## 20. Trade site links don't always match the item
+## 15. Trade site links don't always match the item
 
 The cart-icon links (`tradeSearchUrl` in `lib/trade-site.ts`) search by name, plus a few filters
 (Foulborn, 5/6 links, item level on Dust Value), so the results can include items that aren't what
@@ -282,7 +168,7 @@ Find every gap like corruption, and add the matching trade filter (e.g.
 `misc_filters.corrupted: false` for an uncorrupted line). Check a sample of links from each page
 against the trade site's results.
 
-## 21. Should DuckDB stay in the deployed app?
+## 16. Should DuckDB stay in the deployed app?
 
 Not decided - find out whether it's actually costing anything first. Production still ships `db/history.duckdb` (~72 MB, Git LFS) and DuckDB's native library in the
 Vercel function. The main Flip Predictions table doesn't need it (it reads `precompute-data`), but
@@ -456,6 +342,25 @@ price floor if re-checks fall too far behind. Findings (probed 2026-09-27/28):
 
 ## Done
 
+- **Sold tracker: sales show for 30 days** (2026-10-02). Ended listings stay in the state as long
+  as the page shows them (sold 30 days, unsold 7); they used to leave after 7, so sales did too.
+- **Sold tracker: pulled and relisted vs sold** (2026-10-02). Each listing keeps a hash of its
+  seller's account name. A sale that comes back - seen by a search (any time it's in the state), or
+  by a re-check by id every other run for a day after the sale - is reopened (same seller, or one
+  recorded before sellers were kept: "Relisted", not a sale) or kept as a sale with the item tracked
+  again as a "Resale" (a new seller). Reopens and moved-aside sales get their own archive lines;
+  `indexed` changes at an unchanged price are kept as `touchedAt`. Each run logs the counts.
+  Open: the counts, once there are some, settle how often a "sale" is a pull.
+- **Sold tracker: removing a search, and culling stored sales** (2026-10-02). A removed search's
+  listings still up are dropped (unless another search found them); its sales stay, with a dashed
+  "removed" chip while they're on the page. A label changed with the same link is a rename. Archive
+  days older than 30 days are gzipped; each run logs the archive's size and warns past 500 MB; the
+  "Cull sold tracker archive" workflow (dry run by default, backs up as an artifact first) deletes by
+  search, date or past league.
+- **Sold tracker: start a run when a search change is merged** (2026-10-02). "Start the sold
+  tracker on a search change" starts one if none is running or queued.
+- **Sold tracker: price sort across currencies** (2026-10-02). Prices sort in divines; other
+  currencies are converted at today's rates (`chaosRates` on /api/sold-listings).
 - **Add or remove a sold tracker search from the Actions tab** (2026-10-01). The "Add or remove a
   sold tracker search" workflow edits `sold-tracker/searches.md` (`scripts/edit-sold-searches.ts`:
   the link must decode, and the label and link must be new), runs the limit check and opens a PR.

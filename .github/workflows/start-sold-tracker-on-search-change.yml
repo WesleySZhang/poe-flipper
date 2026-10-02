@@ -1,0 +1,43 @@
+name: Start the sold tracker on a search change
+
+# When a change to sold-tracker/searches.md lands on master (e.g. a merged "Add or remove a sold
+# tracker search" PR), starts a "Track sold listings" run right away, so the change shows on the page
+# within ~30 minutes instead of at the next scheduled run (up to ~6.5 hours).
+#
+# Only when no tracker run is running or queued: a run already going keeps the searches it started
+# with, and the next one picks the change up anyway. Starting another would only queue behind it
+# (the tracker's concurrency group) and could replace a scheduled run that's waiting.
+#
+# The built-in token may start a workflow_dispatch run (GitHub's exception to "the built-in token
+# doesn't trigger workflows"), so no extra secret is needed.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "sold-tracker/searches.md"
+
+permissions:
+  actions: write
+
+jobs:
+  start-tracker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start "Track sold listings" if it isn't running
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          busy=0
+          for status in in_progress queued waiting pending requested; do
+            n=$(gh run list --workflow track-sold-listings.yml --status "$status" --json databaseId --jq 'length')
+            busy=$((busy + n))
+          done
+          if [ "$busy" -gt 0 ]; then
+            echo "A tracker run is already running or queued - it (or the next one) picks the change up."
+            echo "A tracker run is already running or queued; the change goes live with the next run." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh workflow run track-sold-listings.yml --ref master
+          echo "Started \"Track sold listings\" - the page shows the change at its first publish (~30 min)." | tee -a "$GITHUB_STEP_SUMMARY"

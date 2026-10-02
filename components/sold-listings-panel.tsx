@@ -23,7 +23,8 @@ import {
   listedDurationMs,
   priceSpans,
   type ListingPrice,
-  type SoldListingsFile,
+  priceInDivines,
+  type SoldListingsResponse,
   type TrackedListing,
 } from "@/lib/sold-tracker";
 import { itemGameText } from "@/lib/item-text";
@@ -47,7 +48,7 @@ function tabOf(t: TrackedListing): Tab {
   return t.status === "sold" ? "sold" : "unsold";
 }
 
-async function fetchSoldListings(): Promise<SoldListingsFile | null> {
+async function fetchSoldListings(): Promise<SoldListingsResponse | null> {
   const res = await fetch("/api/sold-listings");
   if (!res.ok) return null;
   return res.json();
@@ -174,16 +175,31 @@ function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string;
         </Field>
       </div>
       <CopyItemButton t={t} />
-      {(t.status === "listed" || t.reappeared) && (
-        <div className="flex gap-1.5">
+      {(t.status === "listed" || t.reappeared || t.resoldAs || t.resaleOf) && (
+        <div className="flex flex-wrap gap-1.5">
           {t.status === "listed" && (
             <Badge variant="secondary" title="Not sold yet; still on the trade site at the last check">
               Still listed
             </Badge>
           )}
           {t.reappeared && (
-            <Badge variant="outline" title="Counted sold once, then listed again">
+            <Badge
+              variant="outline"
+              title={`Pulled and relisted by the same seller - not counted as a sale${
+                t.relists?.length ? ` (${t.relists.map((r) => `gone ${formatDate(r.goneAt)}, back ${formatDate(r.backAt)}`).join("; ")})` : ""
+              }`}
+            >
               Relisted
+            </Badge>
+          )}
+          {t.resoldAs && (
+            <Badge variant="outline" title="Listed again later by a new seller">
+              Resold
+            </Badge>
+          )}
+          {t.resaleOf && (
+            <Badge variant="outline" title="Bought earlier (see Sold), now listed by a new seller">
+              Resale
             </Badge>
           )}
         </div>
@@ -199,7 +215,7 @@ function ListingFacts({ t, now, searchLinks }: { t: TrackedListing; now: string;
  * phone).
  */
 export function SoldListingsPanel() {
-  const [file, setFile] = useState<SoldListingsFile | null>(null);
+  const [file, setFile] = useState<SoldListingsResponse | null>(null);
   const [tab, setTab] = useState<Tab>("sold");
   const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(0);
@@ -249,16 +265,16 @@ export function SoldListingsPanel() {
             case "listed":
               return Date.parse(t.listedAt);
             case "price": {
-              // Divine-priced listings first by amount; anything else sorts after them.
+              // In divines: other currencies at today's rates (chaosRates); one with no rate sorts last.
               const p = currentPrice(t);
-              return p?.currency === "divine" ? p.amount : undefined;
+              return priceInDivines(p, file?.chaosRates);
             }
             case "duration":
               return listedDurationMs(t, loadedAt);
           }
         }
       ),
-    [tabListings, pickedSearches, normalizedSearch, sort, loadedAt]
+    [tabListings, pickedSearches, normalizedSearch, sort, loadedAt, file?.chaosRates]
   );
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const pageStart = Math.min(page, pageCount - 1) * PAGE_SIZE;
@@ -318,7 +334,8 @@ export function SoldListingsPanel() {
                     key={s.label}
                     className={cn(
                       "flex items-center rounded-md border text-sm",
-                      on ? "border-primary bg-primary text-primary-foreground" : "border-border"
+                      on ? "border-primary bg-primary text-primary-foreground" : "border-border",
+                      s.removed && !on && "border-dashed text-muted-foreground"
                     )}
                   >
                     <button
@@ -326,14 +343,16 @@ export function SoldListingsPanel() {
                       aria-pressed={on}
                       onClick={() => toggleSearch(s.label)}
                       title={
-                        s.error ??
-                        s.paused ??
+                        (s.removed && `Removed ${formatDate(s.removed)} - no longer tracked; its sales stay`) ||
+                        s.error ||
+                        s.paused ||
                         `${s.total !== undefined ? `${formatSearchTotal(s.total)} listed now. ` : ""}${s.lastRun ? `Last run ${formatDate(s.lastRun)}` : "Not run yet"}`
                       }
                       className="flex h-8 items-center gap-1.5 pl-2.5 pr-1"
                     >
                       {s.label}
                       <span className="opacity-70">{searchCounts.get(s.label) ?? 0}</span>
+                      {s.removed && <span>· removed</span>}
                       {s.paused && <span className={on ? "" : "text-destructive"}>· paused</span>}
                       {(s.error || s.missedListings) && (
                         <AlertTriangle className="size-3.5" aria-label={s.error ? "Search failed" : "Missed listings"} />
@@ -364,7 +383,7 @@ export function SoldListingsPanel() {
           <div className="flex flex-col gap-2">
             <p
               className="text-xs text-muted-foreground"
-              title={`Instant buyout, listed in the last week. Sold = no longer listed. Unsold = still listed, or expired after ${LISTING_MAX_AGE_DAYS} days. A seller pulling an item looks like a sale.`}
+              title={`Instant buyout, listed in the last week. Sold = no longer listed. Unsold = still listed, or expired after ${LISTING_MAX_AGE_DAYS} days. An item the same seller relists isn't counted as sold; one pulled for good looks like a sale.`}
             >
               Tracking {file.trackedCount.toLocaleString("en-US")} / {MAX_TRACKED_LISTINGS.toLocaleString("en-US")} listings · instant buyout · updated {formatDate(file.updatedAt)}
             </p>

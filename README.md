@@ -119,8 +119,12 @@ followed: instant buyout, from the searches in [`sold-tracker/searches.md`](sold
   taking most of the width, with the listing's facts stacked beside it (under it on a phone):
   every price it had, earlier ones struck through, each with how long it stood at that price; when
   it was listed; when it sold or expired; how long it was up; the search that found it. Sort by
-  sold/expired time (the default, most recent first), price, listed time or time up. Price sorts divine
-  listings by amount; any priced in another currency come after them.
+  sold/expired time (the default, most recent first), price, listed time or time up. Price sorts in
+  divines: a listing in chaos (or another currency) is converted at today's rate (the API adds
+  `chaosRates` from the price snapshot); one with no known rate goes last. Badges: **Relisted**
+  (the same seller pulled and relisted it - not counted as a sale; hover for when), **Resold** (on a
+  sale whose item a new seller listed again) and **Resale** (that new listing). A removed search's
+  chip stays, dashed and marked "removed", while its sales are on the page.
 - **Each item shows** every mod, centred, with its tier at the left (T1 = best; magic/rare mods
   only). Hover a mod (tap, on a phone) to see its roll range at the right, e.g. `(40–60)` for
   `46% increased Attack Damage while affected by Precision`. Also properties, item level,
@@ -271,6 +275,12 @@ rebuilds from scratch):
   the limit check and opens a PR with the check's report. The PR's own "Check sold tracker
   searches" check only runs if the `SOLD_SEARCHES_PR_TOKEN` secret is set (a fine-grained token with
   Contents and Pull requests read/write); GitHub doesn't run checks on PRs its built-in token opens.
+  Once merged, **"Start the sold tracker on a search change"** starts a tracker run straight away if
+  none is running or queued, so the change shows within ~30 minutes.
+- **Removing or renaming a search:** at the next run's start, listings still up that only it found
+  are dropped (they free the budget and the cap); ones another search also found carry on under
+  that one. Its sales and unsold listings stay - on the page and in the archive. A label changed
+  with the same link is a rename: its listings move to the new label.
 - **Finding listings:** a search returns at most 100 listings, so two passes:
   - **A sweep at the start of each run** pages through every listing a search matches, cheapest
     first, 100 at a time (each page starts at the last one's price; a price shared by a whole page,
@@ -279,18 +289,29 @@ rebuilds from scratch):
     backlog already listed when a search is added. ~1 search per 100 listings.
   - **Discovery during the run**, newest-first every 30 minutes (sooner when busy), keeps up with
     new listings; when all 100 are new it also fetches the oldest 100 since the last pass.
-- **How long records are kept:** a sale is meant to show on the page for 30 days, but shows for 7
-  for now (the page is built from the state, which keeps ended listings 7 days; see TODO.md item
-  6), and an unsold listing for 7;
-  the state keeps ended listings 7 days; the archive keeps them forever. There's no backup: each
-  publish replaces the branch with one commit, so its history holds no older copies.
+- **How long records are kept:** a sale shows on the page (and stays in the state) for 30 days, an
+  unsold listing for 7; the archive keeps everything, gzipping day files after 30 days (~10x
+  smaller). There's no backup: each publish replaces the branch with one commit, so its history
+  holds no older copies.
+- **When the archive gets big:** each run logs its size, and warns (also in the run's summary) past
+  500 MB. **"Cull sold tracker archive"** (Actions; `scripts/cull-sold-archive.ts`) deletes records
+  only one search found, whole days before a date, or a past league's files. It's a dry run unless
+  "confirm" is ticked; with it, the archive is saved as a run artifact (90 days) first. It shares the
+  tracker's concurrency group, so it never runs during a tracker run.
 - **Deciding a sale:** every listing is checked by its item id once per run. A listing that's gone
   still comes back from the fetch, marked `gone: true`, and counts as gone. A fetch by id ignores
   the search's filters, and the id survives a price change, so a price drop (even out of the
   search's price range) is recorded as a new price, not a sale (repricing happens in place). A
-  listing counts as sold at the first check that finds it gone - pulling an item to relist it later
-  is rare - and is reopened, marked Relisted, if it does come back. One still up after a week counts
-  as unsold. Times on the page are accurate to about 6 hours.
+  listing counts as sold at the first check that finds it gone. One still up after a week counts as
+  unsold. Times on the page are accurate to about 6 hours.
+- **A sale that comes back:** a search showing it again (any time it's in the state, 30 days), or a
+  re-check by id every other run for a day after the sale (~2 extra checks per sale, shared with
+  the regular ones), finds it live. Each listing keeps a hash of its seller's account name (not the
+  name). The same seller (or a sale recorded before sellers were kept): it was pulled and relisted -
+  reopened as listed, marked Relisted, not a sale. A different seller: the sale stands (moved to
+  `<item id>~<ms>`), and the item is tracked again as a Resale. Each run logs how many of each.
+  Listings also record `indexed` changes at an unchanged price (`touchedAt`), a weaker sign the
+  seller moved or re-listed it.
 - **Rate limits:** GGG limits the trade API per IP. `lib/trade-api.ts` queues every request until
   each limit window has room, keeps to 70% of each limit, and follows the limits and usage the
   site reports on every response. A 502/503/504 (the site's brief outages) is retried after 30 s,
@@ -544,6 +565,8 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | `scripts/precompute-*.ts` | The daily job's three scripts; `raw-response-cache.ts` is their shared disk cache |
 | `scripts/track-sold-listings.ts`, `sold-tracker/searches.md` | The sold listing tracker and the searches it follows |
 | `scripts/edit-sold-searches.ts`, `.github/workflows/edit-sold-search.yml` | Add or remove a tracker search from the Actions tab (opens a PR) |
+| `.github/workflows/start-sold-tracker-on-search-change.yml` | Starts a tracker run when `searches.md` changes on master (if none is running) |
+| `scripts/cull-sold-archive.ts`, `.github/workflows/cull-sold-archive.yml` | Delete archive records (by search, date or past league) when it gets big |
 | `scripts/publish-sold-tracker.sh` | Publishes the tracker's files to the `sold-tracker-data` branch (during and after a run) |
 | `scripts/check-sold-searches.ts` | PR check: every search within the tracker's limits |
 | `scripts/ingest-history.ts` | Builds `db/history.duckdb` from CSV exports |
