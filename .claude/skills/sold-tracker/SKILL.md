@@ -104,13 +104,13 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   the tracker started means backlog; after means discovery missed them.
 - **Listings from a removed or renamed search:** its chip goes at the next run start, but its
   listings keep being checked (and count toward the cap) until they sell or reach 7 days, showing
-  only under All. TODO.md item 6 has the plan (drop listed ones, keep sales, cull the archive).
+  only under All. TODO.md item 9 has the plan (drop listed ones, keep sales, cull the archive).
 - **Short manual runs:** "How long to run" defaults to 330 minutes. A short run (e.g. 20) publishes
   only at its end and re-checks little, so the page barely moves.
 - **"paused" on a search:** it now matches more than 3,000 listings, so it takes nothing new (its
   tracked listings are still checked). Narrow the link; it resumes on its own once under.
 - **"Tracking limit reached":** 6,000 listings are being followed, so new ones are skipped until
-  some sell or expire. Narrow or remove searches. (TODO.md item 6 plans checking less often past
+  some sell or expire. Narrow or remove searches. (TODO.md item 10 plans checking less often past
   the limit instead, favouring recently listed items.)
 - **PR check fails with "Couldn't measure":** the trade site refused or failed - it fails closed.
   Re-run it; if it's a 403 from GitHub's runners, see the workflow's comments.
@@ -127,7 +127,7 @@ Keep the stored shape backward compatible, since `state/` on `sold-tracker-data`
   and marked "Relisted" - but only if a tracked search's discovery/sweep shows it again, and only
   within 7 days (after that the sold record has left the state). A pull and relist between two
   checks is never seen as gone. We don't store the seller, so a buyer reselling the same item
-  would also be "reopened". The fix is planned in TODO.md item 6 ("Pulled and relisted vs sold").
+  would also be "reopened". The fix is planned in TODO.md item 7 ("pulled and relisted vs sold").
 - The rules (gone = sold; 7 days = unsold; each listing checked once per 6-hour run; fetches
   paced 25 s apart) and limits are constants in `lib/sold-tracker.ts`; the rate-limit margin (70%)
   is in `lib/trade-api.ts`.

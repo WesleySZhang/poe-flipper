@@ -10,7 +10,7 @@
  *  - learns: rules and usage are replaced from every response's headers (the state header also
  *    counts requests from anything else on the same IP);
  *  - backs off: on a 429 or an active penalty it waits it out (Retry-After / the penalty).
- * The trade API isn't in GGG's developer docs; see TODO.md's sold listing tracker for the risk.
+ * The trade API isn't in GGG's developer docs; see TODO.md's "Sold tracker: Terms of Use" for the risk.
  */
 const TRADE_API = "https://www.pathofexile.com/api/trade";
 const USER_AGENT = "poe-flipper/0.1.0 (personal, non-commercial; unaffiliated with GGG)";

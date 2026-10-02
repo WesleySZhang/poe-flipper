@@ -171,4 +171,4 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
 - GGG's public stash API (`GET /public-stash-tabs`, scope `service:psapi`, 5-minute delay) is the
   official feed of every stash change, but its docs say "We are currently unable to process new
   applications" (2026-09-27). The trade site API isn't in GGG's docs, which call reverse-engineering
-  undocumented endpoints a Terms of Use (7i) breach. See TODO.md's sold item tracker. `[verified]`
+  undocumented endpoints a Terms of Use (7i) breach. See TODO.md's "Sold tracker: Terms of Use" and "Sold tracker: background". `[verified]`
