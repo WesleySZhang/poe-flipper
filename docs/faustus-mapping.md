@@ -2,9 +2,9 @@
 
 Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this file**; re-run `npx tsx scripts/generate-faustus-doc.ts` after `scripts/generate-faustus-mapping.ts` updates the map (e.g. after a new league).
 
-732 entries. Left column is the display name this app (and poe.ninja) uses; right column is GGG's internal game-file path for that same item, as used by the Currency Exchange API (`https://web.poecdn.com/api/currency-exchange`). See `lib/faustus.ts`'s header comment for how this mapping was built (via RePoE, since GGG's own endpoint never exposes a display name itself) and why it's scoped to only currently-tradeable items rather than every item GGG's game files know about.
+762 entries. Left column is the display name this app (and poe.ninja) uses; right column is GGG's internal game-file path for that same item, as used by the Currency Exchange API (`https://web.poecdn.com/api/currency-exchange`). See `lib/faustus.ts`'s header comment for how this mapping was built (via RePoE, since GGG's own endpoint never exposes a display name itself) and why it's scoped to only currently-tradeable items rather than every item GGG's game files know about.
 
-## Currency (267)
+## Currency (270)
 
 | Name | GGG metadata id |
 | --- | --- |
@@ -148,6 +148,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Runegraft of Blasphemy | `Metadata/Items/Currency/RunegraftRandomCurse` |
 | Runegraft of Connection | `Metadata/Items/Currency/RunegraftConnection` |
 | Runegraft of Consecration | `Metadata/Items/Currency/RunegraftConsecratedGround` |
+| Runegraft of Fury | `Metadata/Items/Currency/RunegraftLifeFlaskRage` |
 | Runegraft of Gemcraft | `Metadata/Items/Currency/RunegraftSupportLevels` |
 | Runegraft of Loyalty | `Metadata/Items/Currency/RunegraftAilmentRedirect` |
 | Runegraft of Quaffing | `Metadata/Items/Currency/RunegraftLifeFromManaFlasks` |
@@ -228,6 +229,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Tattoo of the Ramako Shaman | `Metadata/Items/Currency/AncestralTattooRamako5` |
 | Tattoo of the Ramako Sniper | `Metadata/Items/Currency/AncestralTattooRamako3` |
 | Tattoo of the Rongokurai Brute | `Metadata/Items/Currency/AncestralTattooRongokurai2` |
+| Tattoo of the Rongokurai Goliath | `Metadata/Items/Currency/AncestralTattooRongokurai3` |
 | Tattoo of the Rongokurai Guard | `Metadata/Items/Currency/AncestralTattooRongokurai5` |
 | Tattoo of the Rongokurai Turtle | `Metadata/Items/Currency/AncestralTattooRongokurai4` |
 | Tattoo of the Rongokurai Warrior | `Metadata/Items/Currency/AncestralTattooRongokurai1` |
@@ -237,6 +239,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Tattoo of the Tasalio Tideshifter | `Metadata/Items/Currency/AncestralTattooTasalio2` |
 | Tattoo of the Tasalio Warrior | `Metadata/Items/Currency/AncestralTattooTasalio4` |
 | Tattoo of the Tawhoa Herbalist | `Metadata/Items/Currency/AncestralTattooTawhoa4` |
+| Tattoo of the Tawhoa Naturalist | `Metadata/Items/Currency/AncestralTattooTawhoa1` |
 | Tattoo of the Tawhoa Scout | `Metadata/Items/Currency/AncestralTattooTawhoa2` |
 | Tattoo of the Tawhoa Shaman | `Metadata/Items/Currency/AncestralTattooTawhoa5` |
 | Tattoo of the Tawhoa Warrior | `Metadata/Items/Currency/AncestralTattooTawhoa3` |
@@ -467,7 +470,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Ultimatum Scarab of Dueling | `Metadata/Items/Scarabs/ScarabUltimatum3` |
 | Ultimatum Scarab of Inscription | `Metadata/Items/Scarabs/ScarabUltimatum5` |
 
-## Essences (81)
+## Essences (85)
 
 | Name | GGG metadata id |
 | --- | --- |
@@ -500,10 +503,12 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Muttering Essence of Woe | `Metadata/Items/Currency/CurrencyEssenceWoe2` |
 | Screaming Essence of Anger | `Metadata/Items/Currency/CurrencyEssenceAnger4` |
 | Screaming Essence of Anguish | `Metadata/Items/Currency/CurrencyEssenceAnguish2` |
+| Screaming Essence of Contempt | `Metadata/Items/Currency/CurrencyEssenceContempt5` |
 | Screaming Essence of Doubt | `Metadata/Items/Currency/CurrencyEssenceDoubt3` |
 | Screaming Essence of Dread | `Metadata/Items/Currency/CurrencyEssenceDread1` |
 | Screaming Essence of Envy | `Metadata/Items/Currency/CurrencyEssenceEnvy1` |
 | Screaming Essence of Fear | `Metadata/Items/Currency/CurrencyEssenceFear4` |
+| Screaming Essence of Greed | `Metadata/Items/Currency/CurrencyEssenceGreed5` |
 | Screaming Essence of Hatred | `Metadata/Items/Currency/CurrencyEssenceHatred5` |
 | Screaming Essence of Loathing | `Metadata/Items/Currency/CurrencyEssenceLoathing2` |
 | Screaming Essence of Misery | `Metadata/Items/Currency/CurrencyEssenceMisery1` |
@@ -511,6 +516,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Screaming Essence of Scorn | `Metadata/Items/Currency/CurrencyEssenceScorn1` |
 | Screaming Essence of Spite | `Metadata/Items/Currency/CurrencyEssenceSpite2` |
 | Screaming Essence of Suffering | `Metadata/Items/Currency/CurrencyEssenceSuffering3` |
+| Screaming Essence of Torment | `Metadata/Items/Currency/CurrencyEssenceTorment4` |
 | Screaming Essence of Woe | `Metadata/Items/Currency/CurrencyEssenceWoe5` |
 | Screaming Essence of Wrath | `Metadata/Items/Currency/CurrencyEssenceWrath3` |
 | Screaming Essence of Zeal | `Metadata/Items/Currency/CurrencyEssenceZeal2` |
@@ -551,9 +557,10 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Weeping Essence of Suffering | `Metadata/Items/Currency/CurrencyEssenceSuffering1` |
 | Weeping Essence of Woe | `Metadata/Items/Currency/CurrencyEssenceWoe3` |
 | Weeping Essence of Wrath | `Metadata/Items/Currency/CurrencyEssenceWrath1` |
+| Whispering Essence of Greed | `Metadata/Items/Currency/CurrencyEssenceGreed1` |
 | Whispering Essence of Woe | `Metadata/Items/Currency/CurrencyEssenceWoe1` |
 
-## Divination Cards (185)
+## Divination Cards (208)
 
 | Name | GGG metadata id |
 | --- | --- |
@@ -567,6 +574,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Anarchy's Price | `Metadata/Items/DivinationCards/DivinationCardAnarchysPrice` |
 | Apocalypse | `Metadata/Items/DivinationCards/DivinationCardApocalypse` |
 | Arrogance of the Vaal | `Metadata/Items/DivinationCards/DivinationCardArroganceOfTheVaal` |
+| Assassin's Favour | `Metadata/Items/DivinationCards/DivinationCardAssassinsFavour` |
 | Assassin's Gift | `Metadata/Items/DivinationCards/DivinationCardAssassinsGift` |
 | Astral Protection | `Metadata/Items/DivinationCards/DivinationCardAstralProtection` |
 | Atziri's Arsenal | `Metadata/Items/DivinationCards/DivinationCardAtzirisArsenal` |
@@ -577,6 +585,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Blind Venture | `Metadata/Items/DivinationCards/DivinationCardBlindVenture` |
 | Bound by Flame | `Metadata/Items/DivinationCards/DivinationCardBoundByFlame` |
 | Brother's Gift | `Metadata/Items/DivinationCards/DivinationCardBrothersGift` |
+| Brother's Stash | `Metadata/Items/DivinationCards/DivinationCardBrothersStash` |
 | Brush, Paint and Palette | `Metadata/Items/DivinationCards/DivinationCardBrushPaintAndPalette` |
 | Cameria's Cut | `Metadata/Items/DivinationCards/DivinationCardCameriasCut` |
 | Chaotic Disposition | `Metadata/Items/DivinationCards/DivinationCardChaoticDisposition` |
@@ -602,7 +611,10 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Fateful Meeting | `Metadata/Items/DivinationCards/DivinationCardFatefulMeeting` |
 | Father's Love | `Metadata/Items/DivinationCards/DivinationCardFathersLove` |
 | Fire Of Unknown Origin | `Metadata/Items/DivinationCards/DivinationCardFireOfUnknownOrigin` |
+| Forbidden Power | `Metadata/Items/DivinationCards/DivinationCardForbiddenPower` |
+| From Bone to Ashes | `Metadata/Items/DivinationCards/DivinationCardFromBoneToAshes` |
 | Gemcutter's Mercy | `Metadata/Items/DivinationCards/DivinationCardGemcuttersMercy` |
+| Gemcutter's Promise | `Metadata/Items/DivinationCards/DivinationCardGemcuttersPromise` |
 | Haunting Shadows | `Metadata/Items/DivinationCards/DivinationCardHauntingShadows` |
 | History | `Metadata/Items/DivinationCards/DivinationCardHistory` |
 | Home | `Metadata/Items/DivinationCards/DivinationCardHome` |
@@ -612,6 +624,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Immortal Resolve | `Metadata/Items/DivinationCards/DivinationCardImmortalResolve` |
 | Imperial Legacy | `Metadata/Items/DivinationCards/DivinationCardImperialLegacy` |
 | Jack in the Box | `Metadata/Items/DivinationCards/DivinationCardJackInTheBox` |
+| Justified Ambition | `Metadata/Items/DivinationCards/DivinationCardJustifiedAmbition` |
 | Lachrymal Necrosis | `Metadata/Items/DivinationCards/DivinationCardLachrymalNecrosis` |
 | Last Hope | `Metadata/Items/DivinationCards/DivinationCardLastHope` |
 | Light and Truth | `Metadata/Items/DivinationCards/DivinationCardLightAndTruth` |
@@ -634,6 +647,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Pride Before the Fall | `Metadata/Items/DivinationCards/DivinationCardPrideBeforeTheFall` |
 | Rebirth and Renewal | `Metadata/Items/DivinationCards/DivinationCardRebirthAndRenewal` |
 | Reflection of the Heart | `Metadata/Items/DivinationCards/DivinationCardTheReflectionoftheHeart` |
+| Remembrance | `Metadata/Items/DivinationCards/DivinationCardRemembrance` |
 | Sambodhi's Vow | `Metadata/Items/DivinationCards/DivinationCardSambodhisVow` |
 | Seven Years Bad Luck | `Metadata/Items/DivinationCards/DivinationCardSevenYearsBadLuck` |
 | Shard of Fate | `Metadata/Items/DivinationCards/DivinationCardShardOfFate` |
@@ -641,17 +655,23 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Something Dark | `Metadata/Items/DivinationCards/DivinationCardSomethingDark` |
 | Stacked Deck | `Metadata/Items/DivinationCards/DivinationCardDeck` |
 | Succor of the Sinless | `Metadata/Items/DivinationCards/DivinationCardSuccorOfTheSinless` |
+| Temperance | `Metadata/Items/DivinationCards/DivinationCardTemperance` |
 | Terrible Secret of Space | `Metadata/Items/DivinationCards/DivinationCardTerribleSecretOfSpace` |
+| The Academic | `Metadata/Items/DivinationCards/DivinationCardTheAcademic` |
 | The Apothecary | `Metadata/Items/DivinationCards/DivinationCardTheApothecary` |
 | The Artist | `Metadata/Items/DivinationCards/DivinationCardTheArtist` |
 | The Avenger | `Metadata/Items/DivinationCards/DivinationCardTheAvenger` |
 | The Bear Woman | `Metadata/Items/DivinationCards/DivinationCardTheBearWoman` |
 | The Bitter Blossom | `Metadata/Items/DivinationCards/DivinationCardTheBitterBlossom` |
+| The Brittle Emperor | `Metadata/Items/DivinationCards/DivinationCardTheBrittleEmperor` |
 | The Celestial Justicar | `Metadata/Items/DivinationCards/DivinationCardTheCelestialJusticar` |
 | The Chosen | `Metadata/Items/DivinationCards/DivinationCardTheChosen` |
+| The Coming Storm | `Metadata/Items/DivinationCards/DivinationCardTheComingStorm` |
 | The Conduit | `Metadata/Items/DivinationCards/DivinationCardTheConduit` |
 | The Craving | `Metadata/Items/DivinationCards/DivinationCardTheCraving` |
 | The Cursed King | `Metadata/Items/DivinationCards/DivinationCardTheCursedKing` |
+| The Darkest Dream | `Metadata/Items/DivinationCards/DivinationCardTheDarkestDream` |
+| The Deceiver | `Metadata/Items/DivinationCards/DivinationCardTheDeceiver` |
 | The Deep Ones | `Metadata/Items/DivinationCards/DivinationCardTheDeepOnes` |
 | The Demon | `Metadata/Items/DivinationCards/DivinationCardTheDemon` |
 | The Destination | `Metadata/Items/DivinationCards/DivinationCardTheDestination` |
@@ -660,7 +680,9 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Dragon's Heart | `Metadata/Items/DivinationCards/DivinationCardTheDragonsHeart` |
 | The Dreamer | `Metadata/Items/DivinationCards/DivinationCardTheDreamer` |
 | The Dreamland | `Metadata/Items/DivinationCards/DivinationCardTheDreamland` |
+| The Easy Stroll | `Metadata/Items/DivinationCards/DivinationCardTheEasyStroll` |
 | The Eldritch Decay | `Metadata/Items/DivinationCards/DivinationCardTheEldritchDecay` |
+| The Endless Darkness | `Metadata/Items/DivinationCards/DivinationCardTheEndlessDarkness` |
 | The Endurance | `Metadata/Items/DivinationCards/DivinationCardTheEndurance` |
 | The Enlightened | `Metadata/Items/DivinationCards/DivinationCardTheEnlightened` |
 | The Enthusiasts | `Metadata/Items/DivinationCards/DivinationCardTheEnthusiasts` |
@@ -689,10 +711,13 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Jester | `Metadata/Items/DivinationCards/DivinationCardTheJester` |
 | The King's Heart | `Metadata/Items/DivinationCards/DivinationCardTheKingsHeart` |
 | The Lake | `Metadata/Items/DivinationCards/DivinationCardTheLake` |
+| The Last Laugh | `Metadata/Items/DivinationCards/DivinationCardTheLastLaugh` |
 | The Last One Standing | `Metadata/Items/DivinationCards/DivinationCardTheLastOneStanding` |
 | The Last Supper | `Metadata/Items/DivinationCards/DivinationCardTheLastSupper` |
+| The Long Watch | `Metadata/Items/DivinationCards/DivinationCardTheLongWatch` |
 | The Mad King | `Metadata/Items/DivinationCards/DivinationCardTheMadKing` |
 | The Mayor | `Metadata/Items/DivinationCards/DivinationCardTheMayor` |
+| The Messenger | `Metadata/Items/DivinationCards/DivinationCardTheMessenger` |
 | The Miracle | `Metadata/Items/DivinationCards/DivinationCardTheMiracle` |
 | The Nurse | `Metadata/Items/DivinationCards/DivinationCardTheNurse` |
 | The One With All | `Metadata/Items/DivinationCards/DivinationCardTheOneWithAll` |
@@ -702,10 +727,13 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Price of Devotion | `Metadata/Items/DivinationCards/DivinationCardThePriceOfDevotion` |
 | The Price of Loyalty | `Metadata/Items/DivinationCards/DivinationCardThePriceOfLoyalty` |
 | The Price of Prescience | `Metadata/Items/DivinationCards/DivinationCardThePriceOfPrescience` |
+| The Primordial | `Metadata/Items/DivinationCards/DivinationCardThePrimordial` |
 | The Prince of Darkness | `Metadata/Items/DivinationCards/DivinationCardThePrinceOfDarkness` |
 | The Progeny of Lunaris | `Metadata/Items/DivinationCards/DivinationCardTheProgenyOfLunaris` |
+| The Rabbit's Foot | `Metadata/Items/DivinationCards/DivinationCardTheRabbitsFoot` |
 | The Return of the Rat | `Metadata/Items/DivinationCards/DivinationCardTheReturnOfTheRat` |
 | The Risk | `Metadata/Items/DivinationCards/DivinationCardTheRisk` |
+| The Samurai's Eye | `Metadata/Items/DivinationCards/DivinationCardTheSamuraisEye` |
 | The Scout | `Metadata/Items/DivinationCards/DivinationCardTheScout` |
 | The Sephirot | `Metadata/Items/DivinationCards/DivinationCardTheSephirot` |
 | The Shepherd's Sandals | `Metadata/Items/DivinationCards/DivinationCardTheShepherdsSandals` |
@@ -725,6 +753,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Undaunted | `Metadata/Items/DivinationCards/DivinationCardTheUndaunted` |
 | The Unexpected Prize | `Metadata/Items/DivinationCards/DivinationCardTheUnexpectedPrize` |
 | The Union | `Metadata/Items/DivinationCards/DivinationCardTheUnion` |
+| The Valkyrie | `Metadata/Items/DivinationCards/DivinationCardTheValkyrie` |
 | The Vast | `Metadata/Items/DivinationCards/DivinationCardTheVast` |
 | The Void | `Metadata/Items/DivinationCards/DivinationCardTheVoid` |
 | The Wedding Gift | `Metadata/Items/DivinationCards/DivinationCardTheWeddingGift` |
@@ -737,6 +766,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Three Faces in the Dark | `Metadata/Items/DivinationCards/DivinationCardThreeFacesInTheDark` |
 | Time-Lost Relic | `Metadata/Items/DivinationCards/DivinationCardTimeLostRelic` |
 | Tranquillity | `Metadata/Items/DivinationCards/DivinationCardTranquillity` |
+| Triskaidekaphobia | `Metadata/Items/DivinationCards/DivinationCardTriskaidekaphobia` |
 | Unchained | `Metadata/Items/DivinationCards/DivinationCardUnchained` |
 | Unrequited Love | `Metadata/Items/DivinationCards/DivinationCardUnrequitedLove` |
 | Vinia's Token | `Metadata/Items/DivinationCards/DivinationCardViniasToken` |
