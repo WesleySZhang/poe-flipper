@@ -33,3 +33,4 @@ first publish (~30 minutes in). No app deploy is needed.
 ## Searches
 
 - [Watcher's Eye](https://www.pathofexile.com/trade/search/Allflame/H4sIAAAAAAAAClWOOw7CMBBEr4KmoXGRtO45AwWKkIkXsSLZWPYGiCzfHTkNZqo3-5FeRlKna4LNWILyIrBINK7R3SZCMRA3EyzOTscHxWM6nDaC2d8S7CVDt1APnHgY3HlSinUxlKGpGRqdp2szaDBEHqnCzALbd535yXh-sewmLJ4-5P9U-zfRE6XmC0mpIPDLAAAA)
+- [Pearl of Tsoatha](https://www.pathofexile.com/trade/search/Allflame/H4sIAAAAAAAAE1WOvQrDMAyEXyVozpAOXfIUpXQroai20oo6trGV_hDy7pULBUeT9N1xugWyoMwZ-gVCFA4eeshk5oRXR7C24HEiZQfC5JowNqccUO4ILcgn_pTEeUJh0xzZ35SXRA08L38Heqt4ZCeUijCsQ3WqLaGlSwWqlb2lN9lNv92L6FG6xcSGNpLlJ3vSbxPrue-6tcwXHdjsheYAAAA)
