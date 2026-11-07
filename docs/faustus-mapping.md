@@ -2,9 +2,9 @@
 
 Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this file**; re-run `npx tsx scripts/generate-faustus-doc.ts` after `scripts/generate-faustus-mapping.ts` updates the map (e.g. after a new league).
 
-732 entries. Left column is the display name this app (and poe.ninja) uses; right column is GGG's internal game-file path for that same item, as used by the Currency Exchange API (`https://web.poecdn.com/api/currency-exchange`). See `lib/faustus.ts`'s header comment for how this mapping was built (via RePoE, since GGG's own endpoint never exposes a display name itself) and why it's scoped to only currently-tradeable items rather than every item GGG's game files know about.
+752 entries. Left column is the display name this app (and poe.ninja) uses; right column is GGG's internal game-file path for that same item, as used by the Currency Exchange API (`https://web.poecdn.com/api/currency-exchange`). See `lib/faustus.ts`'s header comment for how this mapping was built (via RePoE, since GGG's own endpoint never exposes a display name itself) and why it's scoped to only currently-tradeable items rather than every item GGG's game files know about.
 
-## Currency (267)
+## Currency (271)
 
 | Name | GGG metadata id |
 | --- | --- |
@@ -17,6 +17,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Ancient Orb | `Metadata/Items/Currency/CurrencyRerollUnique` |
 | Armourer's Scrap | `Metadata/Items/Currency/CurrencyArmourQuality` |
 | Armoursmith's Delirium Orb | `Metadata/Items/Currency/CurrencyAfflictionOrbArmour` |
+| Astragali | `Metadata/Items/Currency/CurrencyRefreshGambler` |
 | Azure Oil | `Metadata/Items/Currency/Mushrune6` |
 | Black Oil | `Metadata/Items/Currency/Mushrune9` |
 | Blacksmith's Delirium Orb | `Metadata/Items/Currency/CurrencyAfflictionOrbWeapons` |
@@ -85,6 +86,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Jagged Fossil | `Metadata/Items/Currency/CurrencyDelveCraftingPhysical` |
 | Jeweller's Delirium Orb | `Metadata/Items/Currency/CurrencyAfflictionOrbTrinkets` |
 | Jeweller's Orb | `Metadata/Items/Currency/CurrencyRerollSocketNumbers` |
+| Journey Tattoo of the Mind | `Metadata/Items/Currency/AncestralTattooSpecialUnique4` |
 | Journey Tattoo of the Soul | `Metadata/Items/Currency/AncestralTattooSpecialUnique5` |
 | Karui Enshrouding Crystal | `Metadata/Items/Currency/LegionCocoonGloves` |
 | Lesser Eldritch Ember | `Metadata/Items/Currency/CurrencyEldritchEmber1` |
@@ -228,6 +230,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Tattoo of the Ramako Shaman | `Metadata/Items/Currency/AncestralTattooRamako5` |
 | Tattoo of the Ramako Sniper | `Metadata/Items/Currency/AncestralTattooRamako3` |
 | Tattoo of the Rongokurai Brute | `Metadata/Items/Currency/AncestralTattooRongokurai2` |
+| Tattoo of the Rongokurai Goliath | `Metadata/Items/Currency/AncestralTattooRongokurai3` |
 | Tattoo of the Rongokurai Guard | `Metadata/Items/Currency/AncestralTattooRongokurai5` |
 | Tattoo of the Rongokurai Turtle | `Metadata/Items/Currency/AncestralTattooRongokurai4` |
 | Tattoo of the Rongokurai Warrior | `Metadata/Items/Currency/AncestralTattooRongokurai1` |
@@ -260,6 +263,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Timeless Eternal Empire Splinter | `Metadata/Items/Currency/CurrencyLegionEternalEmpireShard` |
 | Timeless Karui Splinter | `Metadata/Items/Currency/CurrencyLegionKaruiShard` |
 | Timeless Maraketh Splinter | `Metadata/Items/Currency/CurrencyLegionMarakethShard` |
+| Timeless Templar Splinter | `Metadata/Items/Currency/CurrencyLegionTemplarShard` |
 | Timeless Vaal Splinter | `Metadata/Items/Currency/CurrencyLegionVaalShard` |
 | Transmutation Shard | `Metadata/Items/Currency/CurrencyUpgradeToMagicShard` |
 | Turbulent Catalyst | `Metadata/Items/Currency/CurrencyJewelleryQualityElemental` |
@@ -347,7 +351,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Zorath's Eye of the Endless | `Metadata/Items/MapFragments/AbyssPinnacleKeyGhastly` |
 | Zorath's Eye of the Inevitable | `Metadata/Items/MapFragments/AbyssPinnacleKeyHypnotic` |
 
-## Scarabs (115)
+## Scarabs (116)
 
 | Name | GGG metadata id |
 | --- | --- |
@@ -443,6 +447,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Ritual Scarab of Wisps | `Metadata/Items/Scarabs/ScarabRitual2` |
 | Scarab of Adversaries | `Metadata/Items/Scarabs/ScarabMisc2` |
 | Scarab of Divinity | `Metadata/Items/Scarabs/ScarabMisc3` |
+| Scarab of Hunted Traitors | `Metadata/Items/Scarabs/ScarabMisc4` |
 | Scarab of Monstrous Lineage | `Metadata/Items/Scarabs/ScarabMisc1` |
 | Scarab of Radiant Storms | `Metadata/Items/Scarabs/ScarabMisc11` |
 | Scarab of Stability | `Metadata/Items/Scarabs/ScarabMisc5` |
@@ -467,7 +472,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Ultimatum Scarab of Dueling | `Metadata/Items/Scarabs/ScarabUltimatum3` |
 | Ultimatum Scarab of Inscription | `Metadata/Items/Scarabs/ScarabUltimatum5` |
 
-## Essences (81)
+## Essences (83)
 
 | Name | GGG metadata id |
 | --- | --- |
@@ -500,6 +505,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Muttering Essence of Woe | `Metadata/Items/Currency/CurrencyEssenceWoe2` |
 | Screaming Essence of Anger | `Metadata/Items/Currency/CurrencyEssenceAnger4` |
 | Screaming Essence of Anguish | `Metadata/Items/Currency/CurrencyEssenceAnguish2` |
+| Screaming Essence of Contempt | `Metadata/Items/Currency/CurrencyEssenceContempt5` |
 | Screaming Essence of Doubt | `Metadata/Items/Currency/CurrencyEssenceDoubt3` |
 | Screaming Essence of Dread | `Metadata/Items/Currency/CurrencyEssenceDread1` |
 | Screaming Essence of Envy | `Metadata/Items/Currency/CurrencyEssenceEnvy1` |
@@ -509,6 +515,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Screaming Essence of Misery | `Metadata/Items/Currency/CurrencyEssenceMisery1` |
 | Screaming Essence of Rage | `Metadata/Items/Currency/CurrencyEssenceRage3` |
 | Screaming Essence of Scorn | `Metadata/Items/Currency/CurrencyEssenceScorn1` |
+| Screaming Essence of Sorrow | `Metadata/Items/Currency/CurrencyEssenceSorrow4` |
 | Screaming Essence of Spite | `Metadata/Items/Currency/CurrencyEssenceSpite2` |
 | Screaming Essence of Suffering | `Metadata/Items/Currency/CurrencyEssenceSuffering3` |
 | Screaming Essence of Woe | `Metadata/Items/Currency/CurrencyEssenceWoe5` |
@@ -553,7 +560,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Weeping Essence of Wrath | `Metadata/Items/Currency/CurrencyEssenceWrath1` |
 | Whispering Essence of Woe | `Metadata/Items/Currency/CurrencyEssenceWoe1` |
 
-## Divination Cards (185)
+## Divination Cards (198)
 
 | Name | GGG metadata id |
 | --- | --- |
@@ -563,6 +570,8 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | A Note in the Wind | `Metadata/Items/DivinationCards/DivinationCardANoteInTheWind` |
 | A Stone Perfected | `Metadata/Items/DivinationCards/DivinationCardAStonePerfected` |
 | Acclimatisation | `Metadata/Items/DivinationCards/DivinationCardAcclimatisation` |
+| Alluring Bounty | `Metadata/Items/DivinationCards/DivinationCardAlluringBounty` |
+| Alone in the Darkness | `Metadata/Items/DivinationCards/DivinationCardAloneInTheDarkness` |
 | Altered Perception | `Metadata/Items/DivinationCards/DivinationCardAlteredPerception` |
 | Anarchy's Price | `Metadata/Items/DivinationCards/DivinationCardAnarchysPrice` |
 | Apocalypse | `Metadata/Items/DivinationCards/DivinationCardApocalypse` |
@@ -574,8 +583,10 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Azure Rage | `Metadata/Items/DivinationCards/DivinationCardAzureRage` |
 | Azyran's Reward | `Metadata/Items/DivinationCards/DivinationCardAzyransReward` |
 | Baited Expectations | `Metadata/Items/DivinationCards/DivinationCardBaitedExpectations` |
+| Bijoux | `Metadata/Items/DivinationCards/DivinationCardBijoux` |
 | Blind Venture | `Metadata/Items/DivinationCards/DivinationCardBlindVenture` |
 | Bound by Flame | `Metadata/Items/DivinationCards/DivinationCardBoundByFlame` |
+| Bowyer's Dream | `Metadata/Items/DivinationCards/DivinationCardBowyersDream` |
 | Brother's Gift | `Metadata/Items/DivinationCards/DivinationCardBrothersGift` |
 | Brush, Paint and Palette | `Metadata/Items/DivinationCards/DivinationCardBrushPaintAndPalette` |
 | Cameria's Cut | `Metadata/Items/DivinationCards/DivinationCardCameriasCut` |
@@ -641,12 +652,15 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | Something Dark | `Metadata/Items/DivinationCards/DivinationCardSomethingDark` |
 | Stacked Deck | `Metadata/Items/DivinationCards/DivinationCardDeck` |
 | Succor of the Sinless | `Metadata/Items/DivinationCards/DivinationCardSuccorOfTheSinless` |
+| Temperance | `Metadata/Items/DivinationCards/DivinationCardTemperance` |
 | Terrible Secret of Space | `Metadata/Items/DivinationCards/DivinationCardTerribleSecretOfSpace` |
 | The Apothecary | `Metadata/Items/DivinationCards/DivinationCardTheApothecary` |
 | The Artist | `Metadata/Items/DivinationCards/DivinationCardTheArtist` |
+| The Aspirant | `Metadata/Items/DivinationCards/DivinationCardTheAspirant` |
 | The Avenger | `Metadata/Items/DivinationCards/DivinationCardTheAvenger` |
 | The Bear Woman | `Metadata/Items/DivinationCards/DivinationCardTheBearWoman` |
 | The Bitter Blossom | `Metadata/Items/DivinationCards/DivinationCardTheBitterBlossom` |
+| The Bones | `Metadata/Items/DivinationCards/DivinationCardTheBones` |
 | The Celestial Justicar | `Metadata/Items/DivinationCards/DivinationCardTheCelestialJusticar` |
 | The Chosen | `Metadata/Items/DivinationCards/DivinationCardTheChosen` |
 | The Conduit | `Metadata/Items/DivinationCards/DivinationCardTheConduit` |
@@ -661,6 +675,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Dreamer | `Metadata/Items/DivinationCards/DivinationCardTheDreamer` |
 | The Dreamland | `Metadata/Items/DivinationCards/DivinationCardTheDreamland` |
 | The Eldritch Decay | `Metadata/Items/DivinationCards/DivinationCardTheEldritchDecay` |
+| The Endless Darkness | `Metadata/Items/DivinationCards/DivinationCardTheEndlessDarkness` |
 | The Endurance | `Metadata/Items/DivinationCards/DivinationCardTheEndurance` |
 | The Enlightened | `Metadata/Items/DivinationCards/DivinationCardTheEnlightened` |
 | The Enthusiasts | `Metadata/Items/DivinationCards/DivinationCardTheEnthusiasts` |
@@ -687,6 +702,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Incantation | `Metadata/Items/DivinationCards/DivinationCardTheIncantation` |
 | The Insane Cat | `Metadata/Items/DivinationCards/DivinationCardTheInsaneCat` |
 | The Jester | `Metadata/Items/DivinationCards/DivinationCardTheJester` |
+| The Journalist | `Metadata/Items/DivinationCards/DivinationCardTheJournalist` |
 | The King's Heart | `Metadata/Items/DivinationCards/DivinationCardTheKingsHeart` |
 | The Lake | `Metadata/Items/DivinationCards/DivinationCardTheLake` |
 | The Last One Standing | `Metadata/Items/DivinationCards/DivinationCardTheLastOneStanding` |
@@ -699,13 +715,16 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Opulent | `Metadata/Items/DivinationCards/DivinationCardTheOpulecent` |
 | The Patient | `Metadata/Items/DivinationCards/DivinationCardThePatient` |
 | The Poet | `Metadata/Items/DivinationCards/DivinationCardThePoet` |
+| The Porcupine | `Metadata/Items/DivinationCards/DivinationCardThePorcupine` |
 | The Price of Devotion | `Metadata/Items/DivinationCards/DivinationCardThePriceOfDevotion` |
 | The Price of Loyalty | `Metadata/Items/DivinationCards/DivinationCardThePriceOfLoyalty` |
 | The Price of Prescience | `Metadata/Items/DivinationCards/DivinationCardThePriceOfPrescience` |
 | The Prince of Darkness | `Metadata/Items/DivinationCards/DivinationCardThePrinceOfDarkness` |
 | The Progeny of Lunaris | `Metadata/Items/DivinationCards/DivinationCardTheProgenyOfLunaris` |
+| The Realm | `Metadata/Items/DivinationCards/DivinationCardTheRealm` |
 | The Return of the Rat | `Metadata/Items/DivinationCards/DivinationCardTheReturnOfTheRat` |
 | The Risk | `Metadata/Items/DivinationCards/DivinationCardTheRisk` |
+| The Scholar | `Metadata/Items/DivinationCards/DivinationCardTheScholar` |
 | The Scout | `Metadata/Items/DivinationCards/DivinationCardTheScout` |
 | The Sephirot | `Metadata/Items/DivinationCards/DivinationCardTheSephirot` |
 | The Shepherd's Sandals | `Metadata/Items/DivinationCards/DivinationCardTheShepherdsSandals` |
@@ -718,6 +737,7 @@ Generated from `lib/faustus.ts`'s `FAUSTUS_NAME_TO_ID` - **do not hand-edit this
 | The Slumbering Beast | `Metadata/Items/DivinationCards/DivinationCardTheSlumberingBeast` |
 | The Soul | `Metadata/Items/DivinationCards/DivinationCardTheSoul` |
 | The Strategist | `Metadata/Items/DivinationCards/DivinationCardTheStrategist` |
+| The Surgeon | `Metadata/Items/DivinationCards/DivinationCardTheSurgeon` |
 | The Thaumaturgist | `Metadata/Items/DivinationCards/DivinationCardTheThaumaturgist` |
 | The Throne | `Metadata/Items/DivinationCards/DivinationCardTheThrone` |
 | The Tireless Extractor | `Metadata/Items/DivinationCards/DivinationCardTheTirelessExtractor` |
