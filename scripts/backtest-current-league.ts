@@ -187,8 +187,8 @@ async function main() {
       const target = day + duration;
       if (target > matrix.maxDay) continue;
       const [currencyTrends, itemTrends] = await Promise.all([
-        getCurrencyGrowthRatios({ currentDay: day, durationDays: duration }),
-        getItemGrowthRatios({ currentDay: day, durationDays: duration }),
+        getCurrencyGrowthRatios({ currentDay: day, durationDays: duration, excludeLeague: CURRENT_LEAGUE }),
+        getItemGrowthRatios({ currentDay: day, durationDays: duration, excludeLeague: CURRENT_LEAGUE }),
       ]);
       const inputs: PredictionInput[] = [];
       const meta: Array<{ kind: "currency" | "item"; group: Row["group"]; key: string; priceNow: number; future: number }> = [];

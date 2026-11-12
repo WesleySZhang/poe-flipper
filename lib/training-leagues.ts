@@ -11,4 +11,4 @@
  * listed there). The "Retrain model" workflow edits this list (scripts/retrain-leagues.ts), so keep it
  * one array of plain strings.
  */
-export const TRAINING_LEAGUES: readonly string[] = ["Mirage", "Phrecia 2.0", "Keepers", "Mercenaries", "Settlers"];
+export const TRAINING_LEAGUES: readonly string[] = ["Allflame", "Mirage", "Phrecia 2.0", "Keepers", "Mercenaries", "Settlers"];

@@ -40,8 +40,15 @@ works too.
    - no warning that a league's prices start late;
    - no "worse than the previous model" line. If there is one, look at the full validation report
      before deciding. More leagues isn't automatically better.
-5. **Merge, then run Deploy to production.** The daily job reruns by itself. The ended league now
-   also shows on item charts as a past league.
+5. **Merge, then run Deploy to production** - after the league swap (step 2) if you can. Until
+   `CURRENT_LEAGUE` changes, the live growth ratios read every league in `db/history.duckdb`, the
+   ended league included, so the app would forecast that league from its own future prices. Harmless
+   once it has ended, but it makes its last forecasts meaningless. The daily job reruns by itself.
+   The ended league now also shows on item charts as a past league.
+6. **Optional: score how it went.** Replay the ended league with the model that served it (the
+   `predictor.json` from before the retrain): `npm run ml:backtest -- <old predictor.json>
+   0,3,7,14,21,30,40,50,60,75,90,100 --league <League>`. Allflame's result is in `ml/README.md`
+   section 9.
 
 ## 2. Merge the league swap
 

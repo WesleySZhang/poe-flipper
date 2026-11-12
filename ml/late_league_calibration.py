@@ -25,7 +25,7 @@ import fit_production as fp  # noqa: E402
 
 OUT = os.path.join(fp.HERE, "cache", "calib")
 ALLFLAME = os.path.join(fp.HERE, "cache", "allflame_backtest_rows.csv")
-LEAGUES = ["Keepers", "Mercenaries", "Mirage", "Phrecia 2.0", "Settlers"]
+LEAGUES = ["Allflame", "Keepers", "Mercenaries", "Mirage", "Phrecia 2.0", "Settlers"]
 DAY_BUCKETS = [(0, 29, "days 0-29"), (30, 59, "days 30-59"), (60, 79, "days 60-79"), (80, 999, "days 80+")]
 H_BUCKETS = [(1, 3, "1-3d"), (4, 10, "4-10d"), (11, 20, "11-20d"), (21, 999, "21d+")]
 
@@ -89,11 +89,11 @@ def pct(x):
 def load_all():
     frames = {}
     for path in sorted(glob.glob(os.path.join(OUT, "*.csv"))):
-        name = os.path.basename(path)[:-4].replace("__nested", " (clean)")
+        name = os.path.basename(path)[:-4].replace("__nested", "")  # nested = the clean holdout; one file per league
         frames[name] = pd.read_csv(path).rename(columns={"xgb": "pred"})
     if os.path.exists(ALLFLAME):
         a = pd.read_csv(ALLFLAME)
-        frames["Allflame (live backtest)"] = pd.DataFrame({
+        frames["Allflame (snapshots, days 60+)"] = pd.DataFrame({
             "t": a.day, "h": a.duration, "is_cur": (a.group == "currency").astype(int), "y": a.act, "pred": a.pred,
             "base_type": (a.group == "base type").astype(int),
         })
@@ -140,7 +140,7 @@ def report():
     print("\n=== day-aware calibration, fitted only on other leagues: median error before -> after (days 60+) ===")
     past = {n: f for n, f in frames.items() if n in LEAGUES}
     for name, df in frames.items():
-        if name not in LEAGUES and not name.startswith("Allflame"):
+        if name not in LEAGUES and not name.startswith("Allflame (snapshots"):
             continue
         fit_on = pd.concat([f for n, f in past.items() if n != name], ignore_index=True)
         coefs = {}

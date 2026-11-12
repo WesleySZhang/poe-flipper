@@ -79,9 +79,12 @@ export async function simulateMirageLeague(
   durationDays: number,
   /** Testing seam (scripts/backtest-predictor.ts): score with a specific mode / model instead of the app's
    *  configured one, e.g. a model trained WITHOUT Mirage so the replay is genuinely out-of-sample. */
-  overrides: { mode?: PredictorMode; runtime?: PredictorRuntime } = {}
+  overrides: { mode?: PredictorMode; runtime?: PredictorRuntime; league?: string } = {}
 ): Promise<MirageSimulationRow[]> {
   const targetDay = currentDay + durationDays;
+  // Another finished league to replay instead of Mirage (scripts/backtest-predictor.ts --league); it's
+  // excluded from the growth ratios the same way, so the replay stays out-of-sample.
+  const league = overrides.league ?? SIMULATED_LEAGUE;
 
   const [
     currencyTrends,
@@ -92,12 +95,12 @@ export async function simulateMirageLeague(
     actualFutureItem,
     currencyTypes,
   ] = await Promise.all([
-    getCurrencyGrowthRatios({ currentDay, durationDays, excludeLeague: SIMULATED_LEAGUE }),
-    getItemGrowthRatios({ currentDay, durationDays, excludeLeague: SIMULATED_LEAGUE }),
-    getActualCurrencyValueAtDay(SIMULATED_LEAGUE, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
-    getActualCurrencyValueAtDay(SIMULATED_LEAGUE, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
-    getActualItemValueAtDay(SIMULATED_LEAGUE, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
-    getActualItemValueAtDay(SIMULATED_LEAGUE, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getCurrencyGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
+    getItemGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
+    getActualCurrencyValueAtDay(league, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getActualCurrencyValueAtDay(league, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getActualItemValueAtDay(league, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getActualItemValueAtDay(league, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
     // Mirage has ended, so poe.ninja no longer serves live prices for it to read a type bucket
     // from (that's the whole reason the historical DB exists). Its type-bucket taxonomy (Scarab,
     // Essence, Fossil, ...) is fixed and league-agnostic though, so the current league's live
@@ -108,7 +111,7 @@ export async function simulateMirageLeague(
   // Predict for EVERY item that has a price on the replayed day - not only those with a known outcome later - so the
   // model's cross-sectional features rank an item among the same set of items the live app would see.
   const mode = overrides.mode ?? currentPredictorMode();
-  const matrix = await loadLeagueDailyMatrix(SIMULATED_LEAGUE, currentDay - 9, currentDay);
+  const matrix = await loadLeagueDailyMatrix(league, currentDay - 9, currentDay);
   const now = historyNowAtDay(matrix, currentDay);
   const candidates: Array<{ kind: "currency" | "item"; trend: (typeof currencyTrends)[number]; key: string }> = [];
   const inputs: PredictionInput[] = [];

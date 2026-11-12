@@ -13,7 +13,12 @@ sync with this. In short, in order:
    `lib/training-leagues.ts`). It edits the list, downloads history, rebuilds `db/history.duckdb`,
    trains on CPU, checks parity and the Mirage backtest, and opens a PR (`auto/retrain-model`).
    Review: every source "poe.ninja export", no late-start warning, no "worse than the previous
-   model" line. Merge, then Deploy to production. Manual equivalent: `ml/README.md` section 12.
+   model" line. Merge, then Deploy to production - preferably after the league swap: the live
+   growth ratios don't exclude `CURRENT_LEAGUE`, so before it the app forecasts the ended league from
+   its own future. Manual equivalent: `ml/README.md` section 12 (run the export as 4 `SHARD`s in
+   parallel locally). Keep the old `predictor.json`: replaying the ended league with it
+   (`ml:backtest ... --league <League>`) scores how the live model did; never score the new model
+   on that league (it trained on it).
 2. **New league launches (T, ~20:00 UTC).** The league swap PR opens at 00:05 UTC: `CURRENT_LEAGUE`
    plus the start date from GGG's leagues API (the detection day if GGG doesn't list it, one day
    late). Check the date, merge (precompute reruns by itself), Deploy to production.

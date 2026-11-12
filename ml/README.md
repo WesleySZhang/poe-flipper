@@ -45,8 +45,9 @@ to league. The question the app answers is:
 | poe.ninja live API | Today's price and a 7-day sparkline | Live predictions |
 | Daily price snapshots (`precompute-data` branch) | The current league's own daily history | The chart; the current league isn't trained on |
 
-The training leagues are listed in `lib/training-leagues.ts`; the results below were measured on
-**Settlers, Mercenaries, Keepers, Phrecia 2.0 and Mirage**. Days with
+The training leagues are listed in `lib/training-leagues.ts`: **Settlers, Mercenaries, Keepers,
+Phrecia 2.0, Mirage and Allflame** (Allflame added 2026-11-11). The study results below were measured
+on the first five; the headline replays (section 9) on all six. Days with
 low-confidence prices, and one-day spikes that snap back, are cleaned at ingest
 (`scripts/ingest-history.ts`).
 
@@ -166,22 +167,53 @@ each held-out league. Every model is scored on exactly those rows, with the same
 
 ### Headline: Mirage replayed through the app
 
-Model trained without Mirage; features built by the app's TypeScript; league days 0–75,
-horizons 3/7/14.
+Model trained without Mirage (on the other five leagues, Allflame included); features built by the
+app's TypeScript; league days 0–75, horizons 3/7/14. Previous run (four training leagues) in brackets.
 
 | Model | Spearman | Top-10% hit rate | Top-10% return |
 | --- | --- | --- | --- |
-| Baseline | 0.185 | 61.7% | 0.313 |
-| Formula | 0.324 | 69.7% | 0.581 |
-| **XGBoost** | **0.334** | **72.8%** | **0.590** |
+| Baseline | 0.199 (0.185) | 63.1% (61.7%) | 0.357 (0.313) |
+| Formula | 0.344 (0.324) | 70.0% (69.7%) | 0.620 (0.581) |
+| **XGBoost** | **0.365** (0.334) | **74.5%** (72.8%) | **0.670** (0.590) |
 
-| League day | 0 | 3 | 7 | 14 | 30 | 50 | 75 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| XGBoost | 0.60 | 0.51 | 0.35 | 0.25 | 0.32 | 0.21 | 0.24 |
-| Formula | 0.60 | 0.50 | 0.32 | 0.23 | 0.30 | 0.22 | 0.26 |
-| Baseline | 0.47 | 0.38 | 0.28 | 0.15 | 0.08 | −0.04 | 0.02 |
+| League day | 0 | 3 | 7 | 14 | 21 | 30 | 50 | 75 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| XGBoost | 0.65 | 0.55 | 0.36 | 0.28 | 0.26 | 0.32 | 0.21 | 0.30 |
+| Formula | 0.63 | 0.55 | 0.33 | 0.27 | 0.21 | 0.25 | 0.22 | 0.29 |
+| Baseline | 0.50 | 0.42 | 0.30 | 0.18 | 0.17 | 0.07 | −0.04 | −0.01 |
 
-Divine mode: 0.174 → 0.329.
+Calibration (slope of actual on predicted log ratio, 1 = the right size): XGBoost 1.22 - its top
+picks' median was predicted +60% and rose +76%. Adding Allflame raised the leave-one-out validation
+on Mirage from 0.338 to 0.384 (chaos) and 0.329 to 0.374 (divine).
+
+### Allflame: how the shipped model did on the league it served
+
+The model live during Allflame (trained on the five earlier leagues, never on Allflame) replayed over
+all of Allflame from the poe.ninja export: league days 0–100, horizons 3/7/14, scenarios ending by
+day 107 (`npm run ml:backtest -- <old predictor.json> 0,3,7,14,21,30,40,50,60,75,90,100 --league Allflame`).
+
+| Model | Spearman | Top-10% hit rate | Top-10% return | Slope | Top-10% median: predicted → actual |
+| --- | --- | --- | --- | --- | --- |
+| Baseline | 0.112 | 57.1% | 0.234 | 0.44 | +32% → +22% |
+| Formula | 0.345 | 68.7% | 0.590 | 1.08 | +69% → +61% |
+| **XGBoost** | **0.356** | **71.0%** | **0.623** | 1.12 | +64% → +70% |
+
+| League day | 0 | 3 | 7 | 14 | 21 | 30 | 40 | 50 | 60 | 75 | 90 | 100 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| XGBoost | 0.57 | 0.49 | 0.47 | 0.42 | 0.34 | 0.23 | 0.28 | 0.25 | 0.34 | 0.37 | 0.28 | 0.19 |
+
+The leave-Allflame-out model from this retrain scores the same (0.352). Its validation on Allflame:
+Spearman 0.382 overall, 0.450 early (days 0–25), 0.288 late (30+).
+
+**Late league, by held-out league** (`ml/late_league_calibration.py`): items' predicted moves are
+about the right size late in every league (slope 0.8–1.2; Allflame 1.0–1.2), except that Allflame's
+last days (80+) over-predicted its top picks (+28% predicted, +13% actual). Currency swings by
+league: Settlers and Mercenaries over-predicted it late (top picks +24–36% predicted, 0–9% actual),
+Mirage and Allflame under-predicted it (days 60–79: +62–101% predicted, +160–175% actual). A
+correction by league day, fitted on the other leagues, didn't improve any held-out league, so late
+magnitudes are left as they are. An earlier check on Allflame's own daily snapshots (days 60–100)
+showed predicted moves much too small (slope ~1.75); the export doesn't, so that came from the
+snapshots (only items poe.ninja's live API listed), not the model.
 
 ### All five held-out leagues
 
@@ -258,9 +290,9 @@ narrow: 16% of outcomes fell outside each end, against 10%.
 
 ## 11. Limits
 
-- **Five training leagues.** Every holdout improved, but each new league is a different economy.
-- **Not yet scored on a live league's outcomes.** Log forecasts against what happens before treating
-  the absolute numbers as settled.
+- **Six training leagues.** Every holdout improved, but each new league is a different economy.
+- **Scored on one live league so far** (Allflame, section 9). Predictions weren't logged as they were
+  served, so that score is a replay of the shipped model on the export, not the live forecasts.
 - **Live sparklines are noisier** than the cleaned history (about twice the volatility).
 - **Ranking isn't profit.** Spreads, fees and whether an item can actually be sold aren't modelled.
 - **Brand-new items can't be predicted** until past leagues have data for them.
@@ -287,6 +319,14 @@ python ml/fit_production.py all     # validation report, writes lib/models/predi
 npm run ml:parity                   # TypeScript matches Python
 npm run ml:backtest                 # replay Mirage through the app
 ```
+
+- **Faster export:** `SHARD=0/4 ... SHARD=3/4` runs four export processes in parallel (the DB opens
+  read-only; ~4 GB each), then one plain run writes `manifest.json` (finished runs are skipped).
+- **Replaying another finished league:** `npm run ml:backtest -- <model.json> <days> --league <League>`
+  with a model that never trained on it (its `model_holdout_<League>.json`, or the `predictor.json`
+  shipped before it was added). Scenarios past the league's last day minus 3 are skipped.
+- **The current league's own snapshots:** `scripts/backtest-current-league.ts` replays it from the
+  `precompute-data` CSVs before an export exists (late days only, less reliable data).
 
 - **Holdouts** default to Mirage and Keepers (`HOLDOUTS=...` overrides). The workflow uses the
   newest training league, as a forward-in-time test, plus Mirage for the backtest.

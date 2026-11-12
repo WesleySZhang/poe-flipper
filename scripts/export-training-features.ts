@@ -142,10 +142,20 @@ async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const leagues = [...TRAINING_LEAGUES];
   const holdouts = (process.env.HOLDOUTS ?? "Mirage,Keepers").split(",").map((s) => s.trim()).filter(Boolean);
-  // final-model / holdout-test rows: every league as a target, features from all the others
-  for (const t of leagues) await exportRun(t, [t], `full__${t}`);
-  // validation training rows: for each holdout H, every other league as a target, with H ALSO excluded
-  for (const h of holdouts) for (const t of leagues.filter((l) => l !== h)) await exportRun(t, [t, h], `nested__${t}__x${h}`);
+  const runs: Array<[string, string[], string]> = [
+    // final-model / holdout-test rows: every league as a target, features from all the others
+    ...leagues.map((t): [string, string[], string] => [t, [t], `full__${t}`]),
+    // validation training rows: for each holdout H, every other league as a target, with H ALSO excluded
+    ...holdouts.flatMap((h) => leagues.filter((l) => l !== h).map((t): [string, string[], string] => [t, [t, h], `nested__${t}__x${h}`])),
+  ];
+  // SHARD=i/n runs every n-th run starting at i (0-based), so n processes can export in parallel; the DB
+  // is opened read-only. Run once more without SHARD afterwards to write the manifest (finished runs skip).
+  const shard = process.env.SHARD?.match(/^(\d+)\/(\d+)$/);
+  for (const [i, [t, excluded, label]] of runs.entries()) {
+    if (shard && i % Number(shard[2]) !== Number(shard[1])) continue;
+    await exportRun(t, excluded, label);
+  }
+  if (shard) return;
   // Tells ml/fit_production.py which runs belong to this export, so leftovers from an older training
   // set in the same folder are ignored.
   fs.writeFileSync(path.join(OUT_DIR, "manifest.json"), JSON.stringify({ leagues, holdouts }));
