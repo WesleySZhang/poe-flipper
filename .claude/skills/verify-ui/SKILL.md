@@ -17,7 +17,7 @@ AGENTS.md: a UI change isn't done until it works at 1280px **and** ~390px.
    flags `require()` in `.js/.ts`, so never leave one in the repo. On Windows, give `node` a Windows
    path (`C:\...`), not a Git Bash `/c/...` one - `require` of the latter fails.
    - Desktop viewport 1280x900, then phone 390x844 (use `hasTouch`/`isMobile` for gesture changes).
-   - Pages to hit for shared-row changes: `/` (Flip Predictions), Mirage simulator, Currency
+   - Pages to hit for shared-row changes: `/` (Flip Predictions), Past league simulator, Currency
      Exchange Flip, Divination Card Flips, Dust Value, and `/item/<category>/<Name_With_Underscores>`.
      Sold Listings (`/sold-listings`) needs data: use the `preview/sold-listings-mock` branch or a
      `page.route` fixture (see the `sold-tracker` skill).

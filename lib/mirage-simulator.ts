@@ -9,7 +9,8 @@ import { itemPriceKey, formatItemDisplayName } from "./poe-ninja";
 import { getCurrencyPricesPreferSnapshot } from "./price-snapshot";
 import { SIMULATED_LEAGUE } from "./mirage-league";
 import { CURRENT_LEAGUE } from "./league-recency";
-import { currentPredictorMode, predictGrowth, type PredictorMode, type PredictorRuntime } from "./prediction-model";
+import { predictGrowth, resolveMode, type PredictorMode, type PredictorRuntime } from "./prediction-model";
+import { holdoutRuntime } from "./simulator-models";
 import type { PredictionInput } from "./prediction-features";
 import { historyNowAtDay, loadLeagueDailyMatrix } from "./history-now";
 
@@ -68,10 +69,13 @@ export interface MirageSimulationRow {
 }
 
 /**
- * Re-runs the flip-suggestion model as if "now" were day `currentDay` of the already-finished
- * Mirage league, projecting `durationDays` ahead - then looks up what actually happened in Mirage
- * so the prediction can be checked against reality. Mirage is always excluded from the model's
- * training data, so this is a genuine out-of-sample check, not the model grading its own homework.
+ * Re-runs the flip-suggestion model as if "now" were day `currentDay` of an already-finished
+ * league (Mirage unless `overrides.league` says otherwise; the Past league simulator's list is
+ * lib/mirage-league.ts), projecting `durationDays` ahead - then looks up what actually happened in
+ * that league so the prediction can be checked against reality. The league is excluded from both the
+ * growth ratios and the model (lib/simulator-models.ts: a model trained without it), so this is a
+ * genuine out-of-sample check, not the model grading its own homework. (Until 2026-11-11 the model
+ * was the shipped predictor.json, which trains on Mirage - only the growth ratios excluded it.)
  * Returns every matching row (no top-N cap) - the UI paginates and category-filters client-side.
  */
 export async function simulateMirageLeague(
@@ -79,9 +83,14 @@ export async function simulateMirageLeague(
   durationDays: number,
   /** Testing seam (scripts/backtest-predictor.ts): score with a specific mode / model instead of the app's
    *  configured one, e.g. a model trained WITHOUT Mirage so the replay is genuinely out-of-sample. */
-  overrides: { mode?: PredictorMode; runtime?: PredictorRuntime } = {}
+  overrides: { mode?: PredictorMode; runtime?: PredictorRuntime; league?: string } = {}
 ): Promise<MirageSimulationRow[]> {
   const targetDay = currentDay + durationDays;
+  // The league to replay (the Past league simulator's picker, scripts/backtest-predictor.ts --league).
+  // Out-of-sample twice over: it's excluded from the growth ratios below, and scored with a model
+  // trained without it (lib/simulator-models.ts) unless a caller passes its own.
+  const league = overrides.league ?? SIMULATED_LEAGUE;
+  const runtime = overrides.runtime ?? holdoutRuntime(league);
 
   const [
     currencyTrends,
@@ -92,12 +101,12 @@ export async function simulateMirageLeague(
     actualFutureItem,
     currencyTypes,
   ] = await Promise.all([
-    getCurrencyGrowthRatios({ currentDay, durationDays, excludeLeague: SIMULATED_LEAGUE }),
-    getItemGrowthRatios({ currentDay, durationDays, excludeLeague: SIMULATED_LEAGUE }),
-    getActualCurrencyValueAtDay(SIMULATED_LEAGUE, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
-    getActualCurrencyValueAtDay(SIMULATED_LEAGUE, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
-    getActualItemValueAtDay(SIMULATED_LEAGUE, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
-    getActualItemValueAtDay(SIMULATED_LEAGUE, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getCurrencyGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
+    getItemGrowthRatios({ currentDay, durationDays, excludeLeague: league }),
+    getActualCurrencyValueAtDay(league, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getActualCurrencyValueAtDay(league, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getActualItemValueAtDay(league, currentDay, ACTUAL_VALUE_TOLERANCE_DAYS),
+    getActualItemValueAtDay(league, targetDay, ACTUAL_VALUE_TOLERANCE_DAYS),
     // Mirage has ended, so poe.ninja no longer serves live prices for it to read a type bucket
     // from (that's the whole reason the historical DB exists). Its type-bucket taxonomy (Scarab,
     // Essence, Fossil, ...) is fixed and league-agnostic though, so the current league's live
@@ -107,8 +116,9 @@ export async function simulateMirageLeague(
 
   // Predict for EVERY item that has a price on the replayed day - not only those with a known outcome later - so the
   // model's cross-sectional features rank an item among the same set of items the live app would see.
-  const mode = overrides.mode ?? currentPredictorMode();
-  const matrix = await loadLeagueDailyMatrix(SIMULATED_LEAGUE, currentDay - 9, currentDay);
+  // The configured predictor (PREDICTOR), downgraded to what THIS league's model can do.
+  const mode = overrides.mode ?? resolveMode(process.env.PREDICTOR, runtime);
+  const matrix = await loadLeagueDailyMatrix(league, currentDay - 9, currentDay);
   const now = historyNowAtDay(matrix, currentDay);
   const candidates: Array<{ kind: "currency" | "item"; trend: (typeof currencyTrends)[number]; key: string }> = [];
   const inputs: PredictionInput[] = [];
@@ -129,7 +139,7 @@ export async function simulateMirageLeague(
       });
     }
   }
-  const predictions = predictGrowth(inputs, { currentDay, durationDays, universe: [...currencyTrends, ...itemTrends] }, mode, overrides.runtime);
+  const predictions = predictGrowth(inputs, { currentDay, durationDays, universe: [...currencyTrends, ...itemTrends] }, mode, runtime);
 
   const rows: MirageSimulationRow[] = [];
 

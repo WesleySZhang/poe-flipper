@@ -14,9 +14,14 @@ owner's play knowledge, `[unsure]` unchecked - never present these as settled.
   launch, with a new day starting at 00:00 UTC. `[verified]` (`lib/league-day.ts`)
 - Leagues in this app's data, newest first: Allflame (current, 2026-07-24), Mirage (2026-03-06),
   Phrecia 2.0 (2026-01-29), Keepers (2025-10-31), Mercenaries (2025-06-13), Settlers (2024-07-26). `[verified]`
-- The model trains on the finished leagues Mirage, Keepers, Mercenaries, Settlers, Phrecia 2.0
-  (as of 2026-09; the list lives in `lib/training-leagues.ts`). Plain "Phrecia" is excluded as too
-  noisy. `[verified]`
+- The model trains on the finished leagues Allflame, Mirage, Keepers, Mercenaries, Settlers,
+  Phrecia 2.0 (Allflame added 2026-11-11; the list lives in `lib/training-leagues.ts`). Plain
+  "Phrecia" is excluded as too noisy. `[verified]`
+- Allflame's poe.ninja export runs 2026-07-24 to 2026-11-11: 111 days. Item lines per day thin out
+  toward the end (~29,000 a day at day 50, ~17,000 on the last day) as players leave. `[verified]`
+- Forecast skill fades over a league: the shipped model's rank correlation on Allflame went from 0.57
+  on day 0 to ~0.25-0.35 mid-league and 0.19 by day 100. Late-league price moves are noisy, and
+  whether currency over- or under-shoots late differs by league. `[verified]` (`ml/README.md` section 9)
 - Leagues launch at 20:00 UTC on a Friday (Allflame: 2026-07-24T20:00Z, from GGG's leagues API). `[verified]`
 - The old league ends about 4 days before the next launches: Keepers' poe.ninja data ends
   2026-03-02 and Mirage starts 2026-03-06; Mirage ends 2026-07-20 and Allflame starts 2026-07-24.

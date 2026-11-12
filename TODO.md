@@ -179,7 +179,7 @@ these routes query it live:
 | `/api/price-history` | Every price chart (row expand, item detail page) | One item's past-league daily prices |
 | `/api/flip-suggestions` (live path) | Durations outside the precomputed 1–30; League tester's day override | Growth ratios for any day pair |
 | `/api/predict-item`, `/api/item-names` | League tester | Same, one item |
-| `/api/mirage-simulation` | Mirage simulator | A past league replayed day by day |
+| `/api/past-league-simulation` | Past league simulator | A past league replayed day by day |
 
 **Possible reasons to drop it:** a lighter function (no 72 MB file or native library, so no
 `serverExternalPackages`/`outputFileTracingIncludes` workarounds in `next.config.ts`), no LFS
@@ -198,7 +198,7 @@ gains little over files built at ingest and shipped with the app, and adds a run
 2. **What does LFS cost?** GitHub LFS storage and bandwidth used this month (repo/account billing
    page) against the plan's allowance, and how many builds a month pull the file.
 3. **Are the testing tools used in production?** Vercel logs/analytics for `/api/predict-item`,
-   `/api/item-names`, `/api/mirage-simulation`, and `/api/flip-suggestions` calls that miss the
+   `/api/item-names`, `/api/past-league-simulation`, and `/api/flip-suggestions` calls that miss the
    precomputed file. If nobody uses them there, they can be local-only.
 4. **How big would static chart files be?** Export every item's past-league series once and
    measure total size, file count and the largest single item, sharded by item. Compare with the

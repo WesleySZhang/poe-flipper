@@ -40,8 +40,17 @@ works too.
    - no warning that a league's prices start late;
    - no "worse than the previous model" line. If there is one, look at the full validation report
      before deciding. More leagues isn't automatically better.
-5. **Merge, then run Deploy to production.** The daily job reruns by itself. The ended league now
-   also shows on item charts as a past league.
+5. **Merge after the league swap (step 2) if you can, then run Deploy to production.** Merging is
+   what matters, not deploying: the merge reruns the daily precompute job (it watches
+   `db/history.duckdb` and the model), and the live site reads its output without a deploy. Until
+   `CURRENT_LEAGUE` changes, the growth ratios read every league in `db/history.duckdb`, the ended
+   league included, so the app would forecast that league from its own future prices. Harmless once
+   it has ended, but its last forecasts become meaningless.
+   The ended league now also shows on item charts as a past league.
+6. **Optional: score how it went.** Replay the ended league with the model that served it (the
+   `predictor.json` from before the retrain): `npm run ml:backtest -- <old predictor.json>
+   0,3,7,14,21,30,40,50,60,75,90,100 --league <League>`. Allflame's result is in `ml/README.md`
+   section 9.
 
 ## 2. Merge the league swap
 
@@ -89,8 +98,10 @@ lookups by exact category can miss them (see the `poe-item-categories` skill).
 - `poe-knowledge/` skills: the league list and any new mechanics (`poe-league-lifecycle`,
   `poe-economy-basics`).
 - `ml/README.md` results, if you want them to reflect the retrained model.
-- Optional: the Mirage simulator always replays Mirage (`lib/mirage-league.ts`). Moving it to a newer
-  finished league is a separate change: the Mirage backtest and the retrain's holdouts depend on it.
+- Optional: offer the ended league in the Past league simulator (`/past-league-simulator`; Allflame
+  and Mirage today). It needs the league in `SIMULATED_LEAGUES` (`lib/mirage-league.ts`) and a model
+  trained without it in `lib/models/holdout/` - the `new-league` skill has the steps. The retrain's
+  Mirage backtest is separate and unchanged.
 - Optional: the `precompute-data` branch keeps ended leagues' daily files (about 50 MB a month). Once a league
   is in the training set they're only a fallback and can be deleted.
 

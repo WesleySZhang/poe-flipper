@@ -19,7 +19,7 @@ import { SearchInput } from "@/components/search-input";
 import { SortableHeader } from "@/components/sortable-header";
 import { NumericRangeFilter, isWithinRange, type NumericRange } from "@/components/numeric-range-filter";
 import { ALL_CATEGORIES, isDefaultEnabledCategory, humanizeCategoryName } from "@/lib/category-reliability";
-import { MIRAGE_LEAGUE_LENGTH_DAYS } from "@/lib/mirage-league";
+import { SIMULATED_LEAGUES, SIMULATOR_END_MARGIN_DAYS, simulatedLeague } from "@/lib/mirage-league";
 import { activeConfidence, confidenceTier, type ConfidenceTier } from "@/lib/confidence";
 import { sortByKey, toggleSort, type SortState } from "@/lib/sort";
 import {
@@ -33,8 +33,9 @@ import {
 import type { MirageSimulationRow } from "@/lib/mirage-simulator";
 import { rankKnownNameMatches, type KnownItemName } from "@/components/item-name-combobox";
 
-async function fetchMirageSimulation(currentDay: number, durationDays: number): Promise<MirageSimulationRow[]> {
-  const res = await fetch(`/api/mirage-simulation?currentDay=${currentDay}&durationDays=${durationDays}`);
+async function fetchSimulation(league: string, currentDay: number, durationDays: number): Promise<MirageSimulationRow[]> {
+  const params = new URLSearchParams({ league, currentDay: String(currentDay), durationDays: String(durationDays) });
+  const res = await fetch(`/api/past-league-simulation?${params}`);
   if (!res.ok) return [];
   return res.json();
 }
@@ -49,7 +50,9 @@ const PAGE_SIZE = 25;
 
 type SortKey = "now" | "predicted" | "actualFuture" | "predictedX" | "actualX";
 
-export function MirageSimulatorPanel() {
+/** Replays a finished league (SIMULATED_LEAGUES in lib/mirage-league.ts) - see lib/mirage-simulator.ts. */
+export function PastLeagueSimulatorPanel() {
+  const [league, setLeague] = useState(SIMULATED_LEAGUES[0].name);
   const [currentDay, setCurrentDay] = useState(3);
   const [durationDays, setDurationDays] = useState(7);
   const [rows, setRows] = useState<MirageSimulationRow[]>([]);
@@ -69,20 +72,22 @@ export function MirageSimulatorPanel() {
 
   useEffect(() => {
     startTransition(async () => {
-      setRows(await fetchMirageSimulation(currentDay, durationDays));
+      setRows(await fetchSimulation(league, currentDay, durationDays));
       setPage(0);
     });
-  }, [currentDay, durationDays]);
+  }, [league, currentDay, durationDays]);
 
   // Fetched once (not scenario-dependent) purely to explain an empty search result: a name can be
   // real - always in the pricing data - and still be absent from `rows` for THIS specific day/
-  // duration, e.g. its Mirage price tracking started partway through the league (see
+  // duration, e.g. its price tracking in the replayed league started partway through the league (see
   // missingKnownMatch below), which looks identical to a typo/nonexistent item without this check.
   useEffect(() => {
     fetchKnownNames().then(setKnownNames);
   }, []);
 
   const targetDay = currentDay + durationDays;
+  // The last day a forecast can start on: target days near the league's end have no price to score.
+  const maxCurrentDay = (simulatedLeague(league)?.lastDay ?? 0) - SIMULATOR_END_MARGIN_DAYS - 1;
   // Backtesting shows the model's predictions correlate well with what actually happens early in a
   // league, but that correlation collapses past ~day 30 once the economy has largely settled.
   const isStaleLeagueDay = currentDay > 30;
@@ -125,8 +130,8 @@ export function MirageSimulatorPanel() {
 
   // A search can come up empty for two very different reasons: the name genuinely isn't in this
   // app's data at all, or it's a real item that just didn't make it into `rows` for THIS specific
-  // day/duration - e.g. its Mirage price tracking started partway through the league (a late-game
-  // unique's variant-count breakdown), or (for a name/variant that only ever existed in Mirage
+  // day/duration - e.g. its price tracking in the replayed league started partway through the league (a late-game
+  // unique's variant-count breakdown), or (for a name/variant that only ever existed in that league
   // itself) there simply aren't enough OTHER leagues to train a prediction from, no matter the day.
   // Checked against `rows` first (not just the search) so a name that's merely hidden by the
   // category/cost filters still gets the plain "no rows match filters" message below, unchanged.
@@ -193,6 +198,14 @@ export function MirageSimulatorPanel() {
     setPage(0);
   }
 
+  function changeLeague(name: string) {
+    setLeague(name);
+    // Another league can be shorter: keep the start day inside it.
+    const last = (simulatedLeague(name)?.lastDay ?? 0) - SIMULATOR_END_MARGIN_DAYS - 1;
+    setCurrentDay((d) => Math.min(d, last));
+    setPage(0);
+  }
+
   function handleSort(key: SortKey) {
     setSort((prev) => toggleSort(prev, key));
     setPage(0);
@@ -211,17 +224,26 @@ export function MirageSimulatorPanel() {
             <span />
           )}
           <div className="flex flex-wrap items-end gap-4">
+            <Tabs value={league} onValueChange={(value) => changeLeague(value as string)}>
+              <TabsList>
+                {SIMULATED_LEAGUES.map((l) => (
+                  <TabsTrigger key={l.name} value={l.name}>
+                    {l.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="currentDay">Current day</Label>
               <Input
                 id="currentDay"
                 type="number"
                 min={0}
-                max={MIRAGE_LEAGUE_LENGTH_DAYS}
+                max={maxCurrentDay}
                 value={currentDay}
                 onChange={(e) => {
                   const value = Number(e.target.value);
-                  setCurrentDay(Number.isFinite(value) ? Math.max(0, Math.min(MIRAGE_LEAGUE_LENGTH_DAYS, value)) : 0);
+                  setCurrentDay(Number.isFinite(value) ? Math.max(0, Math.min(maxCurrentDay, value)) : 0);
                 }}
                 className="w-24"
               />
@@ -450,8 +472,8 @@ export function MirageSimulatorPanel() {
           <p className="text-sm text-muted-foreground">
             &quot;{missingKnownMatch.displayName}&quot; is real, always-tracked data - it&apos;s just not
             available for day {currentDay} &rarr; day {targetDay} specifically. This happens when an item&apos;s
-            Mirage price tracking started partway through the league (common for late-game uniques and
-            corrupted-implicit variant breakdowns), or when a variant only ever existed in Mirage itself, leaving
+            {league} price tracking started partway through the league (common for late-game uniques and
+            corrupted-implicit variant breakdowns), or when a variant only ever existed in {league} itself, leaving
             too few other leagues to train a prediction from at any day. Try a different Current day, or search
             without a variant.
           </p>

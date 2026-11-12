@@ -25,6 +25,10 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/*": ["node_modules/@duckdb/**/*"],
   },
+  // The Mirage simulator became the Past league simulator (2026-11-11); keep old links working.
+  async redirects() {
+    return [{ source: "/mirage-simulator", destination: "/past-league-simulator", permanent: true }];
+  },
 };
 
 export default nextConfig;
