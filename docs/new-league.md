@@ -98,8 +98,10 @@ lookups by exact category can miss them (see the `poe-item-categories` skill).
 - `poe-knowledge/` skills: the league list and any new mechanics (`poe-league-lifecycle`,
   `poe-economy-basics`).
 - `ml/README.md` results, if you want them to reflect the retrained model.
-- Optional: the Mirage simulator always replays Mirage (`lib/mirage-league.ts`). Moving it to a newer
-  finished league is a separate change: the Mirage backtest and the retrain's holdouts depend on it.
+- Optional: offer the ended league in the Past league simulator (`/past-league-simulator`; Allflame
+  and Mirage today). It needs the league in `SIMULATED_LEAGUES` (`lib/mirage-league.ts`) and a model
+  trained without it in `lib/models/holdout/` - the `new-league` skill has the steps. The retrain's
+  Mirage backtest is separate and unchanged.
 - Optional: the `precompute-data` branch keeps ended leagues' daily files (about 50 MB a month). Once a league
   is in the training set they're only a fallback and can be deleted.
 

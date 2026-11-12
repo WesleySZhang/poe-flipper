@@ -34,7 +34,12 @@ sync with this. In short, in order:
 5. **First days:** the league day reads 0-1, and `history/<League>/` appears on the `precompute-data` branch
    after the first daily run (see the `precompute-check` skill).
 6. **Tidy up:** knowledge skills in `poe-knowledge/` (league list, new mechanics), the README, and
-   optionally `ml/README.md` results. The Mirage simulator and backtest still replay Mirage
-   (`lib/mirage-league.ts`).
+   optionally `ml/README.md` results.
+7. **Past league simulator** (`/past-league-simulator`): to offer the ended league, add it to
+   `SIMULATED_LEAGUES` (`lib/mirage-league.ts`, with its last day in the DB) and copy a model trained
+   without it to `lib/models/holdout/<League>.json` (`ml/cache/tsrows/model_holdout_<League>.json`,
+   written when it's a holdout of the export), then import it in `lib/simulator-models.ts`. Each
+   retrain also refreshes the existing holdout models - copy them again, or the page keeps scoring
+   with the previous run's. The retrain's backtest still replays Mirage.
 
 Nothing reaches the live site until Deploy to production runs: `vercel.json` disables auto-deploy.

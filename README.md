@@ -32,7 +32,7 @@ See [`TODO.md`](TODO.md) for open ideas and known gaps.
 | **Dust Value** | `/dust-value` | Uniques ranked by Thaumaturgic Dust per chaos, for disenchanting in Kingsmarch. |
 | **Sold Listings** | `/sold-listings` | Trade site listings the sold listing tracker followed: what sold, at what price, after how long. |
 | **Item detail** | `/item/<category>/<Item_Name>` | Everything the app knows about one item. |
-| **Mirage league simulator** | `/mirage-simulator` | Replays a finished league to compare predictions with what happened. |
+| **Past league simulator** | `/past-league-simulator` | Replays a finished league (Allflame or Mirage) to compare predictions with what happened, scored by a model trained without that league. |
 | **League tester** | `/current-league-tester` | Applies an item's historical growth to a price you type in. |
 
 ### Flip Predictions
@@ -214,7 +214,7 @@ never triggers a Vercel deploy. Each run replaces the branch with fresh files:
 
 | File | Made by | Used for |
 | --- | --- | --- |
-| `prices.json` (~1.7 MB) | `scripts/precompute-price-snapshot.ts` | poe.ninja's whole price map (price, type, sparkline, seller count, poe.ninja id) plus which categories had listings. The detail page, search and Mirage simulator read this instead of calling poe.ninja. |
+| `prices.json` (~1.7 MB) | `scripts/precompute-price-snapshot.ts` | poe.ninja's whole price map (price, type, sparkline, seller count, poe.ninja id) plus which categories had listings. The detail page, search and Past league simulator read this instead of calling poe.ninja. |
 | `predictions.json` (~20 MB, ~5 MB gzipped) | `scripts/precompute-predictions.ts` | Every item's prediction for every "Days ahead" from 1 to 30. |
 | `history/<League>/*.csv` | `scripts/precompute-price-history.ts` | The current league's daily prices, one CSV pair per month. Earlier months and ended leagues' folders are kept (the job copies them forward). A missed day within the last 6 is rebuilt from poe.ninja's sparkline (see below). |
 
@@ -505,7 +505,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `app/page.tsx` | Flip Predictions (renders `components/dashboard.tsx`; code/routes still say "flip-suggestions") |
 | `app/item/[category]/[key]/` | Item detail page |
-| `app/currency_exchange_flip/`, `app/divination-cards/`, `app/dust-value/`, `app/sold-listings/`, `app/mirage-simulator/`, `app/current-league-tester/` | Other pages |
+| `app/currency_exchange_flip/`, `app/divination-cards/`, `app/dust-value/`, `app/sold-listings/`, `app/past-league-simulator/` (`/mirage-simulator` redirects there), `app/current-league-tester/` | Other pages |
 | `app/api/*/route.ts` | Read-only JSON endpoints (Route Handlers, not Server Actions) |
 | `proxy.ts`, `lib/site-auth.ts` | Password gate |
 
@@ -529,6 +529,7 @@ The app deploys to Vercel as a normal Next.js project; nothing is trained in pro
 | --- | --- |
 | `lib/growth-ratios.ts` | Historical growth queries against DuckDB |
 | `lib/prediction-features.ts`, `lib/prediction-model.ts` | Model inputs and evaluator; `lib/models/predictor.json` is the trained model |
+| `lib/mirage-simulator.ts`, `lib/mirage-league.ts`, `lib/simulator-models.ts`, `lib/models/holdout/` | The Past league simulator: replays a league in `SIMULATED_LEAGUES` with a model trained without it (copied from the retrain's `model_holdout_<League>.json`) |
 | `lib/flip-suggestions.ts` | Ranks live prices by predicted growth (live path) |
 | `lib/confidence.ts` | Confidence tiers |
 | `lib/precomputed-predictions.ts` | Reads `predictions.json` from the `precompute-data` branch |

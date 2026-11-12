@@ -29,7 +29,7 @@ const NAV_LINKS = [
 // Testing/simulation utilities, not same-day-actionable tools - grouped under one "Testing" menu so
 // the nav doesn't read as five equal destinations.
 const TESTING_LINKS = [
-  { href: "/mirage-simulator", label: "Mirage league simulator" },
+  { href: "/past-league-simulator", label: "Past league simulator" },
   { href: "/current-league-tester", label: "League tester" },
 ];
 

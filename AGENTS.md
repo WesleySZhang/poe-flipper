@@ -35,8 +35,8 @@ current" below). Keep this table in step with the skills: see "Keep this skill t
 ## UI changes should apply everywhere they can
 
 This app has several pages that share the same row/table pattern (`components/item-history-row.tsx`
-for desktop, `components/item-history-card.tsx` for mobile - used by Flip Predictions, the Mirage
-simulator, Currency Exchange Flip, and Divination Card Flips). When asked for a UI change - a fix,
+for desktop, `components/item-history-card.tsx` for mobile - used by Flip Predictions, the Past
+league simulator, Currency Exchange Flip, and Divination Card Flips). When asked for a UI change - a fix,
 a new interaction, a link, an indicator - check whether it belongs in one of these shared components
 rather than one page's own panel. If it does, make the change there so every page that uses it picks
 it up in one edit, instead of patching a single page and leaving the others inconsistent. Only scope
