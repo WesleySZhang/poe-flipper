@@ -9,6 +9,7 @@ import { daysBetweenUtc } from "./league-day";
  * ingested history simply never matches a row in growth-ratios.ts's queries either way.
  */
 const LEAGUE_RELEASE_DATES: Record<string, string> = {
+  Covens: "2026-11-13",
   Allflame: "2026-07-24",
   Mirage: "2026-03-06",
   "Phrecia 2.0": "2026-01-29",
@@ -23,7 +24,7 @@ const LEAGUE_RELEASE_DATES: Record<string, string> = {
  * worth adding a dependency on, so this is kept in sync by hand alongside the table above each
  * time a new league launches. Used to skip asking the user which league they're playing.
  */
-export const CURRENT_LEAGUE = "Allflame";
+export const CURRENT_LEAGUE = "Covens";
 export const CURRENT_LEAGUE_START_DATE = LEAGUE_RELEASE_DATES[CURRENT_LEAGUE];
 
 // Anchor point for the half-life decay below - kept only for scripts/backtest-mirage.ts's
