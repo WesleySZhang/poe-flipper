@@ -38,6 +38,7 @@ export const CURRENCY_OVERVIEW_TYPES = [
   "Ducat",
   "EnshroudingCrystal",
   "Astrolabe",
+  "Thread",
 ] as const;
 
 // Mirrors the "type" values found in the ingested historical item_history table (see scripts/ingest-history.ts).
@@ -73,6 +74,7 @@ export const ITEM_OVERVIEW_TYPES = [
   "ForbiddenJewel",
   "ScryingOrb",
   "Flask",
+  "Viscera",
 ] as const;
 
 export type CurrencyOverviewType = (typeof CURRENCY_OVERVIEW_TYPES)[number];
