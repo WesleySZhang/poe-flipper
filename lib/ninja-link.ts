@@ -59,6 +59,8 @@ export const CATEGORY_SLUGS: Record<string, string> = {
   Astrolabe: "astrolabes",
   ScryingOrb: "scrying-orbs",
   Flask: "flasks",
+  Viscera: "viscera",
+  Thread: "threads",
 };
 
 // Currency-style (exchange-priced) types, whose detailsId is just the slugified name.
